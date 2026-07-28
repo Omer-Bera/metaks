@@ -23,7 +23,7 @@ Tamamlanan çalışmalar:
 
 Nihai görsel arşivinde **2.733 ürün görseli** bulunmaktadır.
 
-> ⚠️ Bu görsellerin **934 tanesi** (`reports/excel/gorsel_eslesme_raporu.xlsx`) henüz veritabanındaki hiçbir stok koduyla eşleşmiyor. Bunların hepsi orijinal Excel'de `/` ile birleştirilmiş çoklu stok kodlu ("karışık") satırlara ait — bu 857 satır (`data/interim/karisik_urunler.xlsx`) henüz normalize edilip veritabanına yüklenmedi. Faz 2'ye (`urun_gorselleri` tablosu) geçmeden önce bu iş bitirilmeli, aksi halde görsellerin ~%34'ü hiçbir ürüne bağlanamaz.
+> ⚠️ Bu görsellerin **934 tanesi** (`reports/excel/gorsel_eslesme_raporu.xlsx`) hâlâ veritabanındaki hiçbir stok koduyla eşleşmiyor. 857 karışık satırın stok kodu ayrıştırma/normalizasyon işi 2026-07-28'de tamamlandı (bkz. `docs/karisik_stok_kodu_kurali.md`) ve 1143 yeni varyant veritabanına yüklendi (toplam **2.974 ürün**) — ama görsel dosya adları hâlâ eski birleşik kod listesini kullanıyor (ör. `1000_108_212_208_217_1.png`), yeni aile-önekli kodlarla (`102-008` gibi) otomatik eşleşmiyor. **Görsellerin yeniden bağlanması ayrı, henüz yapılmamış bir iş.**
 
 ---
 
@@ -33,12 +33,12 @@ Aşağıdaki dosya ve klasörler projenin güncel ve güvenilir ana veri setidir
 
 ```text
 data/raw/urun_listesi.xlsx
-data/processed/temiz_urunler_final_v1.xlsx
+data/processed/temiz_urunler_final_v2.xlsx
 data/reference/kalip_bilgileri_yedek.xlsx
 images/final/products/
 ```
 
-`data/processed/temiz_urunler_final_v1.xlsx` içindeki **1.831 satır**, `scripts/database/yukle.py` ile PostgreSQL'e yüklenmiş olan güncel nihai veridir. `data/interim/temiz_urunler_standart.xlsx` artık ara bir aşamadır (bkz. Normalizasyon Hattı bölümü); doğrudan referans alınmamalıdır.
+`data/processed/temiz_urunler_final_v2.xlsx` içindeki **2.974 satır**, `scripts/database/yukle.py` ile PostgreSQL'e yüklenmiş olan güncel nihai veridir (2.969 ANA_URUN, 3 ALT_PARCA, 2 VARYANT). Bu dosya, standart temiz veri + `karisik_urunleri_coz.py`/`karisik_urunleri_birlestir.py` ile çözülen 1.143 karışık-kod varyantının birleşimidir. `data/interim/temiz_urunler_standart.xlsx` artık ara bir aşamadır (bkz. Normalizasyon Hattı bölümü); doğrudan referans alınmamalıdır. Eski `temiz_urunler_final_v1.xlsx` (1.831 satır, karışık kodlar hariç) tarihsel referans olarak korunuyor.
 
 ### `data/raw/urun_listesi.xlsx`
 
@@ -67,9 +67,9 @@ Bu dosyada:
 
 bulunur. Stok kodları bu aşamada henüz tekil değildir — birleşik/tekrar eden kodlar Normalizasyon Hattı'nda (`scripts/normalization/`, `scripts/maintenance/`) çözülür.
 
-### `data/processed/temiz_urunler_final_v1.xlsx`
+### `data/processed/temiz_urunler_final_v2.xlsx`
 
-PostgreSQL'e aktarılmış olan gerçek nihai veridir (**1.831 satır**). Normalizasyon Hattı'nın son adımı olan `final_excel_hazirla.py` tarafından üretilir; tekil stok kodları, parent-child/varyant ilişkileri ve `scripts/database/yukle.py`'nin beklediği tüm kolonları içerir.
+PostgreSQL'e aktarılmış olan gerçek nihai veridir (**2.974 satır**). Normalizasyon Hattı'nın son adımı olan `final_excel_hazirla.py` tarafından üretilir; tekil stok kodları, parent-child/varyant ilişkileri ve `scripts/database/yukle.py`'nin beklediği tüm kolonları içerir. Girişi artık `temiz_urunler_tekrarsiz_v2.xlsx` değil, `karisik_urunleri_birlestir.py`'nin ürettiği `data/interim/temiz_urunler_karisik_dahil.xlsx`'tir.
 
 ### `data/reference/kalip_bilgileri_yedek.xlsx`
 
@@ -95,7 +95,7 @@ metaks_DB/
 ├── data/
 │   ├── raw/                    # urun_listesi.xlsx (görsel gömülü, ~195 MB)
 │   ├── interim/                 # temizlik/normalizasyon ara dosyaları
-│   ├── processed/                # temiz_urunler_final_v1.xlsx (DB'ye yüklenen)
+│   ├── processed/                # temiz_urunler_final_v2.xlsx (DB'ye yüklenen)
 │   └── reference/                 # kalip_bilgileri_yedek.xlsx vb.
 ├── docs/INFO.md                    # bu dosya
 ├── docker-compose.yml
@@ -340,7 +340,7 @@ Dosyalar fiziksel olarak:
 images/final/products/
 ```
 
-klasöründe saklanır; veritabanında ise dosya adı ve `stok_kodu` ilişkisi tutulur. **934 görsel** henüz hiçbir stok koduna bağlı değil (bkz. yukarıdaki uyarı) — bu tabloya veri yüklemeden önce çözülmesi gerekiyor.
+klasöründe saklanır; veritabanında ise dosya adı ve `stok_kodu` ilişkisi tutulur. **934 görsel** henüz hiçbir stok koduna bağlı değil (bkz. yukarıdaki uyarı) — stok kodu tarafı çözüldü ama görsel dosya adları yeni kodlarla eşleşmiyor; bu tabloya veri yüklemeden önce görsellerin yeniden bağlanması gerekiyor.
 
 ---
 
@@ -395,7 +395,7 @@ Aşağıdaki dosya ve klasörler yedek alınmadan silinmemeli veya toplu olarak 
 
 ```text
 data/raw/urun_listesi.xlsx
-data/processed/temiz_urunler_final_v1.xlsx
+data/processed/temiz_urunler_final_v2.xlsx
 data/reference/kalip_bilgileri_yedek.xlsx
 images/final/products/
 sql/01_schema.sql
@@ -455,7 +455,8 @@ find archive -maxdepth 2 -print
 ### Faz 2: Ürün görsellerinin veritabanına bağlanması
 
 - ~~`urun_gorselleri` tablosunun oluşturulması~~ ✅ tamamlandı (`sql/01_schema.sql`)
-- **ön koşul:** 857 karışık ürün satırının (`data/interim/karisik_urunler.xlsx`) stok kodu ailelerine göre normalize edilip veritabanına yüklenmesi — aksi halde 934 görsel eşleşmeden kalır
+- ~~857 karışık ürün satırının stok kodu ailelerine göre normalize edilip veritabanına yüklenmesi~~ ✅ tamamlandı 2026-07-28 (bkz. `docs/karisik_stok_kodu_kurali.md`) — 2.974 ürün DB'de
+- **yeni ön koşul:** 934 eşleşmeyen görselin dosya adlarının (eski birleşik kod listesi, ör. `1000_108_212_208_217`) yeni aile-önekli stok kodlarıyla (ör. `102-008`) yeniden eşleştirilmesi
 - CSV eşleme raporunun veritabanına aktarılması
 - ana görsel ve sıralama mantığının belirlenmesi
 - eksik ürün-görsel ilişkilerinin raporlanması
@@ -494,15 +495,17 @@ find archive -maxdepth 2 -print
 
 ## 📌 Güncel Çalışma Noktası
 
-Standart ürünler için veri temizleme, normalizasyon, PostgreSQL aktarımı (1.831 ürün) ve görsel eşleme süreci tamamlanmıştır. **Karışık stok kodlu 857 satır** ise henüz normalize edilip yüklenmedi — bu yüzden 2.733 görselin 934'ü veritabanında karşılıksız duruyor.
+Veri temizleme, normalizasyon, karışık stok kodu çözümü ve PostgreSQL aktarımı tamamlanmıştır — veritabanında **2.974 ürün** var (2.969 ANA_URUN, 3 ALT_PARCA, 2 VARYANT). Görsel eşleme oranı ise değişmedi: 2.733 görselin hâlâ 934'ü karşılıksız, çünkü görsel dosya adları eski birleşik kod listesini kullanıyor, yeni aile-önekli kodları tanımıyor.
 
 Bir sonraki teknik adım:
 
 ```text
-"stok kodu aile kuralları"nın (karışık kodların hangi mantıkla ayrı ürünlere bölüneceği) yazılı hale getirilmesi
-→ karisik_urunler.xlsx'i bu kurallara göre normalize eden yeni bir script
-→ normalize edilmiş satırların temiz_urunler_final.xlsx akışına eklenip veritabanına yüklenmesi
+934 eşleşmeyen görselin dosya adını (ör. "1000_108_212_208_217_1.png") karisik_urunleri_coz.py'deki
+aynı aile/token çözme mantığıyla ayrıştırıp, her görseli doğru yeni stok koduna (ör. "102-008")
+yeniden bağlayan bir script yazılması
 → gorsel_eslesme_raporu.py'nin yeniden çalıştırılıp eşleşmeyen görsel sayısının düşürülmesi
 → urun_gorselleri tablosunun doldurulması
 → ürün kartlarında görsellerin kullanılmaya başlanması
 ```
+
+Ayrıca elle bakılması gereken 215 karışık kod kaydı (`reports/excel/karisik_urun_cozme_raporu.xlsx` → `Elle_Bakilmasi_Gereken`) ve `T`/`BT`/`E` soneklerinin anlamı hâlâ çözülmedi.
