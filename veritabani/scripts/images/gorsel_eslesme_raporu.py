@@ -8,10 +8,10 @@ from psycopg2.extensions import connection as PgConnection
 from psycopg2.extensions import cursor as PgCursor
 
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parents[2]
 
-GORSEL_KLASORU = BASE_DIR / "urun_gorselleri_stoklu_final"
-RAPOR_DOSYASI = BASE_DIR / "gorsel_eslesme_raporu.xlsx"
+GORSEL_KLASORU = BASE_DIR / "images" / "final" / "products"
+RAPOR_DOSYASI = BASE_DIR / "reports" / "excel" / "gorsel_eslesme_raporu.xlsx"
 
 DB_NAME = "depo_sistemi"
 DB_USER = "depo_admin"

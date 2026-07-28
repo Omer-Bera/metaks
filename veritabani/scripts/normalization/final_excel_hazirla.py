@@ -4,11 +4,14 @@ from typing import Any
 import pandas as pd
 
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parents[2]
 
-GIRIS_DOSYASI = BASE_DIR / "temiz_urunler_tekrarsiz_v2.xlsx"
-CIKIS_DOSYASI = BASE_DIR / "temiz_urunler_final.xlsx"
-RAPOR_DOSYASI = BASE_DIR / "final_excel_duzenleme_raporu.xlsx"
+# 2026-07-28: karışık ürünlerin çözülmesiyle birlikte artık
+# temiz_urunler_tekrarsiz_v2.xlsx yerine, karisik_urunleri_birlestir.py'nin
+# ürettiği birleşik dosya kullanılıyor (bkz. docs/karisik_stok_kodu_kurali.md).
+GIRIS_DOSYASI = BASE_DIR / "data" / "interim" / "temiz_urunler_karisik_dahil.xlsx"
+CIKIS_DOSYASI = BASE_DIR / "data" / "processed" / "temiz_urunler_final_v2.xlsx"
+RAPOR_DOSYASI = BASE_DIR / "reports" / "excel" / "final_excel_duzenleme_raporu_v2.xlsx"
 
 
 STOK_KOLONU = "ÜRÜN STOK KODU"

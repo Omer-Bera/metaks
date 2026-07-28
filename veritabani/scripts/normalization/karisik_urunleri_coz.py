@@ -242,8 +242,14 @@ def main() -> None:
             boy_degeri = boy_list[mm_idx] if mm_idx < len(boy_list) else None
             kategori_adi = HANE_KATEGORI_ZORLA.get(kategori_hanesi, grup["kategori"])
 
+            # Çıplak token (ör. "008", "617") tek başına global olarak benzersiz
+            # DEĞİL — aynı token birden çok ailede farklı ürünleri temsil edebilir
+            # (2026-07-28'de kullanıcıyla doğrulandı). Aile numarasıyla önekleyerek
+            # benzersiz hale getiriyoruz.
+            yeni_stok_kodu = f"{bilgi['aile_no']}-{token.replace(',', '.')}"
+
             yeni_satir = {
-                STOK_KOLONU: token.replace(",", "."),
+                STOK_KOLONU: yeni_stok_kodu,
                 KATEGORI_KOLONU: kategori_adi,
                 MM_KOLONU: olcu,
                 BOY_KOLONU: boy_degeri,

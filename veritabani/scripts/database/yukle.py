@@ -7,8 +7,8 @@ from psycopg2.extensions import connection as PgConnection
 from psycopg2.extensions import cursor as PgCursor
 
 
-BASE_DIR = Path(__file__).resolve().parent
-EXCEL_DOSYASI = BASE_DIR / "temiz_urunler_final.xlsx"
+BASE_DIR = Path(__file__).resolve().parents[2]
+EXCEL_DOSYASI = BASE_DIR / "data" / "processed" / "temiz_urunler_final_v2.xlsx"
 
 DB_NAME = "depo_sistemi"
 DB_USER = "depo_admin"
