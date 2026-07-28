@@ -1,0 +1,17 @@
+services:
+  veritabani:
+    image: postgres:16-alpine
+    container_name: depo-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: depo_admin
+      POSTGRES_PASSWORD: supergizlisifre
+      POSTGRES_DB: depo_sistemi
+    ports:
+      - "5433:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./sql/01_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+
+volumes:
+  pg_data:

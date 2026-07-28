@@ -1,0 +1,17 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Buyuk / uretilebilir veri ve gorsel klasorleri
+# (README.md "Dosya Koruma Kurallari" bolumune gore bunlar
+# manuel yedekle korunuyor, git'e sokmak repo'yu sisirir)
+/archive/
+/images/
+/data/raw/
+
+# Excel kilit dosyalari
+~$*.xlsx
+
+# macOS
+.DS_Store
