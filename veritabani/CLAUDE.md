@@ -4,102 +4,130 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-METAKS DB is a data-engineering project (not a running application) that cleans, standardizes, and migrates a metal/textile hardware catalog (rivets, buckles, buttons, etc. — "toka", "düğme", "kalıp") from a messy source Excel export into a PostgreSQL database, and matches the catalog's embedded product images to stock codes. All code, data, and console output are in Turkish. There is no git repository initialized here yet.
+METAKS DB is a data-engineering project (not a running application) that cleans, standardizes, and migrates a metal/textile hardware catalog (rivets, buckles, buttons, etc. — "toka", "düğme", "kalıp") from a messy source Excel export into a PostgreSQL database, and links the catalog's embedded product images to stock codes. All code, data, and console output are in Turkish. Current point-in-time state (row counts, coverage stats) lives in `docs/INFO.md`, not here — check that file for "what does the DB currently contain," this file is about how the pipeline works.
 
 ## Environment & commands
 
-- Python venv lives in `venv/`. Activate with `source venv/bin/activate`. There is no `requirements.txt`; key installed packages are `pandas`, `openpyxl`, `psycopg2-binary`, `SQLAlchemy` (see `venv/bin/pip freeze` for the full list).
+- Python venv lives in `venv/`. Activate with `source venv/bin/activate`. There is no `requirements.txt`; key packages: `pandas`, `openpyxl`, `psycopg2-binary`, `Pillow` (for thumbnail generation), `SQLAlchemy` (see `venv/bin/pip freeze` for the full list).
 - Start the database: `docker compose up -d` (container `depo-postgres`, Postgres 16). Stop: `docker compose down`.
-- The compose file mounts **`sql/01_schema.sql`** as the init script (`docker-entrypoint-initdb.d`) — that file is the authoritative, current schema. The root-level `init_db.sql` is an older/simpler version that is *not* wired into docker-compose; treat it as legacy unless asked to reconcile the two.
-- DB connection used by all scripts: `host=localhost port=5433 dbname=depo_sistemi user=depo_admin password=supergizlisifre` (credentials are hardcoded in each script, e.g. `scripts/database/yukle.py`).
+- The compose file mounts **`sql/01_schema.sql`** as the init script — that file is the authoritative, current schema. The root-level `init_db.sql` is an older/simpler version, not wired into docker-compose; legacy.
+- DB connection used by all scripts: `host=localhost port=5433 dbname=depo_sistemi user=depo_admin password=supergizlisifre` (credentials hardcoded per-script).
 - Connect manually: `docker exec -it depo-postgres psql -U depo_admin -d depo_sistemi`.
-- No test suite, linter, or build step exists in this repo — it's a one-shot batch pipeline run manually, step by step.
+- No test suite, linter, or build step — this is a manually-run, step-by-step batch pipeline.
+- **Git**: this is now a git repo (initialized 2026-07-28). Local repo-scoped `user.name`/`user.email` are set (not global). Global git config has SSH commit signing enabled (`gpg.format=ssh`) via a 1Password SSH agent; if `SSH_AUTH_SOCK` in the shell doesn't point at 1Password's agent socket, commits fail with "no SSH private key found" — ask the user before falling back to `git commit --no-gpg-sign` (only do this with explicit permission, never silently).
 
-## Critical gotcha: scripts assume flat, co-located files
+## Critical: stok kodu format for derived/split products
 
-The repo was reorganized into `data/`, `scripts/{cleaning,normalization,maintenance,database,images}/`, `images/`, `reports/` subfolders, but the scripts' hardcoded paths were **not** updated for that reorg:
-
-- Older cleaning scripts (`scripts/cleaning/temizle.py`, `olcu_temizle.py`, `duzelt.py`) and `scripts/maintenance/kalip_yedekle.py`, `scripts/cleaning/ayir.py` use bare relative filenames (e.g. `pd.read_excel('temiz_urunler_stoklu.xlsx')`) — they must be run from a directory that actually contains that file (or the file copied next to the script).
-- Newer normalization/maintenance/database scripts define `BASE_DIR = Path(__file__).resolve().parent` and read/write files **next to the script itself** (e.g. `scripts/database/yukle.py` expects `scripts/database/temiz_urunler_final.xlsx`), not in `data/processed/` or `data/interim/` where the real data actually lives.
-- `scripts/images/gorsel_esle_duzeltilmis_v2.py` writes its output folder as `<path-to-input-excel>/urun_gorselleri_stoklu_duzeltilmis/` (sibling of whatever Excel file you pass it), not into `images/`.
-
-**Before running any script**, check its `GIRIS_DOSYASI`/`EXCEL_DOSYASI`/`BASE_DIR` (or bare filename) constants against where the real file currently lives under `data/`, and either copy the input alongside the script or update the constant — then move the output back into the correct `data/` subfolder afterward. Don't assume a script will "just find" its input from the new folder layout.
+When a "karışık" (combined) stock-code cell gets split into individual products (see below), the resulting stok kodu is **the family number and the token concatenated directly, with NO separator** — e.g. family `108` + token `617` → `108617`. This was verified 2026-07-29 against 282 real pre-existing examples in the catalog (e.g. `689212` = family `689` + category digit `2` + size `12` → an actual RİVET, 12mm product) and against `urun_listesi.xlsx` itself. An earlier attempt used a hyphen (`108-617`) — that was wrong and was corrected; if you see hyphenated codes anywhere, they're stale. This matters operationally too: warehouse staff doing physical stock counts write the full concatenated code (not the bare token), so this format is what any future count-file integration needs to match against.
 
 ## Data pipeline architecture
 
-The catalog moves through two chained stages of scripts, each reading the previous stage's output Excel and writing a new one plus (for the newer scripts) a `_raporu.xlsx` audit report:
+The catalog moves through three chained stages, each reading the previous stage's output and writing a new file plus (for newer scripts) a `_raporu.xlsx` audit report.
 
 **Stage 1 — cleaning (`scripts/cleaning/`, `scripts/maintenance/kalip_yedekle.py`)**
-```
+```text
 urun_listesi_temiz.xlsx (raw, no images)
-  → temizle.py        splits complex/multi-code rows into karisik_urunler.xlsx,
+  → temizle.py        splits complex/multi-code rows into karisik_urunler.xlsx (857 rows),
                         standardizes ~34 category names, builds parent-child links
-  → olcu_temizle.py    parses "ÜRÜN DETAYI (mm)"/"(Boy)" text into numeric olcu_mm/boy_ligne;
-                        anything that isn't a clean number falls back into the description
+  → olcu_temizle.py    parses "ÜRÜN DETAYI (mm)"/"(Boy)" text into numeric olcu_mm/boy_ligne
   → duzelt.py           de-duplicates repeated " | "-joined segments in ÜRÜN AÇIKLAMASI
   → kalip_yedekle.py    extracts ÜRÜN GÖZ SAYISI (mold cavity count) into kalip_bilgileri_yedek.xlsx
-                        (this attribute is deliberately kept OUT of urunler — see below)
-  → ayir.py             splits rows into temiz_urunler_standart.xlsx (clean measurements)
-                        vs temiz_urunler_olcu_duzenlenecek.xlsx (needs manual fixing)
+  → ayir.py             splits into temiz_urunler_standart.xlsx (clean) vs
+                        temiz_urunler_olcu_duzenlenecek.xlsx (needs manual fixing, never processed further — archived, see below)
 ```
 
-**Stage 2 — normalization / final prep (`scripts/normalization/`, `scripts/maintenance/`)**
-```
+**Stage 2 — normalization (`scripts/normalization/`, `scripts/maintenance/`)**
+```text
 temiz_urunler_standart.xlsx
   → birlesik_stok_kodlarini_duzelt.py   fixes merged/combined stock codes
-  → ayni_urun_tekrarlarini_sil.py        drops true duplicate rows (same code+category+measurements)
-  → secili_stok_tekrarlarini_sil.py      manually curated dedup for a hardcoded set of stock codes
-  → final_excel_hazirla.py               hand-codes special multi-variant products (e.g. stock
-                                          codes "2108" and "1805012" get split into explicit
-                                          ANA_URUN / ALT_PARCA / VARYANT rows), produces
-                                          temiz_urunler_final.xlsx
-  → scripts/database/yukle.py            validates required columns, unique stock codes, and
-                                          parent references, then TRUNCATEs and loads
-                                          kategoriler + urunler into PostgreSQL
+  → ayni_urun_tekrarlarini_sil.py        drops true duplicate rows
+  → secili_stok_tekrarlarini_sil.py      manually curated dedup for hardcoded stock codes
+  → temiz_urunler_tekrarsiz_v2.xlsx
 ```
-`data/processed/temiz_urunler_final_v1.xlsx` is the checked-in result of that final stage.
 
-**Image pipeline (`scripts/images/`)**
+**Stage 3 — karışık (combined-code) resolution, added 2026-07-29 (`scripts/normalization/`)**
+```text
+karisik_urunler.xlsx (857 rows, multi-code cells like "108/109;112;617;620;015;017;023")
+  → karisik_urunleri_coz.py       decodes each cell: first code = family/grouping key (not a
+                                    real product), each subsequent token = [1-digit category][size],
+                                    cross-validated against the row's own mm-list per category
+                                    subgroup. See docs/karisik_stok_kodu_kurali.md for the full
+                                    decode rule and the empirically-derived digit→category map.
+                                    ~84% auto-resolved -> karisik_urunler_cozulmus.xlsx;
+                                    rest -> reports/excel/karisik_urun_cozme_raporu.xlsx
+                                    (Elle_Bakilmasi_Gereken sheet). Also guards against a resolved
+                                    code colliding with an already-existing standalone product
+                                    (rare; routes the collision to manual review instead of
+                                    overwriting either side).
+  → karisik_urunleri_birlestir.py  merges resolved variants into temiz_urunler_tekrarsiz_v2.xlsx
+                                    -> temiz_urunler_karisik_dahil.xlsx
+  → final_excel_hazirla.py         hand-codes special multi-variant products (stock codes "2108"
+                                    and "1805012" split into ANA_URUN/ALT_PARCA/VARYANT rows),
+                                    produces data/processed/temiz_urunler_final_v2.xlsx
+  → scripts/database/yukle.py      validates + TRUNCATEs + loads kategoriler + urunler into Postgres
 ```
-urun_listesi.xlsx (~195 MB, has embedded images)
-  → gorsel_esle_duzeltilmis_v2.py <path>  parses the OOXML drawing XML directly (not via openpyxl)
-                                            to anchor each embedded image to its row/stok kodu,
-                                            handles multi-image rows (_1, _2, _3 suffixes),
-                                            writes gorsel_esleme_raporu.csv
-  → gorsel_stok_kodlarini_guncelle.py     renames image files whose stock code changed during
-                                            Stage 2 normalization (using
-                                            birlesik_stok_kodu_duzeltme_raporu.xlsx as the map)
-  → gorsel_eslesme_raporu.py               cross-checks the final image folder against the
-                                            urunler table in Postgres and reports mismatches
+
+**Image pipeline (`scripts/images/`, `scripts/database/`)**
+```text
+urun_listesi.xlsx (~195 MB, embedded images)
+  → gorsel_esle_duzeltilmis_v2.py <path>  parses OOXML drawing XML directly to anchor each
+                                            embedded image to its row/stok kodu, writes
+                                            gorsel_esleme_raporu.csv into images/working/products/
+  → gorsel_stok_kodlarini_guncelle.py     renames images whose stock code changed during Stage 2
+  → gorsel_eslesme_raporu.py               cross-checks images/final/products/ against urunler,
+                                            writes reports/excel/gorsel_eslesme_raporu.xlsx
+                                            (Eslesen_Gorseller / Eslesmeyen_Gorseller / etc. sheets)
+  → scripts/database/gorselleri_yukle.py   loads the Eslesen_Gorseller sheet into urun_gorselleri;
+                                            ana_gorsel_mi/sira_no derived from the "_N" suffix in
+                                            the filename (sira=1 → primary image)
 ```
-`images/working/products/` and `images/final/products/` hold the working vs. final-reviewed image sets (2,734 vs. 2,733 files); `reports/excel/gorsel_esleme_raporu.csv`-style reports track the mapping decisions.
+
+**Archiving pass (`scripts/maintenance/eski_urunleri_arsivle.py`), added 2026-07-28**
+Business decision: rather than chase a long tail of legacy/low-value records, unresolved karışık variants, never-processed `temiz_urunler_olcu_duzenlenecek.xlsx` rows, stoksuz rows, and images whose filename never resolved to any DB product were moved (not deleted) to `data/reference/arsivlenen_eski_urunler.xlsx` and `images/arsiv/products/`. Re-running this script is idempotent — it scans `images/arsiv/products/` directly for its report rather than trusting the (post-move-empty) `Eslesmeyen_Gorseller` sheet.
+
+**Search/export tooling (`scripts/database/`), added 2026-07-29**
+```text
+csv_guncelle.py         exports urunler/urun_gorselleri (from DB) + archived data (from the
+                          xlsx above) to CSV under data/processed/ and data/reference/ — fast to
+                          grep/search, regenerate whenever the DB changes
+urun_ara.py <kod>        searches those CSVs for a stock code: active DB? has image? archived
+                          (and why)? — run csv_guncelle.py first if stale
+tablolari_disa_aktar.py  full Excel dump of current urunler/urun_gorselleri/kategoriler ->
+                          reports/excel/veritabani_guncel_durum.xlsx (the actual 1:1 DB mirror;
+                          data/processed/temiz_urunler_final_v2.xlsx is the pre-load *source*,
+                          not guaranteed identical to live DB state after ad-hoc changes)
+urun_katalogu_olustur.py builds data/processed/urun_katalogu_gorselli.xlsx: DB products that
+                          have an image, with a thumbnail (120px, via Pillow) embedded per row —
+                          a lightweight recreation of urun_listesi.xlsx's stok-kodu+photo layout
+```
+
+## Legacy path gotcha (partially fixed)
+
+The repo was reorganized into `data/`, `scripts/{cleaning,normalization,maintenance,database,images}/`, `images/`, `reports/` subfolders. **Newer scripts** (everything in Stage 3, the image-load/archive/search tooling, and `final_excel_hazirla.py`/`yukle.py`/`gorsel_eslesme_raporu.py` after 2026-07-28 fixes) correctly use `BASE_DIR = Path(__file__).resolve().parents[2]` and read/write real `data/`/`reports/`/`images/` paths. **Older Stage 1/2 scripts** (`scripts/cleaning/*.py`, `scripts/maintenance/kalip_yedekle.py`, `birlesik_stok_kodlarini_duzelt.py`, `ayni_urun_tekrarlarini_sil.py`, `secili_stok_tekrarlarini_sil.py`, `scripts/images/gorsel_esle_duzeltilmis_v2.py`, `gorsel_stok_kodlarini_guncelle.py`) still use bare filenames or script-adjacent `BASE_DIR` — but you shouldn't need to rerun them; their outputs already exist in `data/interim/`. If you ever do need to rerun one, check its path constants first.
 
 ## Database schema (`sql/01_schema.sql`)
 
-Design principles (also documented in `README.md`):
-
-- **Master data isolation**: `urunler` holds only immutable physical/identifying attributes (stok_kodu, category, measurements, weight, description). Manufacturing/production data is deliberately excluded.
-- **Mold cavity count is out-of-scope for `urunler`** — it's kept in `data/reference/kalip_bilgileri_yedek.xlsx` pending a future `kaliplar` table (Faz 3 in the roadmap).
-- **Parent/child/variant relationships**: `urunler.urun_tipi` is `ANA_URUN` (main product) / `ALT_PARCA` (sub-part, e.g. a buckle's separate washer) / `VARYANT` (variant, e.g. old vs. new mold), linked via self-referencing `parent_stok_kodu`. A CHECK constraint enforces that non-`ANA_URUN` rows must have a parent, and a product can't be its own parent.
-- **Numeric measurements**: `olcu_mm`, `boy_ligne`, `gramaj_gr` are NUMERIC, not text, to support range queries/sorting.
-- **Images** live in `urun_gorselleri`, referencing `urunler.stok_kodu`, with a partial unique index enforcing at most one active "ana_gorsel" (primary image) per product.
-- `stok_hareketleri` is a ledger table for future inventory-movement tracking (Faz 4, not yet populated by any script).
+- **Master data isolation**: `urunler` holds only immutable physical/identifying attributes. Manufacturing/production data is deliberately excluded.
+- **Mold cavity count is out-of-scope for `urunler`** — kept in `data/reference/kalip_bilgileri_yedek.xlsx` pending a future `kaliplar` table (Faz 3, not started).
+- **Parent/child/variant**: `urunler.urun_tipi` is `ANA_URUN` / `ALT_PARCA` / `VARYANT`, linked via self-referencing `parent_stok_kodu`.
+- **Numeric measurements**: `olcu_mm`, `boy_ligne`, `gramaj_gr` are NUMERIC. Note `gramaj_gr` coverage is inherently partial — the source `ÜRÜN GRAMI` column is a literal `"?"` for roughly half the catalog (verified 2026-07-29 against both `data/raw/urun_listesi.xlsx` and a newer root-level copy — identical data, so there's no richer source hiding there). A separate/better weight source would be needed to fill the gap.
+- **Images**: `urun_gorselleri`, FK to `urunler.stok_kodu`, partial unique index enforcing at most one active `ana_gorsel_mi` per product. Populated by `scripts/database/gorselleri_yukle.py`.
+- **`stok_hareketleri`**: ledger table (islem_tipi includes `SAYIM_DEVRI` for physical inventory counts, `gecici_kod` field explicitly for temporary/unreconciled codes) — schema anticipates the Faz 4 warehouse-count workflow but no loader script exists yet. `lokasyonlar` is defined but empty (location tracking optional for `SAYIM_DEVRI` rows — only required for `TRANSFER`).
 
 ## Repository layout
 
-```
-data/{raw,interim,processed,reference}/  Excel/CSV at each pipeline stage — see "Data pipeline" above
-images/{working,final}/products/         product image files (stok kodu-named)
-reports/excel/                           audit reports produced by the normalization/image scripts
-reports/logs/                            currently empty
+```text
+data/{raw,interim,processed,reference}/  Excel/CSV at each pipeline stage
+images/{working,final,arsiv}/products/   product images: working copy, active (DB-matched), archived (unmatched)
+reports/excel/                           audit reports + DB export (veritabani_guncel_durum.xlsx)
 scripts/{cleaning,normalization,maintenance,database,images}/  pipeline scripts, grouped by stage
 sql/01_schema.sql                        current DB schema (mounted by docker-compose)
 init_db.sql                              legacy schema, not used by docker-compose
-docs/INFO.md                             Turkish project README with full roadmap (Faz 2–6)
-archive/                                 superseded scripts/data/notebooks kept for reproducibility;
-                                          not part of the active pipeline
+docs/INFO.md                             Turkish project doc: current state, roadmap (Faz 2–6), file descriptions
+docs/karisik_stok_kodu_kurali.md         the karışık-code decode rule, with validation evidence
+archive/                                 superseded scripts/data/notebooks; not part of the active pipeline (gitignored)
 ```
 
 ## File protection
 
-These files/folders are load-bearing and should never be deleted or bulk-modified without a backup first (per `docs/INFO.md`): `data/raw/urun_listesi.xlsx` (~195 MB, embedded images — normal Excel saves can corrupt the drawing anchors), `data/interim/temiz_urunler_standart.xlsx`, `data/reference/kalip_bilgileri_yedek.xlsx`, the final product image folder, `sql/01_schema.sql`, and `scripts/database/yukle.py`. Files named `~$*.xlsx` are Excel lock files, not data — only delete them when the corresponding Excel file is confirmed closed.
+Load-bearing, never delete/bulk-modify without a backup: `data/raw/urun_listesi.xlsx` (~195 MB, embedded images — Excel re-saves can shift drawing anchors), `data/processed/temiz_urunler_final_v2.xlsx`, `data/reference/kalip_bilgileri_yedek.xlsx`, `images/final/products/`, `sql/01_schema.sql`, `scripts/database/yukle.py`. A root-level `urun_listesi.xlsx` duplicate sometimes appears (the user's live Excel working copy) — gitignored, leave it alone, don't assume it's identical to `data/raw/`'s copy without checking. Files named `~$*.xlsx` are Excel lock files — only delete once the corresponding Excel file is confirmed closed (check with `lsof`).
