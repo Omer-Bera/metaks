@@ -19,6 +19,7 @@ import psycopg2
 BASE_DIR = Path(__file__).resolve().parents[2]
 
 ARSIV_KAYNAK = BASE_DIR / "data" / "reference" / "arsivlenen_eski_urunler.xlsx"
+GORSEL_ARSIV_KLASORU = BASE_DIR / "images" / "arsiv" / "products"
 
 URUNLER_CSV = BASE_DIR / "data" / "processed" / "urunler.csv"
 GORSELLER_CSV = BASE_DIR / "data" / "processed" / "urun_gorselleri.csv"
@@ -73,7 +74,22 @@ def arsiv_csvlerini_guncelle() -> None:
     karisik_df = pd.read_excel(ARSIV_KAYNAK, sheet_name="Karisik_Cozulemeyen")
     olcu_df = pd.read_excel(ARSIV_KAYNAK, sheet_name="Olcu_Karmasik")
     stoksuz_df = pd.read_excel(ARSIV_KAYNAK, sheet_name="Stoksuz")
-    gorsel_df = pd.read_excel(ARSIV_KAYNAK, sheet_name="Eslesmeyen_Gorseller")
+
+    # Not: Eslesmeyen_Gorseller sayfası, gorsel_eslesme_raporu.py'nin SON
+    # çalıştırıldığı andaki aktif klasör durumunu yansıtır — görseller zaten
+    # images/arsiv/products/'a taşındıktan sonra tekrar üretilirse bu sayfa
+    # boş çıkar (taşınan dosyalar artık "eşleşmeyen" olarak görünmez). Bu
+    # yüzden arşivlenen görsel listesini sayfadan değil, doğrudan arşiv
+    # klasöründeki dosyalardan üretiyoruz — her zaman doğru sonucu verir.
+    gorsel_df = pd.DataFrame(
+        {
+            "dosya_adi": [
+                p.name
+                for p in sorted(GORSEL_ARSIV_KLASORU.glob("*"))
+                if p.is_file()
+            ]
+        }
+    )
 
     def arama_metni_olustur(df: pd.DataFrame, kolonlar: list[str]) -> pd.Series:
         mevcut = [k for k in kolonlar if k in df.columns]

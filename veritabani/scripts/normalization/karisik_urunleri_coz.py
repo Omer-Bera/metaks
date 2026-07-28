@@ -24,6 +24,7 @@ import pandas as pd
 BASE_DIR = Path(__file__).resolve().parents[2]
 
 GIRIS_DOSYASI = BASE_DIR / "data" / "interim" / "karisik_urunler.xlsx"
+MEVCUT_KATALOG_DOSYASI = BASE_DIR / "data" / "interim" / "temiz_urunler_tekrarsiz_v2.xlsx"
 CIKIS_DOSYASI = BASE_DIR / "data" / "interim" / "karisik_urunler_cozulmus.xlsx"
 RAPOR_DOSYASI = BASE_DIR / "reports" / "excel" / "karisik_urun_cozme_raporu.xlsx"
 
@@ -243,10 +244,12 @@ def main() -> None:
             kategori_adi = HANE_KATEGORI_ZORLA.get(kategori_hanesi, grup["kategori"])
 
             # Çıplak token (ör. "008", "617") tek başına global olarak benzersiz
-            # DEĞİL — aynı token birden çok ailede farklı ürünleri temsil edebilir
-            # (2026-07-28'de kullanıcıyla doğrulandı). Aile numarasıyla önekleyerek
-            # benzersiz hale getiriyoruz.
-            yeni_stok_kodu = f"{bilgi['aile_no']}-{token.replace(',', '.')}"
+            # DEĞİL. Doğru format aile numarası + token'ın DOĞRUDAN BİRLEŞTİRİLMESİ
+            # (araya ayraç KONMADAN) — 2026-07-29'da urun_listesi.xlsx ve mevcut
+            # temiz katalogdaki 282 gerçek örnekle (ör. "689212" = aile 689 +
+            # kategori 2 + ölçü 12 = RİVET 12mm) doğrulandı. İlk denemede yanlışlıkla
+            # tire eklenmişti, düzeltildi.
+            yeni_stok_kodu = f"{bilgi['aile_no']}{token.replace(',', '.')}"
 
             yeni_satir = {
                 STOK_KOLONU: yeni_stok_kodu,
@@ -274,6 +277,30 @@ def main() -> None:
     cozulen_df = pd.DataFrame(cozulen_satirlar)
     elle_df = pd.DataFrame(elle_bakilacak)
     islem_df = pd.DataFrame(islem_raporu)
+
+    # Aile+token birleştirmesi nadiren mevcut (karışık olmayan) katalogdaki
+    # bağımsız bir ürünle aynı koda düşebilir (ör. "201010": bizim ürettiğimiz
+    # "201" ailesinin "010" varyantı İLE zaten var olan bağımsız bir KÖPRÜ
+    # ürünü aynı koda sahip çıkıyor). Böyle çakışmaları otomatik yüklemek
+    # yerine elle incelemeye taşıyoruz — 2026-07-29'da doğrulandı.
+    if MEVCUT_KATALOG_DOSYASI.exists() and not cozulen_df.empty:
+        mevcut_kodlar = set(
+            pd.read_excel(MEVCUT_KATALOG_DOSYASI)[STOK_KOLONU]
+            .dropna()
+            .astype(str)
+            .str.strip()
+        )
+        cakisan_mask = cozulen_df[STOK_KOLONU].astype(str).str.strip().isin(mevcut_kodlar)
+        if cakisan_mask.any():
+            cakisanlar = cozulen_df[cakisan_mask].copy()
+            cakisanlar["sebep"] = "MEVCUT_KATALOGLA_CAKISIYOR"
+            elle_df = pd.concat([elle_df, cakisanlar], ignore_index=True)
+            cozulen_df = cozulen_df[~cakisan_mask].copy()
+            print(
+                f"⚠️  {cakisan_mask.sum()} kod mevcut katalogla çakıştığı için "
+                "elle incelemeye taşındı: "
+                + ", ".join(cakisanlar[STOK_KOLONU].astype(str).tolist())
+            )
 
     cozulen_df.to_excel(CIKIS_DOSYASI, index=False)
 

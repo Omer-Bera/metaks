@@ -37,7 +37,33 @@ def main() -> None:
     karisik_df = pd.read_excel(KARISIK_RAPORU, sheet_name="Elle_Bakilmasi_Gereken")
     olcu_df = pd.read_excel(OLCU_DUZENLENECEK)
     stoksuz_df = pd.read_excel(STOKSUZ)
-    gorsel_df = pd.read_excel(GORSEL_RAPORU, sheet_name="Eslesmeyen_Gorseller")
+    # gorsel_eslesme_raporu.xlsx yalnızca AKTİF klasördeki eşleşmeyenleri
+    # gösterir; script tekrar çalıştırıldığında (görseller zaten taşınmışsa)
+    # bu sayfa boş çıkar. Bu yüzden taşıma hedefini de kaynağa dahil ederek
+    # idempotent hale getiriyoruz (aşağıda tekrar taşınmaz, sadece raporlanır).
+    yeni_gorsel_df = pd.read_excel(GORSEL_RAPORU, sheet_name="Eslesmeyen_Gorseller")
+
+    # --- Görselleri taşı ---
+    GORSEL_ARSIV_KLASORU.mkdir(parents=True, exist_ok=True)
+    tasinan_dosya_adlari = set(yeni_gorsel_df["dosya_adi"].dropna().astype(str))
+
+    toplam_tasinan = 0
+    for klasor in GORSEL_KAYNAK_KLASORLERI:
+        if not klasor.exists():
+            continue
+        for dosya_adi in tasinan_dosya_adlari:
+            kaynak = klasor / dosya_adi
+            if kaynak.exists() and kaynak.is_file():
+                hedef = GORSEL_ARSIV_KLASORU / dosya_adi
+                shutil.move(str(kaynak), str(hedef))
+                toplam_tasinan += 1
+
+    # Rapor sayfası, arşiv klasöründe HÂLEN duran her şeyi listeler (yeni +
+    # önceden taşınmış) — böylece script kaç kere çalıştırılırsa çalıştırılsın
+    # doğru/tam listeyi verir.
+    gorsel_df = pd.DataFrame(
+        {"dosya_adi": [p.name for p in sorted(GORSEL_ARSIV_KLASORU.glob("*")) if p.is_file()]}
+    )
 
     ozet = pd.DataFrame(
         [
@@ -58,23 +84,7 @@ def main() -> None:
 
     print(f"📄 Arşiv listesi yazıldı: {CIKIS_DOSYASI}")
     print(ozet.to_string(index=False))
-
-    # --- Görselleri taşı ---
-    GORSEL_ARSIV_KLASORU.mkdir(parents=True, exist_ok=True)
-    tasinan_dosya_adlari = set(gorsel_df["dosya_adi"].dropna().astype(str))
-
-    toplam_tasinan = 0
-    for klasor in GORSEL_KAYNAK_KLASORLERI:
-        if not klasor.exists():
-            continue
-        for dosya_adi in tasinan_dosya_adlari:
-            kaynak = klasor / dosya_adi
-            if kaynak.exists() and kaynak.is_file():
-                hedef = GORSEL_ARSIV_KLASORU / dosya_adi
-                shutil.move(str(kaynak), str(hedef))
-                toplam_tasinan += 1
-
-    print(f"\n🖼️ Taşınan görsel dosyası sayısı: {toplam_tasinan}")
+    print(f"\n🖼️ Bu çalıştırmada taşınan yeni görsel dosyası sayısı: {toplam_tasinan}")
     print(f"📁 Arşiv klasörü: {GORSEL_ARSIV_KLASORU}")
 
 

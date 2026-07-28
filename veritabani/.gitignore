@@ -10,6 +10,10 @@ __pycache__/
 /images/
 /data/raw/
 
+# urun_listesi.xlsx'in kok dizinde beliren kopyalari (Excel'de acikken
+# kaydedilen calisma kopyalari, ~195 MB) - asil kopya data/raw/ altinda
+/urun_listesi.xlsx
+
 # Excel kilit dosyalari
 ~$*.xlsx
 
