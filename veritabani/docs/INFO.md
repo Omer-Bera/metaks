@@ -452,14 +452,16 @@ find archive -maxdepth 2 -print
 
 ## 🚀 Sonraki Fazlar
 
-### Faz 2: Ürün görsellerinin veritabanına bağlanması
+### Faz 2: Ürün görsellerinin veritabanına bağlanması ✅ TAMAMLANDI (2026-07-28)
 
-- ~~`urun_gorselleri` tablosunun oluşturulması~~ ✅ tamamlandı (`sql/01_schema.sql`)
-- ~~857 karışık ürün satırının stok kodu ailelerine göre normalize edilip veritabanına yüklenmesi~~ ✅ tamamlandı 2026-07-28 — 2.974 ürün DB'de
-- ~~934 eşleşmeyen görselin çözülmesi~~ ✅ 2026-07-28: arşivlendi (`images/arsiv/products/`), aktif klasör artık %100 eşleşiyor (1.799/1.799)
-- CSV eşleme raporunun veritabanına aktarılması
-- ana görsel ve sıralama mantığının belirlenmesi
-- eksik ürün-görsel ilişkilerinin raporlanması (1.194 üründe henüz görsel yok — bu normal/beklenen bir eksiklik, arşiv kapsamı dışında)
+- ~~`urun_gorselleri` tablosunun oluşturulması~~ ✅ (`sql/01_schema.sql`)
+- ~~857 karışık ürün satırının stok kodu ailelerine göre normalize edilip veritabanına yüklenmesi~~ ✅ — 2.974 ürün DB'de
+- ~~934 eşleşmeyen görselin çözülmesi~~ ✅ arşivlendi (`images/arsiv/products/`), aktif klasör %100 eşleşiyor
+- ~~CSV eşleme raporunun veritabanına aktarılması~~ ✅ `scripts/database/gorselleri_yukle.py` — 1.799 görsel yüklendi
+- ~~ana görsel ve sıralama mantığının belirlenmesi~~ ✅ dosya adındaki sıra numarası (`<stok_kodu>_<sira>.<uzanti>`) kullanıldı; sira=1 → `ana_gorsel_mi`
+- eksik ürün-görsel ilişkilerinin raporlanması: 1.194 üründe henüz görsel yok (`Gorselsiz_Urunler` raporu) — bu normal/beklenen bir eksiklik, arşiv kapsamı dışında, ayrıca ele alınmalı
+
+Sonuç: 1.780 üründe tam olarak bir ana görsel var, 19 üründe birden fazla görsel var, hiçbir kısıt ihlali yok.
 
 ### Faz 3: Kalıp modülü
 
@@ -495,7 +497,7 @@ find archive -maxdepth 2 -print
 
 ## 📌 Güncel Çalışma Noktası
 
-Veri temizleme, normalizasyon, karışık stok kodu çözümü ve PostgreSQL aktarımı tamamlanmıştır — veritabanında **2.974 ürün** var (2.969 ANA_URUN, 3 ALT_PARCA, 2 VARYANT). Görsel eşleme **%100** (1.799/1.799 aktif görsel eşleşiyor).
+Veri temizleme, normalizasyon, karışık stok kodu çözümü, PostgreSQL aktarımı ve görsellerin `urun_gorselleri` tablosuna bağlanması (Faz 2) tamamlanmıştır. Veritabanında **2.974 ürün** (2.969 ANA_URUN, 3 ALT_PARCA, 2 VARYANT) ve **1.799 görsel kaydı** var (1.780 üründe ana görsel, 19 üründe çoklu görsel).
 
 **2026-07-28 kapsam kararı:** Standartlaştırılamayan/eşleşmeyen uzun kuyruk (215 çözülemeyen karışık kod, 66 hiç işlenmemiş "ölçü karmaşık" satır, 6 stoksuz satır, 934 eski-adlı görsel) bilinçli olarak arşivlendi — muhtemelen çok eski/düşük cirolu ürünler, aktif sistemi bunlarla uğraştırmak yerine temiz bir temel üzerine odaklanıldı. Hiçbir şey silinmedi:
 
@@ -505,10 +507,10 @@ images/arsiv/products/                        (934 görsel dosyası)
 scripts/maintenance/eski_urunleri_arsivle.py   (bu arşivlemeyi üreten script)
 ```
 
-Bir sonraki teknik adım:
+Bir sonraki teknik adım — Faz 3 (Kalıp Modülü) veya Faz 5'e (Web ERP arayüzü) hazırlık:
 
 ```text
-gorsel_eslesme_raporu.csv/xlsx verisinin urun_gorselleri tablosuna aktarılması
-→ ana görsel (ana_gorsel_mi) ve sıralama (sira_no) mantığının belirlenmesi
-→ ürün kartlarında görsellerin kullanılmaya başlanması
+1.194 görselsiz ürünün (Gorselsiz_Urunler raporu) ayrıca ele alınıp alınmayacağına karar verilmesi
+→ kaliplar tablosunun oluşturulması (kalip_bilgileri_yedek.xlsx'teki 1.875 kayıt için)
+→ ürün kartlarında görsellerin kullanılmaya başlanması (Faz 5 ön çalışması)
 ```
