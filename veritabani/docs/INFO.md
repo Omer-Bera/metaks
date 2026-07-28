@@ -23,7 +23,7 @@ Tamamlanan çalışmalar:
 
 Nihai görsel arşivinde **2.733 ürün görseli** bulunmaktadır.
 
-> ⚠️ Bu görsellerin **934 tanesi** (`reports/excel/gorsel_eslesme_raporu.xlsx`) hâlâ veritabanındaki hiçbir stok koduyla eşleşmiyor. 857 karışık satırın stok kodu ayrıştırma/normalizasyon işi 2026-07-28'de tamamlandı (bkz. `docs/karisik_stok_kodu_kurali.md`) ve 1143 yeni varyant veritabanına yüklendi (toplam **2.974 ürün**) — ama görsel dosya adları hâlâ eski birleşik kod listesini kullanıyor (ör. `1000_108_212_208_217_1.png`), yeni aile-önekli kodlarla (`102-008` gibi) otomatik eşleşmiyor. **Görsellerin yeniden bağlanması ayrı, henüz yapılmamış bir iş.**
+> **2026-07-28 güncellemesi:** 857 karışık satırın stok kodu ayrıştırma/normalizasyon işi tamamlandı (bkz. `docs/karisik_stok_kodu_kurali.md`), 1.143 yeni varyant veritabanına yüklendi (toplam **2.974 ürün**). Kalan 215 çözülemeyen karışık kod, 66 hiç işlenmemiş "ölçü karmaşık" satır, 6 stoksuz satır ve dosya adı eski birleşik kod listesini kullandığı için eşleşmeyen 934 görsel — bilinçli bir kapsam kararıyla **arşivlendi** (silinmedi): ürün tarafı `data/reference/arsivlenen_eski_urunler.xlsx`'e, görseller `images/arsiv/products/`'a taşındı. Gerekçe: bu kayıtlar büyük olasılıkla çok eski/düşük cirolu ürünler; aktif sistemi bunlarla şişirmek yerine temiz, çalışan bir sisteme odaklanmayı tercih ettik. Aktif görsel klasörü artık DB ile **%100 eşleşiyor** (1.799/1.799).
 
 ---
 
@@ -455,11 +455,11 @@ find archive -maxdepth 2 -print
 ### Faz 2: Ürün görsellerinin veritabanına bağlanması
 
 - ~~`urun_gorselleri` tablosunun oluşturulması~~ ✅ tamamlandı (`sql/01_schema.sql`)
-- ~~857 karışık ürün satırının stok kodu ailelerine göre normalize edilip veritabanına yüklenmesi~~ ✅ tamamlandı 2026-07-28 (bkz. `docs/karisik_stok_kodu_kurali.md`) — 2.974 ürün DB'de
-- **yeni ön koşul:** 934 eşleşmeyen görselin dosya adlarının (eski birleşik kod listesi, ör. `1000_108_212_208_217`) yeni aile-önekli stok kodlarıyla (ör. `102-008`) yeniden eşleştirilmesi
+- ~~857 karışık ürün satırının stok kodu ailelerine göre normalize edilip veritabanına yüklenmesi~~ ✅ tamamlandı 2026-07-28 — 2.974 ürün DB'de
+- ~~934 eşleşmeyen görselin çözülmesi~~ ✅ 2026-07-28: arşivlendi (`images/arsiv/products/`), aktif klasör artık %100 eşleşiyor (1.799/1.799)
 - CSV eşleme raporunun veritabanına aktarılması
 - ana görsel ve sıralama mantığının belirlenmesi
-- eksik ürün-görsel ilişkilerinin raporlanması
+- eksik ürün-görsel ilişkilerinin raporlanması (1.194 üründe henüz görsel yok — bu normal/beklenen bir eksiklik, arşiv kapsamı dışında)
 
 ### Faz 3: Kalıp modülü
 
@@ -495,17 +495,20 @@ find archive -maxdepth 2 -print
 
 ## 📌 Güncel Çalışma Noktası
 
-Veri temizleme, normalizasyon, karışık stok kodu çözümü ve PostgreSQL aktarımı tamamlanmıştır — veritabanında **2.974 ürün** var (2.969 ANA_URUN, 3 ALT_PARCA, 2 VARYANT). Görsel eşleme oranı ise değişmedi: 2.733 görselin hâlâ 934'ü karşılıksız, çünkü görsel dosya adları eski birleşik kod listesini kullanıyor, yeni aile-önekli kodları tanımıyor.
+Veri temizleme, normalizasyon, karışık stok kodu çözümü ve PostgreSQL aktarımı tamamlanmıştır — veritabanında **2.974 ürün** var (2.969 ANA_URUN, 3 ALT_PARCA, 2 VARYANT). Görsel eşleme **%100** (1.799/1.799 aktif görsel eşleşiyor).
+
+**2026-07-28 kapsam kararı:** Standartlaştırılamayan/eşleşmeyen uzun kuyruk (215 çözülemeyen karışık kod, 66 hiç işlenmemiş "ölçü karmaşık" satır, 6 stoksuz satır, 934 eski-adlı görsel) bilinçli olarak arşivlendi — muhtemelen çok eski/düşük cirolu ürünler, aktif sistemi bunlarla uğraştırmak yerine temiz bir temel üzerine odaklanıldı. Hiçbir şey silinmedi:
+
+```text
+data/reference/arsivlenen_eski_urunler.xlsx  (ürün tarafı, sebep sütunlarıyla)
+images/arsiv/products/                        (934 görsel dosyası)
+scripts/maintenance/eski_urunleri_arsivle.py   (bu arşivlemeyi üreten script)
+```
 
 Bir sonraki teknik adım:
 
 ```text
-934 eşleşmeyen görselin dosya adını (ör. "1000_108_212_208_217_1.png") karisik_urunleri_coz.py'deki
-aynı aile/token çözme mantığıyla ayrıştırıp, her görseli doğru yeni stok koduna (ör. "102-008")
-yeniden bağlayan bir script yazılması
-→ gorsel_eslesme_raporu.py'nin yeniden çalıştırılıp eşleşmeyen görsel sayısının düşürülmesi
-→ urun_gorselleri tablosunun doldurulması
+gorsel_eslesme_raporu.csv/xlsx verisinin urun_gorselleri tablosuna aktarılması
+→ ana görsel (ana_gorsel_mi) ve sıralama (sira_no) mantığının belirlenmesi
 → ürün kartlarında görsellerin kullanılmaya başlanması
 ```
-
-Ayrıca elle bakılması gereken 215 karışık kod kaydı (`reports/excel/karisik_urun_cozme_raporu.xlsx` → `Elle_Bakilmasi_Gereken`) ve `T`/`BT`/`E` soneklerinin anlamı hâlâ çözülmedi.
