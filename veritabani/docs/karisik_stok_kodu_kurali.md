@@ -32,6 +32,21 @@ alttan dikme, üstten dikme, rivet veya çıtçıt olarak üretilebiliyor.
 Aile numaraları (100, 101, 102, ...) sıralı artıyor; 999'u geçince 4 haneye çıkıyor
 (örn. 1786). Bu yüzden kod uzunlukları satırdan satıra değişebiliyor.
 
+## Nihai stok kodu formatı
+
+**Nihai stok kodu = aile numarası + token, ARAYA HİÇBİR AYRAÇ KONMADAN
+birleştirilir** (ör. `108` + `617` = `108617`). 2026-07-29'da kullanıcı bunu
+düzeltti — ilk denemede yanlışlıkla tire eklenmişti (`108-617`). Bu format,
+`urun_listesi.xlsx`'in kendisinde ve karışık olmayan temiz katalogda zaten
+**282 kez** kullanılan gerçek bir kalıp: örn. `689212` = aile `689` +
+kategori hanesi `2` + ölçü `12` → gerçekten RİVET, 12mm olarak kayıtlı.
+
+Bu birleştirme nadiren mevcut (karışık olmayan) bir ürünle çakışabilir —
+tek gözlemlenen örnek: `201010`, hem bizim ürettiğimiz "201" ailesinin "010"
+varyantı (TOKA, 10mm) hem de zaten bağımsız var olan bir KÖPRÜ ürünü.
+`karisik_urunleri_coz.py` bu tür çakışmaları otomatik tespit edip
+`Elle_Bakilmasi_Gereken` sayfasına taşır, hiçbirini sessizce ezmez.
+
 ## Hane → Kategori Haritası (ampirik olarak doğrulandı)
 
 `data/interim/karisik_urunler.xlsx` içindeki 857 satırda, 857 satırın kendi mm
@@ -57,8 +72,9 @@ kategori, `10.5` mm ölçü).
 ## Bilinen sınırlamalar / elle bakılması gerekenler
 
 Script çalıştığında `reports/excel/karisik_urun_cozme_raporu.xlsx` üretir; en son
-çalıştırmada **1143/1358 (%84.2)** varyant otomatik çözüldü, **215** kayıt
-`Elle_Bakilmasi_Gereken` sayfasına düştü. Sebepleri:
+çalıştırmada **1142/1358 (%84.1)** varyant otomatik çözüldü, **216** kayıt
+`Elle_Bakilmasi_Gereken` sayfasına düştü (215'i çözüm sınırlamalarından, 1'i
+`MEVCUT_KATALOGLA_CAKISIYOR` — `201010` çakışması). Sebepleri:
 
 - **`AILE_MM_LISTESINDE_YOK`**: kodun çözülen ölçüsü, satırın kendi mm listesinde hiç
   yok. Genelde orijinal Excel'e eksik/tutarsız girilmiş satırlar.
@@ -73,7 +89,10 @@ Script çalıştığında `reports/excel/karisik_urun_cozme_raporu.xlsx` üretir
 
 ## Çıktılar
 
-- `data/interim/karisik_urunler_cozulmus.xlsx`: otomatik çözülen varyantlar (taslak,
-  henüz `final_excel_hazirla.py` akışına eklenmedi).
+- `data/interim/karisik_urunler_cozulmus.xlsx`: otomatik çözülen varyantlar.
 - `reports/excel/karisik_urun_cozme_raporu.xlsx`: özet + otomatik çözülenler +
   elle bakılması gerekenler.
+- `scripts/normalization/karisik_urunleri_birlestir.py` bu çözülen varyantları
+  `temiz_urunler_tekrarsiz_v2.xlsx` ile birleştirip `final_excel_hazirla.py` →
+  `yukle.py` akışına besler — 2026-07-28'den beri **aktif akışın parçası**,
+  taslak değil. Veritabanında şu an 2.973 ürün var.

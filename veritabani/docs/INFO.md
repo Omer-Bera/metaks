@@ -23,7 +23,7 @@ Tamamlanan çalışmalar:
 
 Nihai görsel arşivinde **2.733 ürün görseli** bulunmaktadır.
 
-> **2026-07-28 güncellemesi:** 857 karışık satırın stok kodu ayrıştırma/normalizasyon işi tamamlandı (bkz. `docs/karisik_stok_kodu_kurali.md`), 1.143 yeni varyant veritabanına yüklendi (toplam **2.974 ürün**). Kalan 215 çözülemeyen karışık kod, 66 hiç işlenmemiş "ölçü karmaşık" satır, 6 stoksuz satır ve dosya adı eski birleşik kod listesini kullandığı için eşleşmeyen 934 görsel — bilinçli bir kapsam kararıyla **arşivlendi** (silinmedi): ürün tarafı `data/reference/arsivlenen_eski_urunler.xlsx`'e, görseller `images/arsiv/products/`'a taşındı. Gerekçe: bu kayıtlar büyük olasılıkla çok eski/düşük cirolu ürünler; aktif sistemi bunlarla şişirmek yerine temiz, çalışan bir sisteme odaklanmayı tercih ettik. Aktif görsel klasörü artık DB ile **%100 eşleşiyor** (1.799/1.799).
+> **2026-07-28 güncellemesi:** 857 karışık satırın stok kodu ayrıştırma/normalizasyon işi tamamlandı (bkz. `docs/karisik_stok_kodu_kurali.md`), 1.142 yeni varyant veritabanına yüklendi (toplam **2.973 ürün**). Kalan 216 çözülemeyen karışık kod, 66 hiç işlenmemiş "ölçü karmaşık" satır, 6 stoksuz satır ve dosya adı eski birleşik kod listesini kullandığı için eşleşmeyen 934 görsel — bilinçli bir kapsam kararıyla **arşivlendi** (silinmedi): ürün tarafı `data/reference/arsivlenen_eski_urunler.xlsx`'e, görseller `images/arsiv/products/`'a taşındı. Gerekçe: bu kayıtlar büyük olasılıkla çok eski/düşük cirolu ürünler; aktif sistemi bunlarla şişirmek yerine temiz, çalışan bir sisteme odaklanmayı tercih ettik. Aktif görsel klasörü artık DB ile **%100 eşleşiyor** (1.799/1.799).
 
 ---
 
@@ -38,7 +38,7 @@ data/reference/kalip_bilgileri_yedek.xlsx
 images/final/products/
 ```
 
-`data/processed/temiz_urunler_final_v2.xlsx` içindeki **2.974 satır**, `scripts/database/yukle.py` ile PostgreSQL'e yüklenmiş olan güncel nihai veridir (2.969 ANA_URUN, 3 ALT_PARCA, 2 VARYANT). Bu dosya, standart temiz veri + `karisik_urunleri_coz.py`/`karisik_urunleri_birlestir.py` ile çözülen 1.143 karışık-kod varyantının birleşimidir. `data/interim/temiz_urunler_standart.xlsx` artık ara bir aşamadır (bkz. Normalizasyon Hattı bölümü); doğrudan referans alınmamalıdır. Eski `temiz_urunler_final_v1.xlsx` (1.831 satır, karışık kodlar hariç) tarihsel referans olarak korunuyor.
+`data/processed/temiz_urunler_final_v2.xlsx` içindeki **2.973 satır**, `scripts/database/yukle.py` ile PostgreSQL'e yüklenmiş olan güncel nihai veridir (2.969 ANA_URUN, 3 ALT_PARCA, 2 VARYANT). Bu dosya, standart temiz veri + `karisik_urunleri_coz.py`/`karisik_urunleri_birlestir.py` ile çözülen 1.142 karışık-kod varyantının birleşimidir. `data/interim/temiz_urunler_standart.xlsx` artık ara bir aşamadır (bkz. Normalizasyon Hattı bölümü); doğrudan referans alınmamalıdır. Eski `temiz_urunler_final_v1.xlsx` (1.831 satır, karışık kodlar hariç) tarihsel referans olarak korunuyor.
 
 ### `data/raw/urun_listesi.xlsx`
 
@@ -69,7 +69,7 @@ bulunur. Stok kodları bu aşamada henüz tekil değildir — birleşik/tekrar e
 
 ### `data/processed/temiz_urunler_final_v2.xlsx`
 
-PostgreSQL'e aktarılmış olan gerçek nihai veridir (**2.974 satır**). Normalizasyon Hattı'nın son adımı olan `final_excel_hazirla.py` tarafından üretilir; tekil stok kodları, parent-child/varyant ilişkileri ve `scripts/database/yukle.py`'nin beklediği tüm kolonları içerir. Girişi artık `temiz_urunler_tekrarsiz_v2.xlsx` değil, `karisik_urunleri_birlestir.py`'nin ürettiği `data/interim/temiz_urunler_karisik_dahil.xlsx`'tir.
+PostgreSQL'e aktarılmış olan gerçek nihai veridir (**2.973 satır**). Normalizasyon Hattı'nın son adımı olan `final_excel_hazirla.py` tarafından üretilir; tekil stok kodları, parent-child/varyant ilişkileri ve `scripts/database/yukle.py`'nin beklediği tüm kolonları içerir. Girişi artık `temiz_urunler_tekrarsiz_v2.xlsx` değil, `karisik_urunleri_birlestir.py`'nin ürettiği `data/interim/temiz_urunler_karisik_dahil.xlsx`'tir.
 
 ### `data/reference/kalip_bilgileri_yedek.xlsx`
 
@@ -455,7 +455,7 @@ find archive -maxdepth 2 -print
 ### Faz 2: Ürün görsellerinin veritabanına bağlanması ✅ TAMAMLANDI (2026-07-28)
 
 - ~~`urun_gorselleri` tablosunun oluşturulması~~ ✅ (`sql/01_schema.sql`)
-- ~~857 karışık ürün satırının stok kodu ailelerine göre normalize edilip veritabanına yüklenmesi~~ ✅ — 2.974 ürün DB'de
+- ~~857 karışık ürün satırının stok kodu ailelerine göre normalize edilip veritabanına yüklenmesi~~ ✅ — 2.973 ürün DB'de
 - ~~934 eşleşmeyen görselin çözülmesi~~ ✅ arşivlendi (`images/arsiv/products/`), aktif klasör %100 eşleşiyor
 - ~~CSV eşleme raporunun veritabanına aktarılması~~ ✅ `scripts/database/gorselleri_yukle.py` — 1.799 görsel yüklendi
 - ~~ana görsel ve sıralama mantığının belirlenmesi~~ ✅ dosya adındaki sıra numarası (`<stok_kodu>_<sira>.<uzanti>`) kullanıldı; sira=1 → `ana_gorsel_mi`
@@ -497,9 +497,9 @@ Sonuç: 1.780 üründe tam olarak bir ana görsel var, 19 üründe birden fazla 
 
 ## 📌 Güncel Çalışma Noktası
 
-Veri temizleme, normalizasyon, karışık stok kodu çözümü, PostgreSQL aktarımı ve görsellerin `urun_gorselleri` tablosuna bağlanması (Faz 2) tamamlanmıştır. Veritabanında **2.974 ürün** (2.969 ANA_URUN, 3 ALT_PARCA, 2 VARYANT) ve **1.799 görsel kaydı** var (1.780 üründe ana görsel, 19 üründe çoklu görsel).
+Veri temizleme, normalizasyon, karışık stok kodu çözümü, PostgreSQL aktarımı ve görsellerin `urun_gorselleri` tablosuna bağlanması (Faz 2) tamamlanmıştır. Veritabanında **2.973 ürün** (2.969 ANA_URUN, 3 ALT_PARCA, 2 VARYANT) ve **1.799 görsel kaydı** var (1.780 üründe ana görsel, 19 üründe çoklu görsel).
 
-**2026-07-28 kapsam kararı:** Standartlaştırılamayan/eşleşmeyen uzun kuyruk (215 çözülemeyen karışık kod, 66 hiç işlenmemiş "ölçü karmaşık" satır, 6 stoksuz satır, 934 eski-adlı görsel) bilinçli olarak arşivlendi — muhtemelen çok eski/düşük cirolu ürünler, aktif sistemi bunlarla uğraştırmak yerine temiz bir temel üzerine odaklanıldı. Hiçbir şey silinmedi:
+**2026-07-28 kapsam kararı:** Standartlaştırılamayan/eşleşmeyen uzun kuyruk (216 çözülemeyen karışık kod, 66 hiç işlenmemiş "ölçü karmaşık" satır, 6 stoksuz satır, 934 eski-adlı görsel) bilinçli olarak arşivlendi — muhtemelen çok eski/düşük cirolu ürünler, aktif sistemi bunlarla uğraştırmak yerine temiz bir temel üzerine odaklanıldı. Hiçbir şey silinmedi:
 
 ```text
 data/reference/arsivlenen_eski_urunler.xlsx  (ürün tarafı, sebep sütunlarıyla)
