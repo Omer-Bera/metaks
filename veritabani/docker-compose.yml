@@ -13,5 +13,20 @@ services:
       - pg_data:/var/lib/postgresql/data
       - ./sql/01_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
 
+  # Deneme amaçlı: mevcut Postgres'e doğrudan bağlanan, düşük-kod
+  # arayüz aracı. Veri taşımaz, sadece depo_sistemi'ni görselleştirir.
+  # Kaldırmak icin: docker compose rm -sf nocodb
+  nocodb:
+    image: nocodb/nocodb:latest
+    container_name: depo-nocodb
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - nc_data:/usr/app/data
+    depends_on:
+      - veritabani
+
 volumes:
   pg_data:
+  nc_data:
