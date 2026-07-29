@@ -470,28 +470,77 @@ Sonuç: 1.780 üründe tam olarak bir ana görsel var, 19 üründe birden fazla 
 - ürün-kalıp ilişkilerinin kurulması
 - kalıp bakım ve durum kayıtlarının eklenmesi
 
-### Faz 4: Depo yönetimi
+### Faz 4: Depo yönetimi 🔶 KISMEN İLERLEDİ (2026-07-29)
 
-- depo ve raf lokasyonları
-- giriş-çıkış hareketleri
-- mevcut stok hesaplama
-- sayım ve düzeltme hareketleri
+Bu fazın ayrıntılı planı, kullanıcının ChatGPT'den alıp değerlendirmemizi istediği bir
+"master plan" prompt setinden geldi (Prompt 3: "Depocu stok giriş-çıkış ekranı") —
+prompt'un kendisinde bazı hatalar vardı (örn. `urunler`'de olmayan bir `urun_id` varsayımı,
+yanlış ürün/görsel sayıları) ama gereksinimleri gerçek eksikleri ortaya çıkardı.
 
-### Faz 5: Web ERP arayüzü
+- ~~depo ve raf lokasyonları~~ 🔶 kısmi — `lokasyonlar` tablosuna 3 test/placeholder satırı
+  girildi (Ana Depo, Sevkiyat Alanı — DAHILI; Fason Atölye 1 — FASON). **Gerçek işletme
+  lokasyonlarıyla değiştirilmeli**, sadece Appsmith'i test edebilmek için.
+- ~~mevcut stok hesaplama~~ ✅ tasarlandı, henüz canlıya uygulanmadı — `v_lokasyon_stok_ozet`/
+  `v_toplam_stok` view'ları (`sql/migrations/002_lokasyon_stok_view.sql`). `stok_hareketleri`
+  hâlâ boş olduğu için şu an 0 satır dönüyorlar, bu beklenen.
+- ~~giriş-çıkış hareketleri~~ ✅ tasarlandı, henüz canlıya uygulanmadı — tek giriş noktası
+  `stok_hareketi_kaydet()` fonksiyonu (`sql/migrations/003_stok_hareketi_fonksiyonu.sql`):
+  atomik, mükerrer-gönderim korumalı (istemci kimliği ile), yeterli-stok kontrollü, işlemi
+  yapan kullanıcı zorunlu, işlem tipine göre lokasyon zorunluluğu var.
+- ~~sayım ve düzeltme hareketleri~~ ✅ kural netleşti — SAYIM_DEVRİ girişi personelin
+  saydığı **toplam bakiyedir** (fark değil); fonksiyon gerçek ledger farkını kendisi
+  hesaplayıp yazıyor. Gerekçe ve tam sözleşme: `docs/aktif-urun-veri-sozlesmesi.md`.
+- Appsmith `StokIslemi` sayfası: iskelet kuruldu, canlı editörde widget'ların doğru
+  render edildiği doğrulandı — **ama hiçbir sorgu henüz bağlanmadı** (tablolar boş,
+  `KaydetButton` işlevsiz). Migration 002/003 uygulanınca sıradaki iş bu.
 
-- ürün arama
-- ürün kartı
-- görsel gösterimi
-- stok hareketleri
-- lokasyon yönetimi
-- kullanıcı yetkilendirmesi
+### Faz 5: Web ERP arayüzü 🔶 KISMEN İLERLEDİ (2026-07-29)
+
+ChatGPT'nin planındaki Prompt 4 ("Ürün arama ve katalog ekranı") ve Prompt 7 ("Yönetim
+ana sayfası") buraya karşılık geliyor — ikisi de mantıken "Web ERP arayüzü"nün parçası.
+
+- ~~ürün arama~~ 🔶 DB tarafı hazır (`v_aktif_urunler` view'ı — stok kodu, kategori,
+  kaplama, hammadde, ölçü, açıklama arama alanları, `arama_metni` birleşik sütunu, sadece
+  görseli doğrulanmış 1.780 ürünü döndürüyor), **ama Appsmith'te henüz bir Ürünler/Katalog
+  sayfası kurulmadı** — sadece `Page1` (ilk bağlantı testi) ve `StokIslemi` var.
+- ~~görsel gösterimi~~ 🔶 DB şeması Faz 2'de zaten hazırdı, ama **görseller hâlâ HTTP
+  üzerinden sunulmuyor** — Appsmith'te (ya da başka bir arayüzde) gösterilebilmeleri için
+  `images/final/products/`'ı yayınlayan bir statik dosya sunucusu (örn. nginx,
+  docker-compose'a üçüncü servis) kurulmalı. Bu, hem StokIslemi'nin `UrunGorseli`
+  widget'ını hem gelecekteki katalog sayfasını aynı anda engelliyor.
+- ~~stok hareketleri~~ → Faz 4'e taşındı, bkz. yukarı.
+- lokasyon yönetimi — henüz gerçek bir CRUD arayüzü yok, sadece test verisi var.
+- kullanıcı yetkilendirmesi — Appsmith'in kendi kullanıcı sistemi kısmen kullanılıyor
+  (self-hosted Community Edition, Developer/Viewer rolleri) ama uygulama içi "kim ne
+  görebilir" ayrımı (örn. depo personeli vs. yönetici) henüz tasarlanmadı.
+- **Yönetim ana sayfası** (ChatGPT'nin Prompt 7'si): toplam/kullanılabilir stok, kritik
+  stoklu ürünler, son hareketler gibi özet kartları — henüz başlanmadı; kartların çoğu
+  (açık sipariş, üretimdeki iş emri) Faz 6/7 olmadan anlamsız kalır, o yüzden bu iki fazın
+  arkasına bırakıldı.
 
 ### Faz 6: Barkod ve sipariş entegrasyonu
 
-- barkod üretme ve okutma
-- ürün kabul
-- sevkiyat
-- sipariş ve rezervasyon akışı
+ChatGPT'nin Prompt 5'i ("Sipariş yönetimi") bu fazın sipariş kısmını detaylandırıyor,
+henüz hiçbir parçası kurulmadı:
+
+- sipariş ve rezervasyon akışı — önerilen varlıklar: `musteriler`, `siparisler`,
+  `siparis_kalemleri`, `siparis_durum_gecmisi`, `stok_rezervasyonlari`. Kurallar arasında
+  termin/kalan gün hesaplama, fiziksel/rezerve/kullanılabilir stok ayrımı, kısmi
+  hazırlama-sevkiyat, siparişin silinmeyip iptal edilmesi var — detay için ChatGPT
+  prompt'unun orijinali bu konuşmanın geçmişinde mevcut.
+- barkod üretme ve okutma, ürün kabul, sevkiyat — henüz başlanmadı.
+
+### Faz 7: Üretim takibi (yeni, 2026-07-29 — ChatGPT'nin Prompt 6'sından)
+
+- Sipariş kalemlerinden iş emri oluşturma; iş emri + üretim kaydı (aşama, makine, kalıp,
+  operatör, giren/sağlam/fire miktarı) ayrı varlıklar olarak öneriliyor.
+- Aşamalar: BEKLİYOR → ZAMAKHANE → TEMİZLEME → KAPLAMA → FASON → MONTAJ →
+  KALİTE_KONTROL → HAZIR → TAMAMLANDI → İPTAL.
+- `data/reference/kalip_bilgileri_yedek.xlsx`'i kullanacak ama **Faz 3 (Kalıp modülü)**
+  tamamlanmadan bu faz da tam anlamıyla başlayamaz — ikisi bağlantılı, ikisi de bilinçli
+  olarak şimdilik ertelendi.
+- İlk sürümde kapasite planlama/otomatik çizelgeleme yapılmayacak (kullanıcının kendi
+  kısıtı) — sade bir pano/tablo yeterli.
 
 ---
 
@@ -507,10 +556,15 @@ images/arsiv/products/                        (934 görsel dosyası)
 scripts/maintenance/eski_urunleri_arsivle.py   (bu arşivlemeyi üreten script)
 ```
 
-Bir sonraki teknik adım — Faz 3 (Kalıp Modülü) veya Faz 5'e (Web ERP arayüzü) hazırlık:
+**2026-07-29 güncellemesi:** `urunler.katalog_durumu` canlıya uygulandı — 1.780 ürün
+`AKTIF` (doğrulanmış ana görseli var), 1.193 ürün `PASIF`. `v_aktif_urunler` view'ı
+Appsmith'in tek okuma kaynağı olarak hazır. Appsmith arayüz katmanı ayrı bir git reposunda
+(`depo-appsmith-arayuz`) geliştiriliyor — Faz 5'in gerçek UI çalışması orada; bu repoda
+sadece veri/şema tarafı var. Detaylı mimari, branch modeli (`master`/`dev`/`review`, her
+iki repoda aynı) ve tam sözleşme için `CLAUDE.md` ve `docs/aktif-urun-veri-sozlesmesi.md`'ye
+bakın — güncel sayılar/durum artık orada takip ediliyor, bu bölüm sadece genel roadmap.
 
-```text
-1.194 görselsiz ürünün (Gorselsiz_Urunler raporu) ayrıca ele alınıp alınmayacağına karar verilmesi
-→ kaliplar tablosunun oluşturulması (kalip_bilgileri_yedek.xlsx'teki 1.875 kayıt için)
-→ ürün kartlarında görsellerin kullanılmaya başlanması (Faz 5 ön çalışması)
-```
+Bir sonraki teknik adım — Faz 4'ün geri kalanı (migration 002/003'ü canlıya uygulamak,
+Appsmith StokIslemi sayfasının sorgularını bağlamak) ve ardından Faz 5'in eksik parçası
+(görsellerin HTTP üzerinden sunulması + Ürünler/Katalog sayfasının kurulması). Faz 3
+(Kalıp Modülü) ve Faz 7 (Üretim takibi) kullanıcı tarafından bilinçli olarak ertelendi.
