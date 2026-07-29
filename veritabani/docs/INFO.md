@@ -529,41 +529,32 @@ ana sayfası") buraya karşılık geliyor — ikisi de mantıken "Web ERP arayü
   gezinme değil, arama/filtre ile daraltma senaryosu için); `StokIslemi.UrunAra` da aynı
   şekilde 50'de — kullanıcı onayıyla şimdilik böyle bırakıldı, gerekirse yükseltilebilir.
 
-### 📋 Sıradaki iş kalemleri (öncelik sırası, 2026-07-29'da planlandı)
+### 📋 Sıradaki iş kalemleri (öncelik sırası, 2026-07-29'da planlandı) — ✅ 6/6 TAMAMLANDI (2026-07-30)
 
 Kullanıcıyla web arayüzünün nihai ekran/tool setini gözden geçirdiğimiz konuşmadan çıkan,
-üzerinde anlaşılan sıra. Her madde bir öncekinin üstüne biniyor, bu sırayla ilerlenmeli:
+üzerinde anlaşılan sıra. Hepsi `depo-appsmith-arayuz` reposunda uygulandı, canlı DB'ye
+karşı test edildi ve `dev`'e pushlandı (detaylar o reponun `CLAUDE.md`'sinde):
 
-1. **Çoklu kategori seçimi** — `UrunlerKatalog.KategoriFilterSelect`'i tekli `SELECT_WIDGET`'tan
-   `MULTI_SELECT_WIDGET`'a çevir, SQL tarafında `kategori_adi = :secilen` yerine
-   `kategori_adi = ANY(:secilenler)` kullan. Amaç: "Toka veya D Toka" gibi birden fazla
-   kategoriyi aynı anda listeleyebilmek. Küçük, düşük riskli değişiklik.
-2. **Gerçek lokasyon verisi + Lokasyon Yönetimi sayfası** — `lokasyonlar` tablosundaki 3 test
-   satırını gerçek işletme lokasyonlarıyla değiştir; bunu elle SQL yazmadan yapabilmek için
-   basit bir CRUD sayfası (yeni sayfa, henüz yok) ekle. Sonraki maddenin ön koşulu.
-3. **"Sadece stokta olanları listele" filtresi** — `v_toplam_stok`'u join edip `miktar > 0`
-   filtresi eklemek teknik olarak kolay, ama `stok_hareketleri`'nde şu an sadece 21 test
-   kaydı var ve gerçek SAYIM_DEVRİ verisi girilmeden `v_toplam_stok` neredeyse boş dönüyor —
-   filtre madde 2'deki gerçek lokasyon/sayım verisi girilene kadar anlamlı sonuç vermeyecek,
-   bu beklenen bir durum.
-4. **Galeri görünümü (UrunlerKatalog içine "Liste / Galeri" görünüm anahtarı)** — ayrı bir
-   sayfa değil, mevcut arama/filtre sorgusunu paylaşan bir görünüm modu. Kullanıcının hayal
-   ettiği akış: kategori (ve/veya diğer filtreler) seçilince tüm ekranda ürün fotoğrafları +
-   altlarında stok kodları grid halinde listelenir, karta tıklayınca detay açılır. Appsmith
-   **List (V2) widget**'ı ile kart şablonu kurulacak. Gerçek "infinite scroll" Appsmith'te
-   native değil ve kırılgan olabilir — ilk sürümde "Daha Fazla Yükle" butonu (sayfa sonuna
-   gelince görünen, sıradaki 200'lük dilimi ekleyen) tercih edilecek, gerçek scroll-tetiklemeli
-   versiyon istenirse sonra denenebilir. En büyük efor gerektiren madde bu.
-5. **Stok Özet / Envanter sayfası** (yeni sayfa) — ürün×lokasyon güncel bakiye tablosu,
-   `v_lokasyon_stok_ozet`/`v_toplam_stok` üzerinden; şemada zaten var olan ama hiç
-   kullanılmayan `kritik_stok_esigi` kolonunu kullanarak kritik stok altı ürünleri işaretleme.
-   StokIslemi'nden ayrı: StokIslemi "hareket girme" odaklı, bu sayfa "durumu görme" odaklı.
-6. **Yönetim Ana Sayfası (dashboard)** — Faz 5'te bahsi geçen özet kartlar (toplam/kullanılabilir
-   stok, kritik stoklu ürünler, son hareketler). Madde 5'in verisi olgunlaşmadan anlamsız
-   kalacağı için en sona bırakıldı.
-
-Kullanıcı UI'ın son ölçü/görsel-duruş ayarını (spacing, boyutlar, tasarım detayları) kendisi
-yapacak — yukarıdaki maddeler işlevsel/veri tarafını kapsıyor.
+1. **✅ Çoklu kategori seçimi** — `KategoriFilterSelect`, `SELECT_WIDGET` → `MULTI_SELECT_WIDGET_V2`'ye
+   çevrildi, `KatalogUrunleriGetir` artık `kategori_adi = ANY(selectedOptionValues)` kullanıyor.
+2. **✅ Gerçek lokasyon verisi + Lokasyon Yönetimi sayfası** — yeni `LokasyonYonetimi` sayfası
+   (ekle/listele/pasifleştir) kuruldu. **Gerçek işletme lokasyonlarını girmek hâlâ kullanıcıya
+   ait** — Claude lokasyon isimlerini bilmediği/uyduramayacağı için 3 test satırı
+   (Ana Depo/Sevkiyat Alanı/Fason Atölye 1) henüz değiştirilmedi, sadece bunu değiştirecek araç
+   hazır.
+3. **✅ "Sadece stokta olanları listele" filtresi** — `SadeceStoktaOlanlarSwitch` +
+   `v_toplam_stok` LEFT JOIN. Gerçek lokasyon/sayım verisi girilene kadar ~0 sonuç verecek,
+   öngörüldüğü gibi.
+4. **🔶 Galeri görünümü — iskelet tamam, List widget kullanıcıyı bekliyor**: anahtar/buton/
+   büyüyen LIMIT/paylaşılan detay paneli hazır; asıl kart ızgarasını oluşturan Appsmith
+   List (V2) widget'ı bilinçli olarak git üzerinden yazılmadı (bu repoda hiç örneği yok,
+   yanlış yazılırsa sayfanın tamamını bozma riski var) — kullanıcı tarafından canlı Editor'de
+   eklenmesi bekleniyor, tam talimat `depo-appsmith-arayuz/CLAUDE.md`'de.
+5. **✅ Stok Özet / Envanter sayfası** — yeni `StokOzet` sayfası, şemada var olan ama hiç
+   kullanılmayan `urunler.kritik_stok_esigi` kolonu ilk kez kullanıldı (kritik durumu işaretleme).
+6. **✅ Yönetim Ana Sayfası (dashboard)** — kullanıcının onayıyla asıl plandaki sıranın önüne
+   alınıp şimdiden kuruldu (özgün planda madde 5'in verisi olgunlaşana kadar bekletilecekti).
+   Kartların çoğu gerçek lokasyon/sayım verisi girilene kadar 0/az gösterecek, beklenen.
 
 ### Faz 6: Barkod ve sipariş entegrasyonu
 
