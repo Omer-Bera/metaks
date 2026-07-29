@@ -32,12 +32,17 @@ services:
     depends_on:
       - veritabani
 
-  # Deneme amaçlı: başka bir açık kaynak düşük-kod arayüz aracı.
-  # Kaldırmak icin: docker compose rm -sf appsmith
+  # Faz 5 arayüz katmanı için aktif seçim (NocoDB'nin SSRF kısıtlaması
+  # aşılamadığı için terk edildi, bkz. yukarıdaki not).
   appsmith:
     image: appsmith/appsmith-ce
     container_name: depo-appsmith
     restart: unless-stopped
+    environment:
+      # Davet e-postalarındaki linkin doğru adresi göstermesi için gerekli;
+      # ayarlanmazsa "Invite users" tamamen engelleniyor (hesap zaten var
+      # olsa bile). Tailscale/Headscale ağındaki Mac'in adresi kullanılıyor.
+      APPSMITH_BASE_URL: "http://100.64.0.6:8082"
     ports:
       - "8082:80"
     volumes:
