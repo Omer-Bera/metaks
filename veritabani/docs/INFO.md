@@ -529,6 +529,42 @@ ana sayfası") buraya karşılık geliyor — ikisi de mantıken "Web ERP arayü
   gezinme değil, arama/filtre ile daraltma senaryosu için); `StokIslemi.UrunAra` da aynı
   şekilde 50'de — kullanıcı onayıyla şimdilik böyle bırakıldı, gerekirse yükseltilebilir.
 
+### 📋 Sıradaki iş kalemleri (öncelik sırası, 2026-07-29'da planlandı)
+
+Kullanıcıyla web arayüzünün nihai ekran/tool setini gözden geçirdiğimiz konuşmadan çıkan,
+üzerinde anlaşılan sıra. Her madde bir öncekinin üstüne biniyor, bu sırayla ilerlenmeli:
+
+1. **Çoklu kategori seçimi** — `UrunlerKatalog.KategoriFilterSelect`'i tekli `SELECT_WIDGET`'tan
+   `MULTI_SELECT_WIDGET`'a çevir, SQL tarafında `kategori_adi = :secilen` yerine
+   `kategori_adi = ANY(:secilenler)` kullan. Amaç: "Toka veya D Toka" gibi birden fazla
+   kategoriyi aynı anda listeleyebilmek. Küçük, düşük riskli değişiklik.
+2. **Gerçek lokasyon verisi + Lokasyon Yönetimi sayfası** — `lokasyonlar` tablosundaki 3 test
+   satırını gerçek işletme lokasyonlarıyla değiştir; bunu elle SQL yazmadan yapabilmek için
+   basit bir CRUD sayfası (yeni sayfa, henüz yok) ekle. Sonraki maddenin ön koşulu.
+3. **"Sadece stokta olanları listele" filtresi** — `v_toplam_stok`'u join edip `miktar > 0`
+   filtresi eklemek teknik olarak kolay, ama `stok_hareketleri`'nde şu an sadece 21 test
+   kaydı var ve gerçek SAYIM_DEVRİ verisi girilmeden `v_toplam_stok` neredeyse boş dönüyor —
+   filtre madde 2'deki gerçek lokasyon/sayım verisi girilene kadar anlamlı sonuç vermeyecek,
+   bu beklenen bir durum.
+4. **Galeri görünümü (UrunlerKatalog içine "Liste / Galeri" görünüm anahtarı)** — ayrı bir
+   sayfa değil, mevcut arama/filtre sorgusunu paylaşan bir görünüm modu. Kullanıcının hayal
+   ettiği akış: kategori (ve/veya diğer filtreler) seçilince tüm ekranda ürün fotoğrafları +
+   altlarında stok kodları grid halinde listelenir, karta tıklayınca detay açılır. Appsmith
+   **List (V2) widget**'ı ile kart şablonu kurulacak. Gerçek "infinite scroll" Appsmith'te
+   native değil ve kırılgan olabilir — ilk sürümde "Daha Fazla Yükle" butonu (sayfa sonuna
+   gelince görünen, sıradaki 200'lük dilimi ekleyen) tercih edilecek, gerçek scroll-tetiklemeli
+   versiyon istenirse sonra denenebilir. En büyük efor gerektiren madde bu.
+5. **Stok Özet / Envanter sayfası** (yeni sayfa) — ürün×lokasyon güncel bakiye tablosu,
+   `v_lokasyon_stok_ozet`/`v_toplam_stok` üzerinden; şemada zaten var olan ama hiç
+   kullanılmayan `kritik_stok_esigi` kolonunu kullanarak kritik stok altı ürünleri işaretleme.
+   StokIslemi'nden ayrı: StokIslemi "hareket girme" odaklı, bu sayfa "durumu görme" odaklı.
+6. **Yönetim Ana Sayfası (dashboard)** — Faz 5'te bahsi geçen özet kartlar (toplam/kullanılabilir
+   stok, kritik stoklu ürünler, son hareketler). Madde 5'in verisi olgunlaşmadan anlamsız
+   kalacağı için en sona bırakıldı.
+
+Kullanıcı UI'ın son ölçü/görsel-duruş ayarını (spacing, boyutlar, tasarım detayları) kendisi
+yapacak — yukarıdaki maddeler işlevsel/veri tarafını kapsıyor.
+
 ### Faz 6: Barkod ve sipariş entegrasyonu
 
 ChatGPT'nin Prompt 5'i ("Sipariş yönetimi") bu fazın sipariş kısmını detaylandırıyor,
