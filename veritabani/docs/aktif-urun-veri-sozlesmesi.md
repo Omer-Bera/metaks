@@ -177,9 +177,10 @@ SELECT * FROM stok_hareketi_kaydet(
     {{ UrunSonuclariTable.selectedRow.stok_kodu }},
     {{ IslemTipiSelect.selectedOptionValue }},
     {{ MiktarInput.text }}::INTEGER,
-    NULL,                                   -- kaynak_lokasyon_id (GIRIS/SAYIM_DEVRI'de NULL)
+    NULL,                                   -- kaynak_lokasyon_id (GIRIS/SAYIM_DEVRI'de NULL, CIKIS'te zorunlu)
     {{ LokasyonSelect.selectedOptionValue }}::INTEGER,
-    {{ AciklamaInput.text }}
+    {{ AciklamaInput.text }},
+    {{ appsmith.user.email }}               -- yapan_kullanici, zorunlu
 );
 ```
 
@@ -187,6 +188,23 @@ Dönüş: `hareket_id`, `uygulanan_miktar`, `atlandi` (bool — mükerrer gönde
 farklı sayım nedeniyle kayıt oluşmadıysa `TRUE`), `mesaj` (kullanıcıya gösterilecek
 Türkçe açıklama). Appsmith `KaydetButton`'ın `onClick`'inde bu sorguyu çalıştırıp
 `mesaj`'ı bir Toast/Text widget'ında göstermesi yeterli.
+
+**2026-07-29 revizyonu — üç ek kontrol** (ChatGPT'nin "master plan" prompt'unun Prompt 3
+gereksinimleri gözden geçirilirken ortaya çıktı, canlı şemaya karşı `BEGIN...ROLLBACK`
+ile test edildi, hiçbir kalıcı iz bırakmadan):
+
+- **Yeterli stok kontrolü**: kaynak lokasyondan bir miktar düşülecekse (ÇIKIŞ, TRANSFER'in
+  kaynak ucu, DÜZELTME'nin azaltma ucu), oradaki mevcut miktarı aşamaz — aşarsa
+  `RAISE EXCEPTION 'Yetersiz stok: bu lokasyonda % adet var, % adet çıkış isteniyor.'`.
+  SAYIM_DEVRİ'nin kendi azaltma ucu matematiksel olarak bu kontrolü hep geçer (mevcuttan
+  sayılana giden fark, tanım gereği mevcudu aşamaz).
+- **`yapan_kullanici` zorunlu** (yeni kolon, `stok_hareketleri.yapan_kullanici VARCHAR(255) NOT NULL`) —
+  Appsmith'in Postgres'e bağlantısı tek bir paylaşılan `depo_admin` kullanıcısıyla
+  olduğu için Postgres'in kendi `current_user`'ına güvenilemez; değer açıkça
+  `{{ appsmith.user.email }}`'den parametre olarak geçirilmeli.
+- **İşlem tipine göre lokasyon zorunluluğu**: GİRİŞ→hedef zorunlu, ÇIKIŞ→kaynak zorunlu,
+  TRANSFER→ikisi de zorunlu (bu zaten tablonun kendi CHECK'i ile de korunuyordu),
+  DÜZELTME→en az biri zorunlu. Daha önce hiçbiri şema seviyesinde garanti değildi.
 
 **Mükerrer gönderim koruması**: `{{ uuid() }}` her buton tıklamasında Appsmith'in
 JS ortamında yeni bir UUID üretir. Çift tıklama ya da ağ tekrar denemesi aynı UUID'yi
