@@ -20,12 +20,11 @@ ALTER TABLE urunler
     ADD COLUMN IF NOT EXISTS katalog_durumu VARCHAR(30) NOT NULL DEFAULT 'PASIF'
         CHECK (katalog_durumu IN ('AKTIF', 'PASIF', 'INCELEME_BEKLIYOR'));
 
-ALTER TABLE urunler
-    ADD CONSTRAINT chk_urunler_katalog_durumu_aktif_mi_tutarli
-    CHECK (
-        (katalog_durumu = 'AKTIF' AND aktif_mi = TRUE)
-        OR (katalog_durumu <> 'AKTIF' AND aktif_mi = FALSE)
-    );
+-- NOT: tutarlılık CHECK'i kasıtlı olarak burada DEĞİL, aşağıdaki backfill
+-- UPDATE'lerinden SONRA ekleniyor (adım 2b). Sıra tersine çevrilirse, kolon
+-- eklenir eklenmez tüm mevcut satırlar (aktif_mi=TRUE, katalog_durumu henüz
+-- varsayılan 'PASIF') constraint'i ihlal eder — bu ilk denemede gerçekten
+-- yaşandı (canlıya değil, transaction içinde yakalanıp geri alındı).
 
 -- 2) Geriye dönük doldurma: doğrulanmış (aktif + ana_gorsel_mi) bir
 --    görseli olan ürünler AKTİF, kalanı PASİF. INCELEME_BEKLIYOR şu an
@@ -52,6 +51,14 @@ WHERE NOT EXISTS (
       AND g.ana_gorsel_mi = TRUE
       AND g.aktif_mi = TRUE
 );
+
+-- 2b) Backfill tamamlandı, artık tüm satırlar tutarlı — constraint şimdi eklenir.
+ALTER TABLE urunler
+    ADD CONSTRAINT chk_urunler_katalog_durumu_aktif_mi_tutarli
+    CHECK (
+        (katalog_durumu = 'AKTIF' AND aktif_mi = TRUE)
+        OR (katalog_durumu <> 'AKTIF' AND aktif_mi = FALSE)
+    );
 
 -- 3) Appsmith'in katalog sorgusu için indeks (aktif_mi zaten indeksli;
 --    bu, "pasif nedenini" filtreleyecek bir admin/inceleme ekranı için).

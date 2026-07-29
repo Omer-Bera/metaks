@@ -139,12 +139,62 @@ eklenmedi.
 
 ## Migration sırası
 
-1. **Onay bekleniyor** — `sql/migrations/001_katalog_durumu.sql` (kolon + backfill + indeks + `pg_trgm` + `v_aktif_urunler`)
-2. **Onay bekleniyor** — `sql/migrations/002_lokasyon_stok_view.sql` (sadece view, mevcut tabloları değiştirmez)
+1. **✅ UYGULANDI (2026-07-29)** — `sql/migrations/001_katalog_durumu.sql`. İlk deneme,
+   CHECK constraint'in backfill UPDATE'lerinden ÖNCE eklenmesi yüzünden başarısız oldu
+   (tüm satırlar anlık olarak tutarsız duruma düşüyordu) — transaction içinde olduğu
+   için canlıya hiçbir şey yazılmadan geri alındı. Sıra düzeltildi (constraint artık
+   backfill'den SONRA ekleniyor), ikinci denemede sorunsuz uygulandı: `UPDATE 1780`,
+   `UPDATE 1193`, sonuç dry-run tahminiyle birebir eşleşti.
+2. **Onay bekleniyor** — `sql/migrations/002_lokasyon_stok_view.sql` (sadece view,
+   mevcut tabloları değiştirmez). Sayım işaret kuralı artık netleşti (aşağıya bakın),
+   bu view'ın tasarımını değiştirmiyor, sadece varsayımını doğruluyor.
+3. **Onay bekleniyor** — `sql/migrations/003_stok_hareketi_fonksiyonu.sql` (mükerrer
+   gönderim koruması + `stok_hareketi_kaydet()` fonksiyonu). Sözdizimi/mantık canlı
+   şemaya karşı test edildi (`BEGIN` ... `ROLLBACK`, hiçbir kalıcı iz bırakmadan) —
+   hatasız çalıştı, henüz kalıcı olarak uygulanmadı.
 
-İkisi de `BEGIN`/`COMMIT` içinde, tek transaction, hata olursa otomatik geri alınır.
-Her biri için ayrı bir `_rollback.sql` dosyası var. Uygulanmadan önce hangi sırayla
-çalıştırılacağı konusunda bağımlılık yok — 002, 001'e bağımlı değil (ayrı tablolar).
+Her biri `BEGIN`/`COMMIT` içinde, tek transaction, hata olursa otomatik geri alınır.
+Her biri için ayrı bir `_rollback.sql` dosyası var. 002 ve 003, 001'e bağımlı değil
+(002 ayrı tablolar üzerinde; 003 `stok_hareketleri`'ne dokunuyor ama `v_aktif_urunler`
+kullanmıyor) — ama 003, `v_lokasyon_stok_ozet` view'ını çağırdığı için **002'den sonra
+uygulanmalı**.
+
+## Stok hareketi kayıt fonksiyonu ve sayım kuralı (kesinleşti)
+
+**Sayım (SAYIM_DEVRİ) girişi TOPLAM BAKİYEDİR, fark değil.** Personel fiziksel olarak
+saydığı toplam miktarı girer; personelin kendisinin fark hesaplaması istenmiyor —
+hem sistemin mevcut rakamını önceden bilmesi gerekirdi (önyargı yaratır, sayımın amacını
+zedeler) hem de elle çıkarma hata payı ekler. `stok_hareketi_kaydet()` fonksiyonu bu
+toplamı `v_lokasyon_stok_ozet`'teki mevcut miktarla karşılaştırıp gerçek ledger farkını
+kendisi hesaplar ve `stok_hareketleri`'ne öyle yazar (fark sıfırsa hiçbir satır eklenmez).
+
+Appsmith'in `KaydetButton`'ı **doğrudan `stok_hareketleri`'ne INSERT atmamalı**, sadece
+`stok_hareketi_kaydet(...)` fonksiyonunu çağırmalı:
+
+```sql
+SELECT * FROM stok_hareketi_kaydet(
+    {{ uuid() }},                          -- istemci_islem_kimligi (mükerrer gönderim koruması)
+    {{ UrunSonuclariTable.selectedRow.stok_kodu }},
+    {{ IslemTipiSelect.selectedOptionValue }},
+    {{ MiktarInput.text }}::INTEGER,
+    NULL,                                   -- kaynak_lokasyon_id (GIRIS/SAYIM_DEVRI'de NULL)
+    {{ LokasyonSelect.selectedOptionValue }}::INTEGER,
+    {{ AciklamaInput.text }}
+);
+```
+
+Dönüş: `hareket_id`, `uygulanan_miktar`, `atlandi` (bool — mükerrer gönderim ya da sıfır
+farklı sayım nedeniyle kayıt oluşmadıysa `TRUE`), `mesaj` (kullanıcıya gösterilecek
+Türkçe açıklama). Appsmith `KaydetButton`'ın `onClick`'inde bu sorguyu çalıştırıp
+`mesaj`'ı bir Toast/Text widget'ında göstermesi yeterli.
+
+**Mükerrer gönderim koruması**: `{{ uuid() }}` her buton tıklamasında Appsmith'in
+JS ortamında yeni bir UUID üretir. Çift tıklama ya da ağ tekrar denemesi aynı UUID'yi
+tekrar gönderirse fonksiyon yeni satır eklemez, `atlandi=TRUE` döner. Ayrıca
+`KaydetButton`'ın kendi `isDisabled`/loading durumu da (sorgu çalışırken buton pasif)
+ek bir önlem olarak önerilir ama tek başına yeterli değildir (ağ tekrar denemesi
+istemci tarafı devre dışı bırakmayı atlayabilir) — asıl güvence veritabanı seviyesindeki
+UNIQUE kısıt.
 
 ## Test sonuçları
 
