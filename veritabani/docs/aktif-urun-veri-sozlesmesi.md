@@ -176,7 +176,7 @@ Appsmith'in `KaydetButton`'ı **doğrudan `stok_hareketleri`'ne INSERT atmamalı
 
 ```sql
 SELECT * FROM stok_hareketi_kaydet(
-    {{ uuid() }},                          -- istemci_islem_kimligi (mükerrer gönderim koruması)
+    {{ crypto.randomUUID() }},                          -- istemci_islem_kimligi (mükerrer gönderim koruması)
     {{ UrunSonuclariTable.selectedRow.stok_kodu }},
     {{ IslemTipiSelect.selectedOptionValue }},
     {{ MiktarInput.text }}::INTEGER,
@@ -209,7 +209,7 @@ ile test edildi, hiçbir kalıcı iz bırakmadan):
   TRANSFER→ikisi de zorunlu (bu zaten tablonun kendi CHECK'i ile de korunuyordu),
   DÜZELTME→en az biri zorunlu. Daha önce hiçbiri şema seviyesinde garanti değildi.
 
-**Mükerrer gönderim koruması**: `{{ uuid() }}` her buton tıklamasında Appsmith'in
+**Mükerrer gönderim koruması**: `{{ crypto.randomUUID() }}` her buton tıklamasında Appsmith'in
 JS ortamında yeni bir UUID üretir. Çift tıklama ya da ağ tekrar denemesi aynı UUID'yi
 tekrar gönderirse fonksiyon yeni satır eklemez, `atlandi=TRUE` döner. Ayrıca
 `KaydetButton`'ın kendi `isDisabled`/loading durumu da (sorgu çalışırken buton pasif)
