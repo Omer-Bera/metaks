@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.humanize',  # intcomma -> "1.780" (LANGUAGE_CODE='tr' ayrımıyla)
     'katalog',
 ]
 
@@ -151,3 +152,16 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 GORSEL_SUNUCU_BASE_URL = os.environ.get(
     'GORSEL_SUNUCU_BASE_URL', 'http://localhost:8083/urun-gorselleri/'
 )
+
+# Kimlik doğrulama. Kullanıcılar Django'nun kendi auth tablolarında, yani SQLite
+# 'default' bağlantısında tutuluyor — paylaşımlı METAKS Postgres'ine dokunulmuyor.
+#
+# Sadece YAZMA sayfaları giriş istiyor (@login_required). Katalog ve stok listeleri
+# herkese açık kalıyor: iç ağda, salt-okunur ve ön büroda hızla açılması gereken
+# ekranlar. Yazma tarafında giriş bir tercih değil zorunluluk:
+# stok_hareketleri.yapan_kullanici NOT NULL ve Postgres'e tek bir paylaşılan
+# depo_admin kullanıcısıyla bağlanıldığı için "kim yaptı" bilgisi veritabanından
+# okunamıyor, uygulamadan geçirilmek zorunda.
+LOGIN_URL = 'katalog:giris'
+LOGIN_REDIRECT_URL = 'katalog:ana_ekran'
+LOGOUT_REDIRECT_URL = 'katalog:ana_ekran'

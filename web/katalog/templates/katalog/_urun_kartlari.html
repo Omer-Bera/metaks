@@ -1,0 +1,105 @@
+{% load humanize %}
+{% comment %}
+Bir sayfa kart + sonsuz kaydırma nöbetçisi. Iki yerde kullanılıyor: ilk yüklemede
+_govde.html'in ızgarasının içine, sonsuz kaydırmada ise nöbetçinin kendisinin
+yerine (outerHTML) — yeni kartlar böylece ızgaranın doğrudan çocuğu olarak ekleniyor.
+
+Çok satırlı yorumlar için {% templatetag opencomment %} … {% templatetag closecomment %}
+değil bu blok kullanılıyor: o sözdizimi yalnızca tek satırlıktır, çok satırlısı yorum
+sayılmaz ve düz metin olarak tarayıcıya gider.
+{% endcomment %}
+{% for urun in sayfa %}
+<button
+    type="button"
+    class="group text-left bg-white rounded-xl border border-slate-200 overflow-hidden
+           transition duration-200 hover:border-slate-300 hover:shadow-lg hover:shadow-slate-200/60
+           hover:-translate-y-0.5 focus:outline-none focus:ring-4 focus:ring-slate-900/10"
+    hx-get="{% url detay_url_adi urun.stok_kodu %}"
+    hx-target="#modal"
+    hx-swap="innerHTML"
+    aria-label="{{ urun.stok_kodu }} detayları"
+>
+    {% comment %}
+    Kutu oranı 4/3, kare değil: ürün fotoğraflarının %79'u yatay (medyan ~3:2, ölçüm
+    metaks_DB/images/final/products üzerinde). Kare kutuda görselin altında ve üstünde
+    büyük boşluk kalıyordu; 4/3 hem yatayları dolduruyor hem de dikey kalan %18 için
+    aşırı yan boşluk bırakmıyor.
+
+    object-contain (cover değil): bunlar beyaz fon üzerinde çekilmiş küçük metal
+    aksesuar fotoğrafları — kırpmak ürünün ayırt edici kenarını kesiyor, oysa bu
+    ekranın tek işi ürünü görselden tanıtmak.
+    {% endcomment %}
+    <div class="relative aspect-[4/3] bg-white overflow-hidden">
+        <img src="{{ urun.gorsel_url }}"
+             alt="{{ urun.stok_kodu }}"
+             loading="lazy"
+             onerror="gorselHata(this)"
+             class="w-full h-full object-contain p-2
+                    transition duration-300 group-hover:scale-[1.06]">
+        {% comment %}
+        Yedek yer tutucu: yalnızca `hidden` ile gizleniyor, üzerinde ikinci bir display
+        utility'si yok. (`hidden grid` ikilisi yalnızca Tailwind'in kendi CSS sırasına
+        güvendiği için çalışır — o kadar ince bir davranışa dayanmıyoruz.)
+        {% endcomment %}
+        <div class="hidden absolute inset-0 bg-slate-50" aria-hidden="true">
+            <div class="w-full h-full grid place-items-center">
+                <svg class="w-8 h-8 text-slate-300" fill="none" stroke="currentColor"
+                     stroke-width="1.5" viewBox="0 0 24 24">
+                    <rect x="3" y="3" width="18" height="18" rx="2"/><path d="m3 16 5-5 4 4 3-3 6 6"/>
+                </svg>
+            </div>
+        </div>
+
+        {% if urun.olcu_mm %}
+        {% comment %}
+        olcu_mm 1.780 ürünün 1.715'inde dolu ve ön büroda ürünü ayırt eden asıl
+        özellik — kartta görünmesi galeriyi taramayı belirgin biçimde hızlandırıyor.
+        {% endcomment %}
+        <span class="absolute bottom-1.5 right-1.5 rounded-md bg-white/90 backdrop-blur-sm
+                     px-1.5 py-0.5 text-[11px] font-medium text-slate-600
+                     border border-slate-200/80">{{ urun.olcu_mm|floatformat:"-2" }} mm</span>
+        {% endif %}
+    </div>
+
+    <div class="px-3 py-2.5 border-t border-slate-100">
+        <p class="font-mono text-[13px] font-medium text-slate-900 truncate">{{ urun.stok_kodu }}</p>
+        <p class="text-[11px] text-slate-500 truncate mt-0.5">{{ urun.kategori_adi|default:"—" }}</p>
+
+        {% if stok_goster %}
+        {% comment %}
+        Üç durum ayrı gösteriliyor: v_toplam_stok'ta satırı olmayan ürün hiç sayılmamıştır,
+        0 yazan ise sayılmış ama boş çıkmıştır. Devam eden depo sayımında "daha neye
+        bakmadık?" sorusunun cevabı birincisi (bkz. views.py::_stok_bilgisini_ekle).
+        {% endcomment %}
+        <p class="mt-1.5 text-[11px] font-medium">
+            {% if urun.stok_durumu == 'var' %}
+            <span class="text-emerald-700">{{ urun.toplam_stok|intcomma }} adet</span>
+            {% elif urun.stok_durumu == 'sifir' %}
+            <span class="text-amber-700">Stok yok</span>
+            {% else %}
+            <span class="text-slate-400">Sayılmadı</span>
+            {% endif %}
+        </p>
+        {% endif %}
+    </div>
+</button>
+{% endfor %}
+
+{% if sonraki_url %}
+{% comment %}
+revealed: nöbetçi görünür alana girdiğinde kendini bir sonraki sayfayla değiştirir.
+Sayfalama URL'i bilinçli olarak push edilmiyor — adres çubuğunda kalması gereken
+durum filtreler, kaçıncı sayfaya kaydırıldığı değil.
+{% endcomment %}
+<div class="col-span-full flex justify-center py-10"
+     hx-get="{{ sonraki_url }}"
+     hx-trigger="revealed"
+     hx-target="this"
+     hx-swap="outerHTML">
+    <svg class="animate-spin w-6 h-6 text-slate-300" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity=".25"/>
+        <path d="M22 12a10 10 0 0 0-10-10" stroke="currentColor" stroke-width="3"
+              stroke-linecap="round"/>
+    </svg>
+</div>
+{% endif %}

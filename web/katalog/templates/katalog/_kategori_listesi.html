@@ -1,0 +1,35 @@
+{% load humanize %}
+{% comment %}
+Kategori panelinin satırları. data-ad, panel içi istemci taraflı aramanın süzdüğü alan
+(bkz. liste.html::kategoriSuz). Her satır bir aç/kapa bağlantısı: URL'i sunucuda
+üretiliyor ve o kategorinin seçime eklenmiş/çıkarılmış hâlini taşıyor, dolayısıyla
+çoklu seçimin durumunu istemcide tutmaya gerek kalmıyor.
+{% endcomment %}
+{% for secenek in kategori_secenekleri %}
+<button
+    type="button"
+    data-ad="{{ secenek.etiket|lower }}"
+    class="w-full flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-sm
+           transition hover:bg-slate-50 focus:outline-none focus:bg-slate-50"
+    hx-get="{{ secenek.url }}"
+    hx-target="#katalog-govde"
+    hx-swap="outerHTML"
+    hx-push-url="true"
+>
+    <span class="grid place-items-center w-4 h-4 shrink-0 rounded border transition
+                 {% if secenek.secili %}
+                     border-slate-900 bg-slate-900 text-white
+                 {% else %}
+                     border-slate-300 bg-white
+                 {% endif %}">
+        {% if secenek.secili %}
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="3"
+             viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg>
+        {% endif %}
+    </span>
+    <span class="flex-1 truncate text-slate-700">{{ secenek.etiket }}</span>
+    <span class="shrink-0 text-xs text-slate-400">{{ secenek.adet|intcomma }}</span>
+</button>
+{% empty %}
+<p class="px-2 py-6 text-center text-sm text-slate-400">Kategori bulunamadı.</p>
+{% endfor %}

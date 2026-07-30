@@ -1,0 +1,53 @@
+{% extends "katalog/base.html" %}
+
+{% block title %}METAKS · Giriş{% endblock %}
+
+{% block content %}
+<div class="min-h-screen grid place-items-center px-4 py-12">
+    <div class="w-full max-w-sm">
+        <div class="text-center mb-8">
+            <span class="inline-grid place-items-center w-12 h-12 rounded-2xl bg-slate-900
+                         text-amber-400 font-bold tracking-tight">MK</span>
+            <h1 class="mt-4 text-xl font-semibold text-slate-900">METAKS Depo</h1>
+            <p class="mt-1 text-sm text-slate-500">Stok işlemi yapmak için giriş yapın.</p>
+        </div>
+
+        <form method="post" class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            {% csrf_token %}
+
+            {% if form.errors %}
+            <div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-800">
+                Kullanıcı adı veya parola hatalı.
+            </div>
+            {% endif %}
+
+            <label class="block mb-4">
+                <span class="block mb-1.5 text-sm font-medium text-slate-700">Kullanıcı adı</span>
+                <input type="text" name="username" autocomplete="username" autofocus required
+                       class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm
+                              focus:outline-none focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5">
+            </label>
+
+            <label class="block mb-5">
+                <span class="block mb-1.5 text-sm font-medium text-slate-700">Parola</span>
+                <input type="password" name="password" autocomplete="current-password" required
+                       class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm
+                              focus:outline-none focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5">
+            </label>
+
+            {# next: @login_required'ın yönlendirdiği sayfaya geri dönmek için. #}
+            <input type="hidden" name="next" value="{{ next }}">
+
+            <button type="submit"
+                    class="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white
+                           transition hover:bg-slate-700
+                           focus:outline-none focus:ring-4 focus:ring-slate-900/10">Giriş yap</button>
+        </form>
+
+        <p class="mt-6 text-center text-sm text-slate-500">
+            <a href="{% url 'katalog:ana_ekran' %}" class="underline underline-offset-4
+               transition hover:text-slate-900">Ana ekrana dön</a>
+        </p>
+    </div>
+</div>
+{% endblock %}
