@@ -1,0 +1,57 @@
+{% extends "katalog/base.html" %}
+
+{% block title %}METAKS · Yeni lokasyon{% endblock %}
+
+{% block content %}
+{% with yonetim_alt_baslik="Yeni lokasyon" yonetim_ust_ad="Lokasyonlar" %}
+    {% url 'katalog:yonetim_lokasyonlar' as lokasyonlar_url %}
+    {% include "katalog/_yonetim_baslik.html" with yonetim_ust_url=lokasyonlar_url %}
+{% endwith %}
+
+<main class="max-w-xl mx-auto px-4 sm:px-6 py-8">
+    <h1 class="text-xl font-semibold text-slate-900">Yeni lokasyon</h1>
+    <p class="mt-0.5 text-sm text-slate-500">
+        Üst lokasyon seçilmezse bu bir kök (depo/dolap) olur.
+    </p>
+
+    <form method="post" class="mt-6 rounded-xl border border-slate-200 bg-white p-5 space-y-5">
+        {% csrf_token %}
+
+        {% comment %}
+        Alana bağlanamayan hatalar (ör. kısıt ihlali mesajı) formun başında;
+        aksi hâlde hiçbir yerde görünmezdi.
+        {% endcomment %}
+        {% if form.non_field_errors %}
+        <div class="rounded-lg border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-sm
+                    text-rose-900">
+            {% for hata in form.non_field_errors %}<p>{{ hata }}</p>{% endfor %}
+        </div>
+        {% endif %}
+
+        {% for alan in form %}
+        <div>
+            <label for="{{ alan.id_for_label }}"
+                   class="block mb-1.5 text-sm font-medium text-slate-800">{{ alan.label }}</label>
+            {{ alan }}
+            {% if alan.help_text %}
+            <p class="mt-1.5 text-xs text-slate-500">{{ alan.help_text }}</p>
+            {% endif %}
+            {% for hata in alan.errors %}
+            <p class="mt-1.5 text-xs text-rose-700">{{ hata }}</p>
+            {% endfor %}
+        </div>
+        {% endfor %}
+
+        <div class="flex flex-wrap items-center gap-3 pt-1">
+            <button type="submit"
+                    class="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white
+                           transition hover:bg-slate-700
+                           focus:outline-none focus:ring-4 focus:ring-slate-900/10"
+            >Lokasyonu oluştur</button>
+            <a href="{% url 'katalog:yonetim_lokasyonlar' %}"
+               class="text-sm text-slate-500 underline underline-offset-4
+                      transition hover:text-slate-900">Vazgeç</a>
+        </div>
+    </form>
+</main>
+{% endblock %}

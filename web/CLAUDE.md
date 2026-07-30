@@ -180,6 +180,7 @@ Yani hiçbir kimlik bilgisi ve parola hash'i repoya girmiyor.
 | Hareket Geçmişi | `/stok/hareketler/` | `stok_hareketleri` dökümü, filtreli (salt-okunur) |
 | Yönetim | `/yonetim/` | Yönetici kartları. `is_staff` şart |
 | Kullanıcılar | `/yonetim/kullanicilar/` | Hesap listesi, ekleme, parola, pasife alma |
+| Lokasyonlar | `/yonetim/lokasyonlar/` | Hiyerarşik liste, ekleme, pasife alma |
 
 ### Yönetim paneli ve yetki
 
@@ -219,6 +220,54 @@ Django'nun kurallarının ikinci kopyası olurdu — `stok_servisi.py`'nin
 Kullanıcı listesindeki "N hareket" sayısı iki veritabanı arasında JOIN gerektirdiği
 için tek bir GROUP BY sorgusuyla toplanıp Python'da eşleştiriliyor (kullanıcı başına
 sorgu değil). Hesabı kapatmadan önce "bu kimdi, bir şey yapmış mı" sorusunun cevabı.
+
+### Lokasyon yönetimi ve iki cross-DB tuzağı
+
+Kod `katalog/lokasyon_yonetimi.py` + `katalog/forms.py::LokasyonEklemeFormu`.
+Kullanıcı yönetiminden farklı: bu, **`metaks` Postgres'e yazan** tek yönetim
+ekranı — Appsmith'in artık işlevsiz `LokasyonEkle`/`LokasyonSil` sorgularının
+(yalnızca ad+tip yazıyordu, migration 004'ten sonra dolap/raf hiyerarşisini hiç
+açamıyordu) yerini alıyor. Yeni bir veritabanı fonksiyonu yok — migration 004
+lokasyon kurallarının tamamını bildirimsel yazmıştı (`tip` CHECK'i, `kok_mu`/
+`ust_kok_mu` üretilmiş kolonlarla bileşik FK, iki tekillik kısıtı); kapı zaten
+kısıtların kendisi, Django doğrudan INSERT/UPDATE yapıyor.
+
+Liste `LokasyonDetay` (`v_lokasyonlar_detay`'ın haritalaması) üzerinden okunuyor,
+ham `Lokasyon` (`lokasyonlar`) üzerinden değil — `kod`, `tam_ad`, `yaprak_mi`
+oradan geliyor. `views.py`'deki üç yer de (ana ekran KPI, hareket geçmişi
+filtresi, stok işlem formu) aynı sebeple `LokasyonDetay` + `yaprak_mi` kullanıyor;
+`Lokasyon` artık yalnızca **yazma** için var (ekleme formunun `ModelForm` tabanı).
+
+Proje henüz `DATABASE_ROUTERS` eklemediği için (tek app, tek bağlantı; CLAUDE.md'nin
+başındaki mimari not) `Lokasyon.objects` gibi `using('metaks')` içermeyen her sorgu
+sessizce SQLite `default`'a gider. Bu, `ModelForm` kullanırken iki farklı yerde ölçülerek
+bulunan gerçek tuzaklara yol açtı:
+
+1. **FK alanının otomatik açılır listesi.** Django bir `ForeignKey` için form alanı
+   üretirken (`ust_lokasyon`) queryset'i `Model._default_manager` üzerinden kurar —
+   `using('metaks')` olmadan. Elle üzerine yazılmazsa form **render'a hiç gerek
+   kalmadan, sadece oluşturulurken bile** `OperationalError: no such table:
+   lokasyonlar` ile çöküyor (boş bir `ModelForm()` çağrısıyla doğrulandı). Çözüm:
+   `LokasyonEklemeFormu.__init__`'te `self.fields['ust_lokasyon'].queryset`'i elle
+   `Lokasyon.objects.using('metaks')...` ile değiştirmek — opsiyonel bir iyileştirme
+   değil, formun çalışması için zorunlu.
+2. **`unique=True`'nun otomatik doğrulaması.** `Lokasyon.kod`'a `unique=True`
+   konulsaydı, Django'nun `validate_unique()`'i yine `_default_manager` üzerinden
+   (yanlış bağlantıya) bir sorgu atardı. Bu yüzden model alanına bilerek
+   `unique=True` konulmadı; `uq_lokasyonlar_kod` ve `uq_lokasyonlar_ust_ad_tip`
+   kısıtlarının ihlali formda önceden sorgulanmıyor, gerçek `INSERT`'in
+   `IntegrityError`'ı (`psycopg2` `diag.constraint_name` üzerinden) yakalanıp
+   Türkçe mesaja çevriliyor (`lokasyon_yonetimi.py::_kisit_mesaji`).
+
+Aynı sebeple `kok_mu`/`ust_kok_mu` (GENERATED ALWAYS kolonlar) `Lokasyon` modeline
+hiç eklenmedi — Django INSERT'te modeldeki her alana değer yazmaya çalışır, üretilmiş
+bir kolona yazmak Postgres'te hata verir.
+
+Doğrulama: gerçek tarayıcıda 31/31 kontrol (kök/raf oluşturma, mükerrer ad+tip ve
+mükerrer kod reddi, raf eklenince dolabın kendisinin stok formundan kaybolması,
+pasife alınca stok formundan kaybolup hareket geçmişinde kalması, derinlik
+koruması, yetki kapısı, mobil). Uygulama "sil" sunmadığı için test satırları
+doğrudan SQL ile temizlendi (raf önce — `ON DELETE RESTRICT`).
 
 ### Ana ekran
 
@@ -516,9 +565,10 @@ sadece o listeyi okurken bilinmesi gereken kalıcı kısıtlar:
 - **Çoklu görsel galerisi yok**: `v_aktif_urunler` sadece `ana_gorsel_dosya_adi`
   veriyor; 1.780 ürünün 19'unda ikinci bir aktif görsel var (`urun_gorselleri`).
   Kazanç 19 üründe olduğu için ikinci bir unmanaged model eklenmedi.
-- **Yetkilendirme yok** (giriş var ama rol/izin ayrımı yok): giriş yapan herkes her
+- **Stok işlemlerinde rol ayrımı yok** (`is_staff` yalnızca yönetim panelini kapatıyor
+  — bkz. "Yönetim paneli ve yetki"): giriş yapan herkes, yönetici olsun olmasın, her
   ürüne her işlem tipini uygulayabiliyor. İç ağda tek ekip için bugün yeterli;
-  fason/dış kullanıcı girdiği anda gözden geçirilmeli.
+  fason/dış kullanıcı girdiği anda gözden geçirilmeli (madde 2b).
 - hosting (local'de geliştiriliyor, bulut VPS'e taşıma kullanıcı kararına bağlı),
   production ayarları (DEBUG, SECRET_KEY, ALLOWED_HOSTS şu an sadece local dev için).
   **Giriş eklendiği için bunlar artık daha kritik**: parolalar HTTP üzerinden gidiyor,

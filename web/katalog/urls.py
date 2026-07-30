@@ -1,7 +1,7 @@
 from django.contrib.auth import views as auth_views
 from django.urls import path
 
-from . import views, yonetim
+from . import lokasyon_yonetimi, views, yonetim
 
 app_name = 'katalog'
 
@@ -46,5 +46,17 @@ urlpatterns = [
         'yonetim/kullanicilar/<int:pk>/parola/',
         yonetim.kullanici_parola,
         name='yonetim_kullanici_parola',
+    ),
+
+    path('yonetim/lokasyonlar/', lokasyon_yonetimi.lokasyonlar, name='yonetim_lokasyonlar'),
+    path(
+        'yonetim/lokasyonlar/yeni/',
+        lokasyon_yonetimi.lokasyon_ekle,
+        name='yonetim_lokasyon_ekle',
+    ),
+    path(
+        'yonetim/lokasyonlar/<int:pk>/pasife-al/',
+        lokasyon_yonetimi.lokasyon_pasife_al,
+        name='yonetim_lokasyon_pasife_al',
     ),
 ]

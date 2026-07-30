@@ -156,30 +156,43 @@ yönetim de günlük kullanımda sık gidilen bir yer değil.
 için bugün yeterli; **fason/dış kullanıcı girdiği anda** gözden geçirilmeli. Kullanıcı
 ekranı yapılırken en azından "yönetici mi" ayrımının yeri hazırlansın.
 
-### 2c. Lokasyon yönetimi — Appsmith'i kapatmanın ön koşulu
+### 2c. Lokasyon yönetimi ✅ TAMAMLANDI (2026-07-31) — Appsmith'i kapatmanın ön koşulu
 
-Bugün lokasyon eklemenin/pasife almanın tek yolu Appsmith; Django'da hiç yok
-(bkz. madde 0). Liste + ekleme + pasife alma.
+`/yonetim/lokasyonlar/` (hiyerarşik liste + pasife alma) ve
+`/yonetim/lokasyonlar/yeni/` (ekleme). Kod `katalog/lokasyon_yonetimi.py` +
+`katalog/forms.py::LokasyonEklemeFormu`; mimari gerekçeler CLAUDE.md'de.
 
-- **Liste kaynağı `v_lokasyonlar_detay`** (ham `lokasyonlar` değil): `kod`, `tam_ad`,
-  `yaprak_mi` oradan geliyor. Dolap→raf hiyerarşisi girintili gösterilsin.
-- **Ekleme formu**: ad, tip (`DAHILI`/`FASON`/`NUMUNE` — sabit gömme yok, kısıttan
-  okunur), isteğe bağlı **üst lokasyon** (seçilirse raf, seçilmezse dolap/depo) ve `kod`.
-- **Silme yok, pasife alma var** (`aktif_mi = false`) — Appsmith'in zaten yaptığı şey ve
-  doğrusu bu: `stok_hareketleri`'nden gelen FK `ON DELETE RESTRICT`, geçmiş silinmemeli.
+Yapılanlar: liste `v_lokasyonlar_detay`'dan okuyor (ham `lokasyonlar` değil) — kök
+altında rafları girintili gösteriyor. Ekleme formu ad, tip (`DAHILI`/`FASON`/
+`NUMUNE`), isteğe bağlı **üst lokasyon** (yalnızca aktif kökler) ve isteğe bağlı
+`kod` alıyor. Silme yok, yalnızca pasife alma (`aktif_mi = false`) — Appsmith'in
+`LokasyonSil`'iyle aynı davranış. Yeni bir veritabanı fonksiyonu **yok**: migration
+004 kuralların tamamını bildirimsel yazmıştı (CHECK, üretilmiş kolonlarla bileşik
+FK, iki tekillik kısıtı), Django doğrudan INSERT/UPDATE yapıyor.
 
-**Yeni bir veritabanı fonksiyonu gerekmiyor** — bu, `stok_hareketleri` ve `urunler`'den
-farklı. Orada kural fonksiyonda çünkü tek bir INSERT'le ifade edilemiyordu (yeterli stok
-hesabı, üç tabloya yayılan tek transaction). Lokasyonda migration 004 kuralların
-**tamamını bildirimsel** yazdı: `tip` CHECK'i, `kok_mu`/`ust_kok_mu` üretilmiş
-kolonlarıyla bileşik FK (derinlik 2'de sabit), `uq_lokasyonlar_kod`, üst lokasyona
-kapsamlanmış `uq_lokasyonlar_ust_ad_tip`. Yani kapı zaten kısıtların kendisi; hatalı
-satırı veritabanı reddediyor. Django formu doğrudan yazabilir.
+Ayrıca üç tuzak noktası düzeltildi (bkz. aşağıdaki "Kalan tuzak" bölümünün eski
+hâli): `views.py:81` (ana ekran KPI), `:453` (hareket geçmişi filtresi), `:675`
+(stok işlem formu) artık `LokasyonDetay` + `yaprak_mi` kullanıyor.
 
-⚠️ Tek teknik detay: `kok_mu` ve `ust_kok_mu` **GENERATED** kolonlar — `Lokasyon`
-modeline alan olarak eklenmemeli, yoksa Django INSERT'te onlara da yazmaya çalışır.
+**İki cross-DB tuzağı ölçülerek bulundu ve önlendi** (ikisi de proje henüz
+`DATABASE_ROUTERS` eklemediği için — CLAUDE.md): (1) `ModelForm`'un FK alanı için
+otomatik kurduğu açılır liste sorgusu `using('metaks')` olmadan SQLite `default`'a
+gidip "no such table" ile çöküyordu — `__init__`'te queryset elle atanarak
+çözüldü. (2) `kod`'a `unique=True` koymak Django'nun otomatik `validate_unique()`'ini
+yine yanlış bağlantıya sorgu attırırdı — bilerek konulmadı, kısıt ihlali gerçek
+INSERT'in `IntegrityError`'ı yakalanıp `constraint_name`'e göre Türkçeleştiriliyor.
 
-Orta boy iş. Bağımsız.
+Doğrulama: gerçek tarayıcıda 31/31 kontrol — kök/raf oluşturma, mükerrer ad+tip ve
+mükerrer kod reddi (Türkçe mesaj), raf eklenince dolabın kendisinin stok formundan
+kaybolması (artık yaprak değil), pasife alınca hem stok formundan kaybolup hem
+hareket geçmişi filtresinde kalması, raf-altına-raf denemesinin reddi (derinlik
+koruması), yetki kapısı, mobil, şablon sızıntısı, konsol. Uygulama "sil"
+sunmadığı için test satırları UI üzerinden eklenip **doğrudan SQL ile** temizlendi
+(rafın önce silinmesi gerekiyor, `ON DELETE RESTRICT`); sonda lokasyon sayısının
+başlangıca döndüğü ve `stok_hareketleri`'nin hiç değişmediği ayrıca ölçüldü.
+
+Appsmith'i durdurmanın tek kalan ön koşulu: sayıma ait bir giriş hâlâ oradan mı
+yapılıyor sorusu (bkz. madde 0, "Kapatma sırası").
 
 ---
 
@@ -233,6 +246,44 @@ Ters sırada çökme olursa var olmayan dosyayı gösteren kırık ürün kalır
 kötü ihtimalle sahipsiz bir dosya kalır, o da zararsız.
 
 Büyük iş, ön koşullu.
+
+---
+
+## 3b. Hızlı stok işlemi girişi (depo sahası ekranı, 2026-07-31 fikri)
+
+Kullanıcı sorusu: depo personeli mal geldiğinde/çıktığında bilgiyi nereden girecek?
+Bugünkü yol (stok sayfasına gir → ürünü görsel ızgaradan bul → detay panelinden "Stok
+işlemi yap") **kalacak** — ürünü gözle tanıyıp bulmak için doğru yol. Ama günde
+onlarca kez aynı işlemi yapan biri için ekstra tıklama.
+
+**Karar: evet, ayrı bir ekran mantıklı** — ama minimal bir giriş noktası olarak,
+`stok_islem` formunun yerine geçmeden. Tasarım: `/stok/hizli/`'de tek büyük,
+otomatik odaklanan bir metin kutusu ("Stok kodu"). Enter'a basılınca:
+
+- **Tam eşleşme** → doğrudan o kodun `stok_islem` formuna yönlendirir. Yeni bir form
+  yazılmıyor, var olan (ve doğrulanmış) forma bir kısayol.
+- **Eşleşme yok** → "bulunamadı" + yazım hatası ihtimaline karşı `arama_metni` ile
+  öneri + **madde 3 tamamlandıktan sonra**: "bu kodla yeni ürün oluştur" bağlantısı,
+  formu koda önceden doldurulmuş açar. Bu zaten madde 3'te planlanan "boş arama
+  sonucundan ekleme" ile birebir aynı desen — iki kez tasarlanmıyor.
+
+**QR/barkod bedavaya geliyor, kamera taraması şimdi değil.** USB/Bluetooth barkod
+okuyucular klavye gibi davranır (kodu yazıp Enter basar); yani yukarıdaki tek metin
+kutusu donanımla okutma için **ek kod gerektirmeden** çalışır. Telefon kamerasıyla QR
+okuma ayrı bir şey: `getUserMedia` tarayıcı API'si "secure context" (HTTPS) istiyor,
+site bugün düz HTTP — YAPILACAKLAR'ın "Sırası gelmemiş" bölümündeki HTTPS maddesi
+çözülmeden kamera taraması zaten çalışmaz. Donanım okuyucu gerçek ihtiyacı bugün
+karşılıyorsa kamera taramasını hiç yazmaya gerek kalmayabilir.
+
+**Listeden seçme** ayrı bir ekran gerektirmiyor: kutunun altına HTMX ile hafif bir
+otomatik tamamlama (var olan `arama_metni` araması üzerinden) eklemek yeterli —
+stok sayfasının ağır kart ızgarasını burada tekrarlamaya gerek yok, hızlı girişin
+bütün amacı o ızgarayı atlamak.
+
+**Sıra:** madde 3'ten sonra — "yeni ürün oluştur" bacağı ona bağımlı, diğer üç bacak
+(kod yaz, barkod okut, otomatik tamamlamadan seç) madde 3 olmadan da çalışır ama tek
+başına küçük bir ekran için ayrı sıra açmak yerine 3'le birlikte bitirilmesi mantıklı.
+Küçük iş.
 
 ---
 
@@ -316,25 +367,19 @@ Sonuçta kullanılabilir hâle gelenler:
   FALSE'a düzeltildi.
 - `stok_hareketi_kaydet()` artık sadece **yaprak** lokasyona yazıyor.
 
-### ⚠️ Kalan tuzak: lokasyon sorguları (numune satırları GİRİLMEDEN önce)
+### ✅ Lokasyon sorguları düzeltildi (2026-07-31, madde 2c ile birlikte)
 
-Bugün hiçbir NUMUNE satırı yok, o yüzden hiçbir şey bozuk değil. Ama gerçek dolap/raf
-satırları girilmeden **önce** her iki arayüz de `v_lokasyonlar_detay`'a taşınıp
-`yaprak_mi` filtresi almalı. **Tipe göre dışlamak yanlış olur** — numune dolabını açıp
-3 adet bulan kişi o rafı seçemezse çözülmek istenen problem yerinde kalır.
-
-Django'da üç yer (dördüncüsü `views.py:577`, dokunulmasa da doğru — dolaplara hareket
-yazılamadığı için `v_lokasyon_stok_ozet`'te hiç görünmezler):
-
-| Yer | Bugünkü hâli | Numune girilince |
-| --- | --- | --- |
-| `views.py:651` (stok işlem formu) | `filter(aktif_mi=True)` | dolaplar seçilebilir görünür, fonksiyon reddeder |
-| `views.py:431` (hareket geçmişi filtresi) | `.all()` — hiç filtre yok | aynı, üstelik pasifler de dahil |
-| `views.py:81` (ana ekran KPI) | `filter(aktif_mi=True).count()` | **"Aktif lokasyon" rafları depo sayar** (5 → 23) |
+Django'daki üç yer `v_lokasyonlar_detay` + `yaprak_mi` filtresine taşındı:
+`views.py:81` (ana ekran KPI), hareket geçmişi filtresi ve stok işlem formu
+(bkz. madde 2c). **Tipe göre dışlanmadı** — numune dolabını açıp 3 adet bulan
+kişi o rafı seçebiliyor, çözülmek istenen problem buydu.
 
 Appsmith'teki iki yer (`StokIslemi/LokasyonlariGetir`,
-`LokasyonYonetimi/LokasyonlarListele`) **artık düzeltilmeyecek** — madde 0, Appsmith
-emekliye ayrılıyor. Bu, düzeltilecek yer sayısını beşten üçe indiriyor.
+`LokasyonYonetimi/LokasyonlarListele`) **düzeltilmedi ve düzeltilmeyecek** —
+madde 0, Appsmith emekliye ayrılıyor.
+
+Artık gerçek NUMUNE dolap/raf satırları girilebilir; ön koşul (Django tarafı)
+tamamlandı.
 
 ---
 

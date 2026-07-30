@@ -79,18 +79,41 @@ class ToplamStok(models.Model):
 
 
 class Lokasyon(models.Model):
-    """lokasyonlar tablosunun salt-okunur haritalaması (stok işlem formundaki seçimler).
+    """lokasyonlar tablosunun haritalaması — okuma İÇİN `LokasyonDetay` (aşağıda)
+    tercih edilmeli, bu model asıl **yazma** (lokasyon ekleme) için var.
 
     Sadece `aktif_mi = True` olanlar arayüzde gösterilmeli: 2026-07-30'da eski üç
     lokasyon (Ana Depo, Sevkiyat Alanı, Fason Atölye 1) pasife alınıp yerlerine
     gerçekleri açıldı; pasif olanlar eski hareketlerde hâlâ görünüyor ama yeni işlemde
     seçilememeli.
+
+    `ust_lokasyon` ve `kod`: metaks_DB migration 004'ün dolap→raf hiyerarşisi.
+    `ust_lokasyon` NULL ise bu satır bir kök (depo/dolap), doluysa bir raf.
+
+    `kok_mu` / `ust_kok_mu` GENERATED ALWAYS kolonları BİLEREK modele eklenmedi:
+    Django INSERT'te modeldeki her alana değer yazmaya çalışır, üretilmiş bir kolona
+    yazmak Postgres'te hata verir.
+
+    `kod`'a bilerek `unique=True` KONULMADI: veritabanındaki kısıt tam bir UNIQUE
+    değil, PARTIAL bir INDEX (`WHERE kod IS NOT NULL`, bkz. migration 004).
+    `unique=True` koysaydık Django'nun kendi `validate_unique()`'i devreye girerdi
+    ve bu, `Lokasyon._default_manager` üzerinden (yani `using('metaks')` OLMADAN)
+    sorgu atar — proje henüz `DATABASE_ROUTERS` eklemediği için (CLAUDE.md) bu
+    sorgu SQLite `default` bağlantısına gider ve tablo orada olmadığı için çöker.
+    Aynı sebeple ekleme formu da `ModelForm.save()` değil `save(using='metaks')`
+    kullanıyor (bkz. `lokasyon_yonetimi.py`). Kısıt ihlali formda önceden
+    sorgulanmıyor, gerçek INSERT'in `IntegrityError`'ı yakalanıp Türkçeleştiriliyor.
     """
 
     lokasyon_id = models.AutoField(primary_key=True)
     lokasyon_adi = models.CharField(max_length=255)
     tip = models.CharField(max_length=50)
-    aktif_mi = models.BooleanField()
+    aktif_mi = models.BooleanField(default=True)
+    ust_lokasyon = models.ForeignKey(
+        'self', models.DO_NOTHING, db_column='ust_lokasyon_id',
+        null=True, blank=True, related_name='alt_lokasyonlar',
+    )
+    kod = models.CharField(max_length=20, null=True, blank=True)
 
     class Meta:
         managed = False
@@ -99,6 +122,38 @@ class Lokasyon(models.Model):
 
     def __str__(self):
         return self.lokasyon_adi
+
+
+class LokasyonDetay(models.Model):
+    """v_lokasyonlar_detay view'ının salt-okunur haritalaması.
+
+    Açılır listelerin ve lokasyon yönetimi ekranının TEK okuma kaynağı — `kod`,
+    `tam_ad` (hiyerarşik görünen ad, "Numune Dolabı 1 · Raf 3") ve `yaprak_mi`
+    (stok hareketi yazılabilir mi) buradan geliyor, ham `lokasyonlar`'dan değil.
+
+    `yaprak_mi`'nin tanımı `stok_hareketi_kaydet()`'in içindeki kontrolle BİREBİR
+    aynı olmalı (metaks_DB migration 004) — aksi hâlde arayüzde seçilebilen ama
+    fonksiyonun reddettiği bir lokasyon oluşur.
+    """
+
+    lokasyon_id = models.IntegerField(primary_key=True)
+    lokasyon_adi = models.CharField(max_length=255)
+    kod = models.CharField(max_length=20, null=True)
+    tip = models.CharField(max_length=50)
+    aktif_mi = models.BooleanField()
+    ust_lokasyon_id = models.IntegerField(null=True)
+    ust_lokasyon_adi = models.CharField(max_length=255, null=True)
+    ust_kod = models.CharField(max_length=20, null=True)
+    tam_ad = models.CharField(max_length=511)
+    yaprak_mi = models.BooleanField()
+
+    class Meta:
+        managed = False
+        db_table = 'v_lokasyonlar_detay'
+        ordering = ['tam_ad']
+
+    def __str__(self):
+        return self.tam_ad
 
 
 class StokHareketi(models.Model):

@@ -12,6 +12,7 @@ from . import stok_servisi
 from .models import (
     AktifUrun,
     Lokasyon,
+    LokasyonDetay,
     LokasyonStok,
     StokHareketi,
     ToplamStok,
@@ -100,7 +101,14 @@ def ana_ekran(request):
                 .distinct()
                 .count()
             ),
-            'aktif_lokasyon': Lokasyon.objects.using('metaks').filter(aktif_mi=True).count(),
+            # yaprak_mi şart: migration 004'ten sonra "aktif lokasyon" ham lokasyonlar
+            # tablosundan sayılırsa numune dolapları da (raflarının üstü, kendisi hiç
+            # stok tutmaz) depo/dolap gibi sayılır ve bu tile "5 aktif lokasyon"
+            # yerine "23" gibi yanıltıcı bir sayı gösterir. Doğru sayı: gerçekten stok
+            # yazılabilen (yaprak) ve aktif lokasyon sayısı.
+            'aktif_lokasyon': LokasyonDetay.objects.using('metaks')
+            .filter(aktif_mi=True, yaprak_mi=True)
+            .count(),
             'hareketli_urun': hareketli_urun,
             'stogu_olan': stogu_olan,
             'sayim_yuzdesi': round(100 * hareketli_urun / aktif_urun, 1) if aktif_urun else 0,
@@ -450,7 +458,13 @@ def hareket_gecmisi(request):
         'toplam': sayfalayici.count,
         'aktif_sekme': 'hareketler',
         'islem_tipleri': stok_servisi.ISLEM_TIPLERI,
-        'lokasyonlar': list(Lokasyon.objects.using('metaks').all()),
+        # yaprak_mi: numune dolapları (kendisi hiç hareket taşımaz, yalnızca rafları
+        # taşır) filtrede seçilebilir görünüp hep "0 hareket" dönmesin. tam_ad
+        # hiyerarşiyi gösteriyor ("Numune Dolabı 1 · Raf 3") — düz lokasyon_adi
+        # birden çok dolaptaki aynı isimli rafları ayırt edemezdi.
+        'lokasyonlar': list(
+            LokasyonDetay.objects.using('metaks').filter(yaprak_mi=True)
+        ),
         'kullanicilar': sorted(
             StokHareketi.objects.using('metaks')
             .order_by()
@@ -672,7 +686,13 @@ def stok_islem(request, stok_kodu):
         {
             'urun': urun,
             'islem_tipleri': stok_servisi.ISLEM_TIPLERI,
-            'lokasyonlar': list(Lokasyon.objects.using('metaks').filter(aktif_mi=True)),
+            # aktif_mi + yaprak_mi: dolaplar burada seçilebilir görünürse
+            # stok_hareketi_kaydet() onları reddeder (migration 004, "sadece yaprak
+            # lokasyona yazılabilir") — kullanıcı formu doldurup gönderdikten SONRA
+            # hatayı görürdü, bunun yerine seçilemez olsunlar.
+            'lokasyonlar': list(
+                LokasyonDetay.objects.using('metaks').filter(aktif_mi=True, yaprak_mi=True)
+            ),
             'mevcut_stok': _lokasyon_stok(stok_kodu),
             'girilen': girilen,
             'istemci_kimligi': islem_kimligi,

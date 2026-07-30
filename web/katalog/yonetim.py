@@ -2,7 +2,9 @@
 
 Neden `views.py`'de değil: buradaki her şey SQLite `default` bağlantısındaki Django
 auth tablolarıyla çalışıyor, `views.py` ise baştan sona `metaks` Postgres'ini okuyor.
-İki farklı veri kaynağı, iki farklı sorumluluk.
+İki farklı veri kaynağı, iki farklı sorumluluk. Tek istisna `panel()`: kartlardaki
+özet sayılar için `metaks`'e de tek bir sayım sorgusu atıyor — lokasyon yönetiminin
+kendisi (ekleme/pasife alma) `lokasyon_yonetimi.py`'de.
 
 Neden Django'nun hazır `/admin/`'i yetmiyor: yapabiliyor, ama ekip için uygun değil —
 izin matrisi, log kayıtları ve İngilizce/çeviri karışımı terimler günlük işte gürültü.
@@ -21,7 +23,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
 from .forms import KullaniciDuzenlemeFormu, KullaniciEklemeFormu, ParolaBelirlemeFormu
-from .models import StokHareketi
+from .models import LokasyonDetay, StokHareketi
 
 
 def yonetici_gerekli(view):
@@ -57,6 +59,9 @@ def panel(request):
         {
             'kullanici_sayisi': User.objects.filter(is_active=True).count(),
             'yonetici_sayisi': User.objects.filter(is_active=True, is_staff=True).count(),
+            'lokasyon_sayisi': LokasyonDetay.objects.using('metaks')
+            .filter(aktif_mi=True, yaprak_mi=True)
+            .count(),
         },
     )
 

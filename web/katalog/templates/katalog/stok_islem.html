@@ -130,7 +130,7 @@
                     {% for lokasyon in lokasyonlar %}
                     <option value="{{ lokasyon.lokasyon_id }}"
                             {% if girilen.kaynak_lokasyon_id == lokasyon.lokasyon_id|stringformat:"s" %}selected{% endif %}
-                    >{{ lokasyon.lokasyon_adi }} ({{ lokasyon.tip }})</option>
+                    >{{ lokasyon.tam_ad }} ({{ lokasyon.tip }})</option>
                     {% endfor %}
                 </select>
             </label>
@@ -144,7 +144,7 @@
                     {% for lokasyon in lokasyonlar %}
                     <option value="{{ lokasyon.lokasyon_id }}"
                             {% if girilen.hedef_lokasyon_id == lokasyon.lokasyon_id|stringformat:"s" %}selected{% endif %}
-                    >{{ lokasyon.lokasyon_adi }} ({{ lokasyon.tip }})</option>
+                    >{{ lokasyon.tam_ad }} ({{ lokasyon.tip }})</option>
                     {% endfor %}
                 </select>
             </label>

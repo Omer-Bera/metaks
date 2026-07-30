@@ -7,13 +7,17 @@ oradan bedavaya geliyor. Elle yazılsaydı Django'nun kendi kurallarının ikinc
 kopyası olurdu ve sürüm yükseltmelerinde sessizce ayrışırdı — `stok_servisi.py`'nin
 `stok_hareketi_kaydet()` karşısındaki duruşunun aynısı.
 
-Kullanıcılar SQLite `default` bağlantısında; paylaşımlı METAKS Postgres'ine bu
-dosyadan hiç dokunulmuyor.
+Kullanıcı formları SQLite `default` bağlantısında çalışıyor. Lokasyon formu
+(`LokasyonEklemeFormu`) farklı: paylaşımlı METAKS Postgres'teki `lokasyonlar`
+tablosuna yazıyor — bkz. o formun kendi docstring'i, cross-DB `ModelForm` kullanırken
+düşülen ve burada bilerek kaçınılan bir tuzak var.
 """
 
 from django import forms
 from django.contrib.auth.forms import AdminPasswordChangeForm, UserCreationForm
 from django.contrib.auth.models import User
+
+from .models import Lokasyon
 
 # Girdi kutularının ortak görünümü. Şablonlarda tek tek yazmak yerine burada:
 # form alanları Django tarafından basıldığı için sınıfın da Python tarafında
@@ -129,6 +133,76 @@ class KullaniciDuzenlemeFormu(_EpostaTekilligi, forms.ModelForm):
             if not veri.get('is_staff'):
                 self.add_error('is_staff', 'Kendi yönetici yetkinizi kaldıramazsınız.')
         return veri
+
+
+# Kısıt: lokasyonlar_tip_check (metaks_DB migration 004). CHECK kısıtları Django'ya
+# yansımıyor — tek otorite veritabanı, ama açılır listenin kendi seçenekleri gerekiyor;
+# ikisi ayrışırsa kullanıcı formda seçip gönderdikten SONRA veritabanı hatası görür.
+LOKASYON_TIPLERI = [
+    ('DAHILI', 'Dahili'),
+    ('FASON', 'Fason'),
+    ('NUMUNE', 'Numune'),
+]
+_TIP_ETIKETLERI = dict(LOKASYON_TIPLERI)
+
+
+class _UstLokasyonAlani(forms.ModelChoiceField):
+    """'Üst lokasyon' seçeneklerini yalnızca adla değil tipiyle birlikte gösterir."""
+
+    def label_from_instance(self, obj):
+        return f'{obj.lokasyon_adi} ({_TIP_ETIKETLERI.get(obj.tip, obj.tip)})'
+
+
+class LokasyonEklemeFormu(forms.ModelForm):
+    """Yeni lokasyon: depo/dolap kökü ya da bir kökün altında raf.
+
+    Appsmith'in `LokasyonEkle` sorgusunun (yalnızca ad+tip yazan) yerini alıyor —
+    bkz. YAPILACAKLAR.md madde 0 ve 2c.
+
+    ⚠️ `ust_lokasyon` bir FOREIGN KEY ve modelin varsayılan yöneticisi
+    (`Lokasyon.objects`) `using('metaks')` OLMADAN 'default' (SQLite) bağlantısına
+    gider — proje henüz `DATABASE_ROUTERS` eklemedi. Django'nun ModelForm'u FK
+    alanları için açılır liste seçeneklerini OTOMATİK olarak `Model._default_manager`
+    üzerinden kurar; elle `queryset` verilmezse form SADECE OLUŞTURULURKEN bile
+    (render'a hiç gerek kalmadan) "no such table: lokasyonlar" hatasıyla çöker — bu
+    ölçülerek doğrulandı. `__init__`'teki queryset ataması bu yüzden opsiyonel bir
+    iyileştirme değil, formun çalışması için ZORUNLU.
+
+    Aynı sebeple `Lokasyon.kod`'a modelde `unique=True` KONULMADI (bkz. models.py) —
+    tekillik ihlali burada önceden sorgulanmıyor, gerçek INSERT'in `IntegrityError`'ı
+    `lokasyon_yonetimi.py`'de yakalanıp Türkçeleştiriliyor.
+    """
+
+    tip = forms.ChoiceField(choices=LOKASYON_TIPLERI, label='Tip')
+
+    class Meta:
+        model = Lokasyon
+        fields = ('lokasyon_adi', 'tip', 'ust_lokasyon', 'kod')
+        field_classes = {'ust_lokasyon': _UstLokasyonAlani}
+        labels = {
+            'lokasyon_adi': 'Ad',
+            'ust_lokasyon': 'Üst lokasyon',
+            'kod': 'Kısa kod',
+        }
+        help_texts = {
+            'ust_lokasyon': 'Boş bırakılırsa bu bir kök (depo/dolap) olur; seçilirse '
+                             'seçilenin altında bir raf olur. Derinlik en fazla 2 '
+                             'seviye — bir rafın altına ikinci bir raf açılamaz.',
+            'kod': 'İsteğe bağlı kısa adres, ör. "N1" ya da "N1-R3". Boş bırakılabilir.',
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Yalnızca KÖK ve AKTİF lokasyonlar üst seçilebilir: derinlik 2'de sabit
+        # (bir rafın altına raf açılamaz — veritabanı zaten reddeder, ama seçeneği
+        # hiç göstermemek daha iyi) ve pasif bir dolabın altına yeni raf açmak
+        # kafa karıştırıcı olurdu.
+        self.fields['ust_lokasyon'].queryset = Lokasyon.objects.using('metaks').filter(
+            ust_lokasyon__isnull=True, aktif_mi=True
+        )
+        self.fields['ust_lokasyon'].required = False
+        self.fields['kod'].required = False
+        _girdileri_bicimlendir(self)
 
 
 class ParolaBelirlemeFormu(AdminPasswordChangeForm):

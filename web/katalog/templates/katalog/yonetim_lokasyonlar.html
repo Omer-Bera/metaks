@@ -1,0 +1,97 @@
+{% extends "katalog/base.html" %}
+
+{% block title %}METAKS · Lokasyonlar{% endblock %}
+
+{% block content %}
+{% with yonetim_alt_baslik="Lokasyonlar" %}
+    {% include "katalog/_yonetim_baslik.html" %}
+{% endwith %}
+
+<main class="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div>
+            <h1 class="text-xl font-semibold text-slate-900">Lokasyonlar</h1>
+            <p class="mt-0.5 text-sm text-slate-500">
+                {{ aktif_sayisi }} aktif, stok yazılabilir lokasyon
+            </p>
+        </div>
+        <a href="{% url 'katalog:yonetim_lokasyon_ekle' %}"
+           class="rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition
+                  hover:bg-slate-700 focus:outline-none focus:ring-4 focus:ring-slate-900/10">
+            + Yeni lokasyon</a>
+    </div>
+
+    <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+        <ul class="divide-y divide-slate-100">
+            {% for kok, raflar in agac %}
+            <li>
+                <div class="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
+                    <div class="min-w-0 flex-1">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="font-medium text-slate-900 truncate">
+                                {{ kok.lokasyon_adi }}</span>
+                            {% if kok.kod %}
+                            <span class="font-mono text-xs text-slate-400">{{ kok.kod }}</span>
+                            {% endif %}
+                            <span class="rounded px-1.5 py-0.5 text-xs font-medium
+                                         bg-slate-100 text-slate-600">{{ kok.tip }}</span>
+                            {% if not kok.aktif_mi %}
+                            <span class="rounded px-1.5 py-0.5 text-xs font-medium
+                                         bg-slate-200 text-slate-600">Pasif</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% if kok.aktif_mi %}
+                    <form method="post"
+                          action="{% url 'katalog:yonetim_lokasyon_pasife_al' kok.lokasyon_id %}">
+                        {% csrf_token %}
+                        <button type="submit" class="text-sm text-slate-500 underline
+                                underline-offset-4 transition hover:text-slate-900">Pasife al</button>
+                    </form>
+                    {% endif %}
+                </div>
+
+                {% if raflar %}
+                {# Raflar kendi dolaplarının hemen altında, girintili — hiyerarşi burada görünür. #}
+                <ul class="divide-y divide-slate-50 border-t border-slate-100 bg-slate-50/60">
+                    {% for raf in raflar %}
+                    <li class="flex flex-wrap items-center gap-x-3 gap-y-2 pl-9 pr-4 py-2.5">
+                        <div class="min-w-0 flex-1">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span class="text-slate-300" aria-hidden="true">·</span>
+                                <span class="text-sm text-slate-800 truncate">
+                                    {{ raf.lokasyon_adi }}</span>
+                                {% if raf.kod %}
+                                <span class="font-mono text-xs text-slate-400">{{ raf.kod }}</span>
+                                {% endif %}
+                                {% if not raf.aktif_mi %}
+                                <span class="rounded px-1.5 py-0.5 text-xs font-medium
+                                             bg-slate-200 text-slate-600">Pasif</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% if raf.aktif_mi %}
+                        <form method="post"
+                              action="{% url 'katalog:yonetim_lokasyon_pasife_al' raf.lokasyon_id %}">
+                            {% csrf_token %}
+                            <button type="submit" class="text-sm text-slate-500 underline
+                                    underline-offset-4 transition hover:text-slate-900"
+                            >Pasife al</button>
+                        </form>
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <p class="mt-4 text-sm text-slate-500 max-w-prose">
+        Lokasyon silme yok, yalnızca pasife alma — geçmiş hareketler yerinde kalır.
+        Bir dolabın altına raf eklemek için önce dolabı oluşturun, sonra yeni
+        lokasyon formunda üst olarak seçin.
+    </p>
+</main>
+{% endblock %}

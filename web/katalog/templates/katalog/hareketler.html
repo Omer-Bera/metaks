@@ -93,7 +93,7 @@
                 {% for lokasyon in lokasyonlar %}
                 <option value="{{ lokasyon.lokasyon_id }}"
                         {% if secili.lokasyon == lokasyon.lokasyon_id %}selected{% endif %}
-                >{{ lokasyon.lokasyon_adi }}{% if not lokasyon.aktif_mi %} (pasif){% endif %}</option>
+                >{{ lokasyon.tam_ad }}{% if not lokasyon.aktif_mi %} (pasif){% endif %}</option>
                 {% endfor %}
             </select>
         </label>
