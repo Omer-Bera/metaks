@@ -118,20 +118,37 @@ dokunulmadı.
 
 ## 2. Yönetim paneli (`/yonetim/`)
 
-Tek bir yönetim giriş noktası; içinde üç kart: **Kullanıcılar**, **Ürünler**,
-**Lokasyonlar**. Diğer sayfalarla aynı tasarım dili. Sadece yetkili kullanıcıya görünür.
+Tek bir yönetim giriş noktası; içinde üç kart: **Kullanıcılar** (✅ yapıldı),
+**Ürünler** ve **Lokasyonlar** (ikisi "Yakında" olarak basılıyor). Diğer sayfalarla
+aynı tasarım dili. Sadece yetkili kullanıcıya görünür.
 
-### 2a. Kullanıcı yönetimi
+### 2a. Kullanıcı yönetimi ✅ TAMAMLANDI (2026-07-31)
 
-Kullanıcılar Django'nun **SQLite `default`** bağlantısında (paylaşımlı METAKS
-Postgres'ine dokunulmuyor) — yani bu iş `metaks_DB` tarafında hiçbir şey beklemiyor.
+`/yonetim/` (kartlar) + `/yonetim/kullanicilar/` (liste, ekleme, parola, düzenleme).
+Kod `katalog/yonetim.py` ve `katalog/forms.py`'de; mimari gerekçeler CLAUDE.md'de.
 
-- Kullanıcı listesi, ekleme, parola değiştirme, pasife alma.
-- Django'nun hazır `/admin/`'i bugün de çalışıyor ve bu işi yapabilir; ama çerçeve
-  gürültüsü (log kayıtları, izin matrisi, İngilizce terimler) ekip için uygun değil.
-  `/admin/` kaçış yolu olarak açık kalsın, günlük kullanım sade ekrandan olsun.
-- **Bunun içinde halledilecek:** bugünkü tek hesabın (`omer`) parolası geliştirme
-  sırasında konuldu, değiştirilmeli.
+Yapılanlar: `is_staff` kapısı (`yonetici_gerekli`), yetkisiz kullanıcıya kendi 403
+şablonu, kullanıcı listesi + defterdeki hareket sayısı, hesap ekleme, yönetici
+yetkisi, parola belirleme, pasife alma. Ana ekrandaki yönetim kartı yalnızca
+yöneticiye görünüyor.
+
+Bilinçli kısıtlar: kullanıcı adı düzenlenemez ve hesap silinemez (defter
+append-only); e-posta zorunlu + tekil (kimliğin kendisi); yönetici kendi yetkisini
+kaldıramaz/hesabını kapatamaz.
+
+Doğrulama: gerçek tarayıcıda 30/30 kontrol — yetki kapısının üç durumu, zayıf parola
+reddi, mükerrer e-posta reddi, kilitlenme korumaları, parola değişince yeni parolayla
+giriş, pasife alınan hesabın giriş yapamaması, mobil, şablon sızıntısı, konsol. Test
+hesapları çalışmaya özel zaman damgalı ön ekle açılıp pk ile siliniyor; sonda mevcut
+hesapların ve paylaşımlı Postgres'in değişmediği ayrıca ölçülüyor.
+
+**Kalan:** bugünkü tek hesabın (`omer`) parolası geliştirme sırasında konuldu.
+Artık `/yonetim/kullanicilar/` üzerinden değiştirilebilir — kullanıcının kendi
+yapması gereken bir iş, kod tarafında yapılacak bir şey kalmadı.
+
+Yönetim paneline liste sayfalarının üst çubuğundan doğrudan bağlantı **yok**; yol
+ana ekrandaki kart. Sekme şeridine dördüncü bir öğe eklemek mobilde daraltıyordu,
+yönetim de günlük kullanımda sık gidilen bir yer değil.
 
 ### 2b. Rol/yetki ayrımı (bu adımda değil, ama buradan doğacak)
 

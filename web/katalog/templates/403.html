@@ -1,0 +1,43 @@
+{% extends "katalog/base.html" %}
+
+{% comment %}
+Yetkisiz erişim sayfası. Django bu şablonu bulduğunda DEBUG açık olsa bile teknik
+403 sayfası yerine bunu basıyor.
+
+Kasten giriş ekranına yönlendirilmiyor: kullanıcı zaten giriş yapmış durumda ve ona
+boş bir giriş formu göstermek "parolamı mı yanlış girdim?" izlenimi verirdi. Doğru
+mesaj "giriştesiniz ama bu bölüm size kapalı".
+{% endcomment %}
+
+{% block title %}METAKS · Yetkiniz yok{% endblock %}
+
+{% block content %}
+<main class="max-w-md mx-auto px-4 sm:px-6 py-20 text-center">
+    <span class="grid place-items-center w-12 h-12 mx-auto rounded-2xl bg-slate-900
+                 text-amber-400 font-bold tracking-tight">MK</span>
+
+    <h1 class="mt-6 text-xl font-semibold text-slate-900">Bu bölüme yetkiniz yok</h1>
+    <p class="mt-2 text-sm text-slate-500">
+        Yönetim paneli yalnızca yönetici hesaplarına açık.
+        {% if user.is_authenticated %}
+        <span class="block mt-1">
+            <span class="text-slate-700">{{ user.email|default:user.username }}</span>
+            olarak giriş yaptınız.
+        </span>
+        {% endif %}
+    </p>
+    <p class="mt-1 text-sm text-slate-500">
+        Erişmesi gerekiyorsa bir yöneticiden hesabınıza yetki vermesini isteyin.
+    </p>
+
+    <div class="mt-7 flex items-center justify-center gap-3">
+        <a href="{% url 'katalog:ana_ekran' %}"
+           class="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition
+                  hover:bg-slate-700 focus:outline-none focus:ring-4 focus:ring-slate-900/10">
+            Panele dön</a>
+        <a href="{% url 'katalog:urun_listesi' %}"
+           class="text-sm text-slate-500 underline underline-offset-4
+                  transition hover:text-slate-900">Ürün kataloğu</a>
+    </div>
+</main>
+{% endblock %}

@@ -178,6 +178,47 @@ Yani hiçbir kimlik bilgisi ve parola hash'i repoya girmiyor.
 | Stok Durumu | `/stok/` | Aynı galeri + kart başına stok durumu + "sadece stokta olanlar" anahtarı + detayda lokasyon dökümü |
 | Stok işlemi | `/stok/islem/<stok_kodu>/` | Hareket kaydı (giriş zorunlu) |
 | Hareket Geçmişi | `/stok/hareketler/` | `stok_hareketleri` dökümü, filtreli (salt-okunur) |
+| Yönetim | `/yonetim/` | Yönetici kartları. `is_staff` şart |
+| Kullanıcılar | `/yonetim/kullanicilar/` | Hesap listesi, ekleme, parola, pasife alma |
+
+### Yönetim paneli ve yetki
+
+Kod `katalog/yonetim.py` + `katalog/forms.py`'de, `views.py`'de **değil**: buradaki
+her şey SQLite `default`'taki Django auth tablolarıyla çalışıyor, `views.py` ise
+baştan sona `metaks` Postgres'ini okuyor. İki veri kaynağı, iki sorumluluk.
+
+Kapı `yonetici_gerekli` dekoratörü (`is_staff`). `login_required`'dan farkı, giriş
+yapmış ama yetkisiz kullanıcıyı giriş ekranına **geri göndermemesi** — zaten giriş
+yapmış birine boş bir giriş formu göstermek "parolamı mı yanlış girdim?" izlenimi
+verir. Doğru cevap 403 ve kendi şablonu var (`templates/403.html`; Django bu şablonu
+bulduğunda DEBUG açıkken bile teknik sayfa yerine onu basıyor).
+
+`is_staff` bilinçli olarak yeni bir rol tablosuna tercih edildi: Django'da hazır,
+şema değişikliği istemiyor. Gerçek rol ayrımı (fason kullanıcı, salt-okunur personel)
+buradan büyütülecek — `YAPILACAKLAR.md` madde 2b.
+
+Formlar Django'nun `UserCreationForm` / `AdminPasswordChangeForm`'undan türüyor;
+parola gücü doğrulaması, karma ve Türkçe hata metinleri oradan geliyor. Elle yazmak
+Django'nun kurallarının ikinci kopyası olurdu — `stok_servisi.py`'nin
+`stok_hareketi_kaydet()` karşısındaki duruşunun aynısı.
+
+Üç kural bu projeye özel:
+
+- **Kullanıcı adı düzenlenemez, hesap silinemez** (yalnızca pasife alma).
+  `stok_hareketleri.yapan_kullanici` `email or username` saklıyor ve defter
+  append-only; adı değiştirmek ya da hesabı silmek geçmiş kayıtları sahipsiz bırakır.
+- **E-posta zorunlu ve tekil.** Veritabanında `auth_user.email` üzerinde tekillik
+  kısıtı yok; kural formda çünkü e-posta bu sistemde kimliğin kendisi — iki hesap
+  aynı e-postayı taşırsa "bunu kim yaptı" sorusu kalıcı olarak belirsizleşir.
+- **Yönetici kendi yetkisini kaldıramaz, kendi hesabını kapatamaz.** Aksi hâlde tek
+  çıkış yolu komut satırından `createsuperuser` olurdu. Ayrıca bir "sistemde son
+  aktif yönetici kalmasın" kontrolü bilerek **yok**: bu formda ulaşılamaz (düzenleme
+  ekranına girmek için aktif yönetici olmak şart, dolayısıyla başkası düzenlenirken
+  her zaman en az bir aktif yönetici vardır), ölü kod olurdu.
+
+Kullanıcı listesindeki "N hareket" sayısı iki veritabanı arasında JOIN gerektirdiği
+için tek bir GROUP BY sorgusuyla toplanıp Python'da eşleştiriliyor (kullanıcı başına
+sorgu değil). Hesabı kapatmadan önce "bu kimdi, bir şey yapmış mı" sorusunun cevabı.
 
 ### Ana ekran
 

@@ -1,7 +1,7 @@
 from django.contrib.auth import views as auth_views
 from django.urls import path
 
-from . import views
+from . import views, yonetim
 
 app_name = 'katalog'
 
@@ -32,4 +32,19 @@ urlpatterns = [
     ),
     path('misafir/', views.misafir_devam, name='misafir'),
     path('cikis/', auth_views.LogoutView.as_view(), name='cikis'),
+
+    # Yönetim paneli — hepsi is_staff kapısının arkasında (bkz. yonetim.py).
+    path('yonetim/', yonetim.panel, name='yonetim'),
+    path('yonetim/kullanicilar/', yonetim.kullanicilar, name='yonetim_kullanicilar'),
+    path('yonetim/kullanicilar/yeni/', yonetim.kullanici_ekle, name='yonetim_kullanici_ekle'),
+    path(
+        'yonetim/kullanicilar/<int:pk>/',
+        yonetim.kullanici_duzenle,
+        name='yonetim_kullanici_duzenle',
+    ),
+    path(
+        'yonetim/kullanicilar/<int:pk>/parola/',
+        yonetim.kullanici_parola,
+        name='yonetim_kullanici_parola',
+    ),
 ]

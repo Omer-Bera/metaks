@@ -1,0 +1,84 @@
+{% extends "katalog/base.html" %}
+
+{% block title %}METAKS · Kullanıcılar{% endblock %}
+
+{% block content %}
+{% with yonetim_alt_baslik="Kullanıcılar" %}
+    {% include "katalog/_yonetim_baslik.html" %}
+{% endwith %}
+
+<main class="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div>
+            <h1 class="text-xl font-semibold text-slate-900">Kullanıcılar</h1>
+            <p class="mt-0.5 text-sm text-slate-500">
+                {{ aktif_sayisi }} aktif / {{ kullanicilar|length }} hesap
+            </p>
+        </div>
+        <a href="{% url 'katalog:yonetim_kullanici_ekle' %}"
+           class="rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition
+                  hover:bg-slate-700 focus:outline-none focus:ring-4 focus:ring-slate-900/10">
+            + Yeni kullanıcı</a>
+    </div>
+
+    <div class="rounded-xl border border-slate-200 bg-white overflow-hidden">
+        <ul class="divide-y divide-slate-100">
+            {% for kayit in kullanicilar %}
+            <li class="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
+                <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="font-medium text-slate-900 truncate">
+                            {{ kayit.get_username }}</span>
+
+                        {% if kayit.is_staff %}
+                        <span class="rounded px-1.5 py-0.5 text-xs font-medium
+                                     bg-slate-900 text-white">Yönetici</span>
+                        {% endif %}
+
+                        {% comment %}
+                        Pasif hesap yalnızca soluk renkle değil, açık etiketle
+                        işaretleniyor — "pasif" bilgisi renk körlüğünde de okunmalı.
+                        {% endcomment %}
+                        {% if not kayit.is_active %}
+                        <span class="rounded px-1.5 py-0.5 text-xs font-medium
+                                     bg-slate-200 text-slate-600">Pasif</span>
+                        {% endif %}
+
+                        {% if kayit.pk == user.pk %}
+                        <span class="text-xs text-slate-400">(siz)</span>
+                        {% endif %}
+                    </div>
+                    <p class="mt-0.5 text-sm text-slate-500 truncate">
+                        {{ kayit.email|default:"— e-posta yok —" }}</p>
+                </div>
+
+                {% comment %}
+                Defterdeki satır sayısı: hesabı kapatmadan önce "bu kim, bir şey yapmış
+                mı" sorusunun cevabı. 0 ise hesap hiç kullanılmamış demektir.
+                {% endcomment %}
+                <span class="text-sm text-slate-500 shrink-0 tabular-nums w-24 text-right">
+                    {% if kayit.hareket_sayisi %}{{ kayit.hareket_sayisi }} hareket
+                    {% else %}<span class="text-slate-300">hareket yok</span>{% endif %}
+                </span>
+
+                <div class="flex items-center gap-3 shrink-0">
+                    <a href="{% url 'katalog:yonetim_kullanici_parola' kayit.pk %}"
+                       class="text-sm text-slate-500 underline underline-offset-4
+                              transition hover:text-slate-900">Parola</a>
+                    <a href="{% url 'katalog:yonetim_kullanici_duzenle' kayit.pk %}"
+                       class="text-sm text-slate-500 underline underline-offset-4
+                              transition hover:text-slate-900">Düzenle</a>
+                </div>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <p class="mt-4 text-sm text-slate-500 max-w-prose">
+        Hesap silme yok, yalnızca pasife alma. Pasif hesap giriş yapamaz ama
+        <a href="{% url 'katalog:hareket_gecmisi' %}"
+           class="underline underline-offset-4 transition hover:text-slate-900">hareket
+        geçmişindeki</a> kayıtları yerinde kalır — defter append-only.
+    </p>
+</main>
+{% endblock %}
