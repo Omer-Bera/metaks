@@ -4,7 +4,8 @@
 
 {% block content %}
 <header class="sticky top-0 z-40 bg-white/85 backdrop-blur-md border-b border-slate-200">
-    <div class="max-w-[1600px] mx-auto px-4 sm:px-6 py-3 flex items-center gap-4">
+    {# flex-wrap emniyet kemeri: dar ekranda taşmak yerine alt satıra insin. #}
+    <div class="max-w-[1600px] mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center gap-4">
         <a href="{% url 'katalog:ana_ekran' %}" class="flex items-center gap-2.5 shrink-0"
            title="Ana ekran">
             <span class="grid place-items-center w-9 h-9 rounded-xl bg-slate-900
@@ -23,7 +24,11 @@
                       shadow-sm">Hareketler</a>
         </nav>
 
-        <span class="flex-1"></span>
+        {% comment %}
+        Sağa yaslama sadece sm+ ekranda: 390px'de bu boşluk "Giriş yap"ı taşırıyordu
+        ("Çıkış"tan ~22px geniş). Mobilde bağlantı sekmelerin hemen yanında durur.
+        {% endcomment %}
+        <span class="hidden sm:block flex-1"></span>
 
         {% if user.is_authenticated %}
         <form method="post" action="{% url 'katalog:cikis' %}" class="shrink-0">
@@ -31,6 +36,10 @@
             <button type="submit" title="{{ user.email|default:user.username }}"
                     class="text-sm text-slate-500 transition hover:text-slate-900">Çıkış</button>
         </form>
+        {% else %}
+        {# Misafir olarak gezenler için girişin kalıcı yolu. #}
+        <a href="{% url 'katalog:giris' %}"
+           class="shrink-0 text-sm text-slate-500 transition hover:text-slate-900">Giriş yap</a>
         {% endif %}
     </div>
 </header>

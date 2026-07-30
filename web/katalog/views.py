@@ -5,7 +5,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db.models import Count, Q, Subquery
 from django.http import QueryDict
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
 from . import stok_servisi
@@ -38,13 +38,35 @@ SIRALAMALAR = {
 VARSAYILAN_SIRALAMA = 'kod_artan'
 
 
+# Kullanıcının "giriş yapmadan devam et" dediğini session'da tutan anahtar.
+# Kapının her açılışta değil, tarayıcı başına bir kez görünmesini sağlıyor: katalog
+# ön büroda müşteri karşısında hızla açılan bir ekran, her seferinde araya bir sayfa
+# koymak günde onlarca gereksiz tıklama olurdu. Çıkışta session flush edildiği için
+# (Django'nun logout()'u) bu bayrak da temizlenir — "Çıkış" güvenilir biçimde giriş
+# ekranına döner.
+MISAFIR_ANAHTARI = 'misafir'
+
+
+def misafir_devam(request):
+    """"Giriş yapmadan devam et" — seçimi işaretleyip panele geçer."""
+    request.session[MISAFIR_ANAHTARI] = True
+    return redirect('katalog:ana_ekran')
+
+
 def ana_ekran(request):
-    """Giriş noktası: modüllere yönlendirme + sistemin özet sayıları + giriş kutusu.
+    """Panel: modüllere yönlendirme + sistemin özet sayıları + son hareketler.
+
+    Aynı zamanda kök URL'in yönlendiricisi: giriş yapılmamış ve daha önce misafir
+    olarak devam edilmemişse giriş ekranına gönderir. Giriş formu burada değil
+    /giris/'te duruyor — iki kopya form olmasın diye yönlendirme tercih edildi.
 
     Sayılar bilinçli olarak grafiksiz: hepsi tek anlık değer, yani doğru biçim stat
     tile / meter — tek çubuklu grafik değil. Uydurma metrik yok, hepsi doğrudan
     v_aktif_urunler / v_toplam_stok / lokasyonlar'dan sayılıyor.
     """
+    if not request.user.is_authenticated and not request.session.get(MISAFIR_ANAHTARI):
+        return redirect('katalog:giris')
+
     urunler = AktifUrun.objects.using('metaks')
     aktif_urun = urunler.count()
 
@@ -445,7 +467,9 @@ def hareket_gecmisi(request):
     }
     if sayfa.has_next():
         sonraki = parametreler.copy()
-        sonraki['sayfa'] = sayfa.next_page_number()
+        # str(): QueryDict değerleri metindir. urlencode() zaten str'e çevirdiği için
+        # int vermek çalışıyordu, ama sözleşmeye uymuyordu.
+        sonraki['sayfa'] = str(sayfa.next_page_number())
         context['sonraki_url'] = '?' + sonraki.urlencode()
 
     if request.headers.get('HX-Request'):

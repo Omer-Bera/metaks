@@ -19,11 +19,17 @@ urlpatterns = [
     path('stok/hareketler/', views.hareket_gecmisi, name='hareket_gecmisi'),
 
     # Django'nun hazır giriş/çıkış view'ları; sadece şablonları bu app'ten.
-    # Ana ekrandaki giriş kutusu da buraya POST ediyor (hatalı denemede bu sayfa açılır).
+    # Kök URL giriş yapılmamışken buraya yönlendiriyor (bkz. views.ana_ekran).
+    # redirect_authenticated_user: giriş yapmış biri /giris/'e gelirse panele döner,
+    # boş bir form görmez.
     path(
         'giris/',
-        auth_views.LoginView.as_view(template_name='katalog/giris.html'),
+        auth_views.LoginView.as_view(
+            template_name='katalog/giris.html',
+            redirect_authenticated_user=True,
+        ),
         name='giris',
     ),
+    path('misafir/', views.misafir_devam, name='misafir'),
     path('cikis/', auth_views.LogoutView.as_view(), name='cikis'),
 ]

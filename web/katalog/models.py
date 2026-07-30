@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from django.conf import settings
 from django.db import models
 from django.db.models import F, Func, Value
@@ -32,6 +34,15 @@ class AktifUrun(models.Model):
     kaplama_adi = models.CharField(max_length=255, null=True)
     ana_gorsel_dosya_adi = models.CharField(max_length=255)
     arama_metni = models.TextField()
+
+    # View'da olmayan, çalışma anında iliştirilen alanlar (views._stok_bilgisini_ekle).
+    # Bunlar SADECE tip bildirimi: gövdede değer atanmadığı için Django'nun model
+    # metaclass'ı bunları görmez (yalnızca Field örneklerini toplar), dolayısıyla ne
+    # kolon olurlar ne migration üretirler. Amaç iki yönlü: şablonun beklediği
+    # sözleşmeyi burada belgelemek ve tip denetçisinin "bilinmeyen öznitelik"
+    # uyarısını kaynağında kesmek.
+    toplam_stok: int | None
+    stok_durumu: str  # 'var' | 'sifir' | 'sayilmadi'
 
     class Meta:
         managed = False
@@ -121,6 +132,12 @@ class StokHareketi(models.Model):
     islem_tarihi = models.DateTimeField()
     yapan_kullanici = models.CharField(max_length=255)
 
+    # Çalışma anında iliştirilen alanlar (views.ana_ekran, views.hareket_gecmisi).
+    # Sadece tip bildirimi, kolon değil — gerekçe için bkz. AktifUrun.
+    islem_etiketi: str       # ISLEM_TIPI_ETIKETLERI'nden okunur ("SAYIM_DEVRI" -> "Sayım")
+    urun: AktifUrun | None   # listedeki hareketin ürünü; katalogda yoksa None
+    tarih: datetime          # yerel_tarih() annotate'i (aware, Europe/Istanbul)
+
     class Meta:
         managed = False
         db_table = 'stok_hareketleri'
@@ -156,6 +173,10 @@ class LokasyonStok(models.Model):
     lokasyon_adi = models.CharField(max_length=255)
     lokasyon_tipi = models.CharField(max_length=50)
     mevcut_miktar = models.IntegerField()
+
+    # Çalışma anında iliştiriliyor (views._lokasyon_stok): lokasyon artık aktif mi.
+    # Sadece tip bildirimi, kolon değil — gerekçe için bkz. AktifUrun.
+    pasif: bool
 
     class Meta:
         managed = False

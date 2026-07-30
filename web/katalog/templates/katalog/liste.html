@@ -133,6 +133,10 @@ kontrol onları hx-include ile canlı DOM'dan okuyor, dolayısıyla hiçbiri esk
             <button type="submit" title="{{ user.email|default:user.username }}"
                     class="text-sm text-slate-500 transition hover:text-slate-900">Çıkış</button>
         </form>
+        {% else %}
+        {# Misafir olarak gezenler için girişin kalıcı yolu. #}
+        <a href="{% url 'katalog:giris' %}"
+           class="shrink-0 text-sm text-slate-500 transition hover:text-slate-900">Giriş yap</a>
         {% endif %}
     </div>
 </header>

@@ -131,7 +131,8 @@ Yani hiçbir kimlik bilgisi ve parola hash'i repoya girmiyor.
 
 | Sayfa | URL | Ne yapar |
 | --- | --- | --- |
-| Ana ekran | `/` | Modüllere yönlendirme, özet sayılar, son hareketler, giriş kutusu |
+| Giriş | `/giris/` | Giriş formu + "Giriş yapmadan devam et". Girişsiz `/`'in indiği yer |
+| Panel | `/` | Modüllere yönlendirme, özet sayılar, son hareketler |
 | Ürün Kataloğu | `/katalog/` | Görsel galeri. **Stoktan hiç söz etmez.** |
 | Stok Durumu | `/stok/` | Aynı galeri + kart başına stok durumu + "sadece stokta olanlar" anahtarı + detayda lokasyon dökümü |
 | Stok işlemi | `/stok/islem/<stok_kodu>/` | Hareket kaydı (giriş zorunlu) |
@@ -271,6 +272,19 @@ Kullanıcılar Django'nun kendi auth tablolarında, yani **SQLite `default`** ba
 katalog ve stok listeleri girişsiz açık kalıyor (iç ağ, salt-okunur, ön büroda hızla
 açılması gereken ekranlar).
 
+**Kök URL bir yönlendirici** (`views.ana_ekran`): giriş yapılmışsa ya da session'da
+`MISAFIR_ANAHTARI` varsa panel, aksi hâlde `/giris/`. Giriş ekranındaki "Giriş yapmadan
+devam et" (`/misafir/`) bu bayrağı işaretliyor, dolayısıyla **kapı tarayıcı başına bir
+kez** çıkıyor — katalog ön büroda müşteri karşısında açılan bir ekran, her seferinde
+araya bir sayfa koymak gereksiz sürtünme olurdu. Bayrağı ayrıca temizlemeye gerek yok:
+Django'nun `logout()`'u session'ı flush ediyor, yani "Çıkış" güvenilir biçimde giriş
+ekranına döndürüyor.
+
+Giriş formu **tek yerde** (`giris.html`); kök URL onu kopyalamak yerine yönlendiriyor.
+Girişin kalıcı görünür yolu ise üst çubuktaki "Giriş yap" bağlantısı (giriş yapmamış
+kullanıcıya, tüm sayfalarda) — giriş kutusu eskiden ana ekranın en altında, modül
+kartlarının da altında kalıyordu ve sayfayı kaydırmadan görünmüyordu.
+
 Yazma tarafında giriş bir tercih değil **zorunluluk**: `stok_hareketleri.yapan_kullanici`
 NOT NULL ve Postgres'e tek bir paylaşılan `depo_admin` kullanıcısıyla bağlanıldığı için
 `current_user`'a güvenilemez — değer uygulamadan açıkça geçiriliyor
@@ -385,27 +399,38 @@ kendiliğinden de yenilenmiyor — açık duran sekme, kullanıcı yenileyene/ar
 kadar eski veriyi gösterir. Otomatik tazeleme gerekirse HTMX'te tek satır
 (`hx-trigger="every 30s"`); katalogda gereksiz, canlı stok ekranında mantıklı olur.
 
-Henüz yapılmadı:
+Henüz yapılmadı — sıradaki işlerin listesi ve gerekçeleri **`YAPILACAKLAR.md`**'de
+(giriş akışı, CSV dışa aktarma, yönetim paneli, ürün ekleme, numune takibi). Burada
+sadece o listeyi okurken bilinmesi gereken kalıcı kısıtlar:
 
-- **Otomatik test yok** (`katalog/tests.py` boş). Doğrulama bu oturumda repo dışında,
-  tek kullanımlık bir tarayıcı script'iyle yapıldı. Kalıcı test yazmak düşünmeyi
-  gerektiriyor: Django test runner'ı `metaks` bağlantısı için test veritabanı
-  oluşturmaya çalışır — paylaşımlı `depo_sistemi`'ne karşı istenmeyen bir davranış.
-  Muhtemel yol: `SimpleTestCase`/`databases = {'default'}` + `v_aktif_urunler`'ı
-  taklit eden bir fixture katmanı, ya da salt-okunur bir test şeması.
-- **Kullanıcı yönetimi arayüzü yok.** Şu an tek kullanıcı var (`omer`), Django
-  shell'inden oluşturuldu. Ekip için kullanıcı eklemek gerekirse `/admin/` kullanılabilir
-  ya da basit bir yönetim ekranı gerekir. İlk parola geliştirme sırasında konuldu,
-  değiştirilmeli.
+- **Otomatik test yok** (`katalog/tests.py` boş). Doğrulama tek kullanımlık tarayıcı
+  script'leriyle yapıldı. Kalıcı test yazmak düşünmeyi gerektiriyor: Django test
+  runner'ı `metaks` bağlantısı için test veritabanı oluşturmaya çalışır — paylaşımlı
+  `depo_sistemi`'ne karşı istenmeyen bir davranış. Muhtemel yol:
+  `SimpleTestCase`/`databases = {'default'}` + `v_aktif_urunler`'ı taklit eden bir
+  fixture katmanı, ya da salt-okunur bir test şeması.
+- **Ürün ekleme, stok işleminden belirgin şekilde daha zor.** `urunler`'e elle INSERT
+  edilmez; tek kapı `metaks_DB` migration 005'in eklediği **`urun_kaydet()`**
+  (`stok_hareketi_kaydet()` ile aynı desen). Sebep: `katalog_durumu` AKTİF'e kendi
+  kendine geçmiyor (bu kolonu yöneten trigger yok, AKTİF ataması migration 001'deki
+  tek seferlik backfill'di) ve `chk_urunler_katalog_durumu_aktif_mi_tutarli`,
+  `katalog_durumu` ile `aktif_mi`'nin birlikte hareket etmesini şart koşuyor.
+  Ekleme bu yüzden bölünemez: görsel dosyası → `urun_gorselleri` (`ana_gorsel_mi`)
+  → `urunler` AKTİF, hepsi tek transaction'da.
+  **Düzeltme (2026-07-30):** daha önce burada "yeni satır PASİF doğar ve öyle kalır"
+  yazıyordu — yanlıştı. Varsayılanlara güvenen bir INSERT *görünmez ürün* bırakmıyor,
+  doğrudan **patlıyordu**: `aktif_mi` varsayılanı TRUE, `katalog_durumu` varsayılanı
+  PASİF, ikisi de yukarıdaki CHECK ile çelişiyordu. Migration 005 `aktif_mi`
+  varsayılanını FALSE yaparak bu çelişkiyi giderdi.
+  Görsel dizininin sahibi `metaks_DB` (nginx `gorsel-sunucu`, `:ro` bağlı — yazan
+  taraf host); bu repo bugün hiç dosya yazmıyor. Sıralama **önce dosya, sonra DB**:
+  fonksiyon hata verirse dosya silinir; ters sırada var olmayan görseli gösteren
+  kırık ürün kalırdı.
 - **Test hareketleri ledger'da duruyor**: 2026-07-30'daki doğrulama kayıtları
   (`1001013` ve `1001020` üzerinde, açıklamalarından ayırt edilebilir) silinmedi —
   defter append-only. Kullanıcıyla kararlaştırılan yol: **ürün tamamlandığında
   `metaks_DB` tarafında numaralı bir migration ile temizlenecek** (şema otoritesi
   orası). O zamana kadar hareket geçmişinde görünmeye devam edecekler.
-- **Hareket geçmişinde dışa aktarma (CSV/Excel) yok**: sayım denetimi için istenebilir.
-- **Ürün ekleme, stok işleminden belirgin şekilde daha zor**: satırın yanında görsel
-  dosyası da gerekiyor (nginx'in servis ettiği dizine yükleme) ve bir ürün ancak
-  geçerli ana görseli varsa AKTİF sayılıyor. Sıralamada stok giriş/çıkıştan sonra.
 - **Çoklu görsel galerisi yok**: `v_aktif_urunler` sadece `ana_gorsel_dosya_adi`
   veriyor; 1.780 ürünün 19'unda ikinci bir aktif görsel var (`urun_gorselleri`).
   Kazanç 19 üründe olduğu için ikinci bir unmanaged model eklenmedi.
