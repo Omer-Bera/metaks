@@ -54,17 +54,24 @@ Yeri: madde **2c** (yönetim panelinin üçüncü kartı) — orada anlatıldı.
 
 ### Kapatma sırası (her adımı geri alınabilir)
 
-1. **Django lokasyon yönetimi** (madde 2c) + üç lokasyon sorgusunun
-   `v_lokasyonlar_detay` / `yaprak_mi`'ye taşınması (aşağıdaki tuzak bölümü).
-2. **Önce kontrol:** sayıma ait bir giriş hâlâ Appsmith'ten yapılıyor mu? (Sayım verisi
-   Excel'de tutuluyor, bu yüzden büyük ihtimalle hayır — ama kapatmadan önce sorulacak
-   tek soru bu.)
-3. `docker compose stop appsmith` — **silme, durdur.** Geri dönüş `start` ile anında.
-   Kazanç ölçüldü: **1,31 GiB RAM**, yani makinedeki 3,9 GiB'ın üçte biri (`depo-postgres`
-   27 MiB, `depo-gorsel-sunucu` 8 MiB — Appsmith tek başına ikisinin ~40 katı).
-4. Bir süre sorunsuz geçerse: `metaks_DB/docker-compose.yml`'den `appsmith` servisi ve
-   `appsmith_data` volume'ü kaldırılır, `depo-appsmith-arayuz` reposu GitHub'da
-   **arşivlenir** (silinmez — sorgu geçmişi ve alınan kararların kaydı orada).
+1. ✅ **Django lokasyon yönetimi** (madde 2c) + üç lokasyon sorgusunun
+   `v_lokasyonlar_detay` / `yaprak_mi`'ye taşınması — tamamlandı (2026-07-31).
+2. ✅ **Önce kontrol:** sayıma ait bir giriş hâlâ Appsmith'ten yapılıyor mu?
+   Kullanıcı doğruladı (2026-07-31): **hayır, kimse kullanmıyor.**
+3. ✅ `docker compose stop appsmith` — **silme, durdur.** Uygulandı (2026-07-31,
+   `~/metaks_DB`'den). Geri dönüş `docker compose start appsmith` ile anında.
+   Kazanç ölçüldü: **1,31 GiB RAM**, yani makinedeki 3,9 GiB'ın üçte biri
+   (`depo-postgres` 27 MiB, `depo-gorsel-sunucu` 8 MiB — Appsmith tek başına
+   ikisinin ~40 katı). Durdurma sonrası doğrulandı: Django'nun beş sayfası da
+   (`/`, `/katalog/`, `/stok/`, `/stok/hareketler/`, `/giris/`) ve görsel sunucu
+   (8083) sorunsuz; 8082 artık yanıt vermiyor (beklenen). Üç tarayıcı test takımı
+   (80 kontrol) Appsmith kapalıyken de yeşil — Django tarafının ona hiç bağımlı
+   olmadığı doğrulandı.
+4. **Bekleniyor** — bir süre sorunsuz geçerse: `metaks_DB/docker-compose.yml`'den
+   `appsmith` servisi ve `appsmith_data` volume'ü kaldırılır, `depo-appsmith-arayuz`
+   reposu GitHub'da **arşivlenir** (silinmez — sorgu geçmişi ve alınan kararların
+   kaydı orada). Bu adım henüz atılmadı: 3. adım her an geri alınabilirken bu adım
+   (compose dosyasından servis kaldırma) daha kalıcı, biraz zaman bırakmak makul.
 
 ### Ne kaybetmiyoruz
 
@@ -191,8 +198,8 @@ sunmadığı için test satırları UI üzerinden eklenip **doğrudan SQL ile** 
 (rafın önce silinmesi gerekiyor, `ON DELETE RESTRICT`); sonda lokasyon sayısının
 başlangıca döndüğü ve `stok_hareketleri`'nin hiç değişmediği ayrıca ölçüldü.
 
-Appsmith'i durdurmanın tek kalan ön koşulu: sayıma ait bir giriş hâlâ oradan mı
-yapılıyor sorusu (bkz. madde 0, "Kapatma sırası").
+Appsmith 2026-07-31'de durduruldu (bkz. madde 0, "Kapatma sırası", 3. adım) —
+kullanıcı kimsenin kullanmadığını doğruladıktan sonra `docker compose stop`.
 
 ---
 

@@ -16,7 +16,7 @@ parçasıdır (üçü de `~/` altında ayrı, kardeş dizinler, birbirine karı�
 - **`depo-web-arayuz`** (bu repo) — geleceğin arayüzü. Strangler-fig yaklaşımıyla
   başladı, artık Appsmith'in kapsamını geçti.
 
-### Appsmith emekliye ayrılıyor (2026-07-31)
+### Appsmith emekliye ayrıldı (karar 2026-07-31, durduruldu 2026-07-31)
 
 Kullanıcı kararı: Appsmith atıl durumda, Django arayüzü onun yapması gereken işlerin
 ötesine geçti, görsel kalite ve kullanılabilirlikte de gerisinde. Bundan sonra **hem
@@ -24,14 +24,21 @@ Kullanıcı kararı: Appsmith atıl durumda, Django arayüzü onun yapması gere
 anlamını değiştirirken ya da migration sırası kurarken Appsmith'in sorgularını korumak
 gibi bir kısıt yok.
 
-Tek teknik ön koşul: **lokasyon ekleme/pasife alma bugün yalnızca Appsmith'te var**,
-Django'da hiç yok. Bu ekran yazılmadan konteyner durdurulmamalı. Kapsam
-karşılaştırması, kapatma sırası ve düşen kısıtların tam listesi
-**`YAPILACAKLAR.md` madde 0**'da; burada tekrarlanmıyor.
+**Konteyner durduruldu** (`~/metaks_DB && docker compose stop appsmith`), silinmedi —
+geri dönüş `docker compose start appsmith` ile anında. Ön koşul olan Django lokasyon
+ekranı (madde 2c) önce tamamlandı, sonra kullanıcı sayımla ilgili hiçbir girişin artık
+Appsmith'ten yapılmadığını doğruladı. Durdurma sonrası ölçüldü: Django'nun beş sayfası
+ve görsel sunucu (8083) sorunsuz, üç tarayıcı test takımı (80 kontrol) yeşil — Django
+tarafının Appsmith'e hiç bağımlı olmadığı doğrulandı. `depo-postgres` ve
+`depo-gorsel-sunucu` konteynerlerine dokunulmadı, ikisi de METAKS'ın (ve Django'nun)
+gerçek veri/görsel kaynağı olarak çalışmaya devam ediyor.
 
-Kapatma sırası özeti: önce Django lokasyon ekranı → `docker compose stop appsmith`
-(silme değil, durdurma) → sorunsuz geçerse compose'dan ve GitHub'dan arşivleme.
-Appsmith stateless olduğu için veri kaybı riski yok; tüm iş verisi Postgres'te.
+Kapsam karşılaştırması ve düşen kısıtların tam listesi **`YAPILACAKLAR.md` madde
+0**'da; burada tekrarlanmıyor. **Kalan adım** (henüz atılmadı, bilerek bir süre
+bekleniyor): `metaks_DB/docker-compose.yml`'den `appsmith` servisini ve
+`appsmith_data` volume'ünü kaldırmak, `depo-appsmith-arayuz` reposunu GitHub'da
+arşivlemek (silmeden). Appsmith stateless olduğu için veri kaybı riski yok; tüm iş
+verisi Postgres'te.
 
 ### Neden Django + HTMX, neden Appsmith'i hemen bırakmıyoruz
 
