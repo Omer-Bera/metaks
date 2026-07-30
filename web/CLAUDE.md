@@ -10,12 +10,28 @@ parçasıdır (üçü de `~/` altında ayrı, kardeş dizinler, birbirine karı�
 
 - **`metaks_DB`** — veri temizleme/normalizasyon pipeline'ı + PostgreSQL şeması
   (`sql/01_schema.sql`, `sql/migrations/`). Gerçek veri kaynağı ve şema otoritesi burada.
-- **`depo-appsmith-arayuz`** — Appsmith üzerinde kurulu, hâlâ **aktif kullanılan** düşük-kod
-  arayüz (StokIslemi, UrunlerKatalog, LokasyonYonetimi, StokOzet, Dashboard sayfaları).
-  Devam eden depo sayımı bunun üzerinden yürütülüyor — bu repo onu **değiştirmiyor**, ona
-  paralel başlıyor.
-- **`depo-web-arayuz`** (bu repo) — geleceğin arayüzü. Strangler-fig yaklaşımıyla,
-  modül modül Appsmith'in yerini alması planlanıyor.
+- **`depo-appsmith-arayuz`** — Appsmith üzerinde kurulu düşük-kod arayüz (StokIslemi,
+  UrunlerKatalog, LokasyonYonetimi, StokOzet, YonetimAnaSayfasi sayfaları).
+  **2026-07-31 itibarıyla emekliye ayrılıyor** — aşağıya bakın.
+- **`depo-web-arayuz`** (bu repo) — geleceğin arayüzü. Strangler-fig yaklaşımıyla
+  başladı, artık Appsmith'in kapsamını geçti.
+
+### Appsmith emekliye ayrılıyor (2026-07-31)
+
+Kullanıcı kararı: Appsmith atıl durumda, Django arayüzü onun yapması gereken işlerin
+ötesine geçti, görsel kalite ve kullanılabilirlikte de gerisinde. Bundan sonra **hem
+şema hem arayüz geliştirmeleri Appsmith düşünülmeden** yürüyor — yani yeni bir view'ın
+anlamını değiştirirken ya da migration sırası kurarken Appsmith'in sorgularını korumak
+gibi bir kısıt yok.
+
+Tek teknik ön koşul: **lokasyon ekleme/pasife alma bugün yalnızca Appsmith'te var**,
+Django'da hiç yok. Bu ekran yazılmadan konteyner durdurulmamalı. Kapsam
+karşılaştırması, kapatma sırası ve düşen kısıtların tam listesi
+**`YAPILACAKLAR.md` madde 0**'da; burada tekrarlanmıyor.
+
+Kapatma sırası özeti: önce Django lokasyon ekranı → `docker compose stop appsmith`
+(silme değil, durdurma) → sorunsuz geçerse compose'dan ve GitHub'dan arşivleme.
+Appsmith stateless olduğu için veri kaybı riski yok; tüm iş verisi Postgres'te.
 
 ### Neden Django + HTMX, neden Appsmith'i hemen bırakmıyoruz
 
@@ -104,8 +120,33 @@ okunuyor — burada görsel dosyası yönetimi/kopyası yok, tek kaynak orası
 ```bash
 cd ~/depo-web-arayuz
 source venv/bin/activate        # bu repoya özel venv, metaks_DB/venv ile karıştırılmamalı
-python manage.py runserver
+python manage.py runserver 0.0.0.0:8000
 ```
+
+### Ağ erişimi (Tailscale) — adres argümanı şart
+
+`runserver`'ı **argümansız** çalıştırmak `127.0.0.1:8000`'e bağlar, yani sadece Mac'in
+kendisinden erişilir; Tailscale'deki telefon/masaüstünden "site açılmıyor" demektir.
+Docker servisleri (`8082`, `8083`, `5433`) tüm arayüzlere bağlandığı için Appsmith
+uzaktan açılıyor da Django açılmıyordu — fark tam olarak bu.
+
+Uzaktan erişim için üç ayarın **üçü birden** gerekiyor:
+
+1. **Bağlanma adresi** — `runserver 0.0.0.0:8000` (yukarıda). Yalnız tailnet isteniyorsa
+   `runserver 100.64.0.6:8000`; o zaman yerel ağ göremez ama `127.0.0.1` de çalışmaz.
+2. **`DJANGO_ALLOWED_HOSTS`** — Tailscale adresi eklenmezse Django `DisallowedHost`
+   verip 400 döner. `.env`'de: `localhost,127.0.0.1,100.64.0.6,omer-macbook,.ts.net`.
+3. **`GORSEL_SUNUCU_BASE_URL`** — en kolay atlanan. Bu URL'yi **tarayıcı** çözüyor,
+   Django değil; `localhost:8083` yazarsa telefondan açıldığında telefonun kendisine
+   gider ve **tüm ürün görselleri kırılır**. `http://100.64.0.6:8083/urun-gorselleri/`
+   hem Mac'ten hem uzaktan çalışır.
+
+`CSRF_TRUSTED_ORIGINS` **gerekmiyor**: düz HTTP'de aynı-kaynak istekte Django,
+`Origin` başlığını `request.get_host()` ile karşılaştırıyor ve eşleşiyor. Tailscale
+adresinden giriş POST'u doğrulandı (302 + oturum açıldı). HTTPS'e ya da bir ters
+proxy arkasına geçildiğinde bu yeniden değerlendirilmeli.
+
+macOS uygulama güvenlik duvarı açık ama tailnet erişimini engellemiyor (ölçüldü).
 
 `metaks_DB`'deki Postgres/nginx servislerinin ayakta olması gerekir
 (`cd ~/metaks_DB && docker compose up -d`). `.env` gitignored — gerçek kimlik bilgileri

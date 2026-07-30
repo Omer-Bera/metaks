@@ -11,6 +11,81 @@ yürüyebilir, 1 ve 2 hiçbir şeye bağlı değil.
 
 ---
 
+## 0. Appsmith'in emekliye ayrılması (2026-07-31 kararı)
+
+Kullanıcı kararı: Appsmith artık atıl; Django arayüzü onun kapsamını geçti, görsel
+kalite ve kullanılabilirlikte de gerisinde kaldı. Bundan sonra **hem veritabanı hem
+arayüz geliştirmeleri Appsmith düşünülmeden** yürüyecek.
+
+Bu ayrı bir "proje" değil — aşağıdaki maddelerin içine dağılıyor. Buradaki tek amacı
+neyin gerçekten gerektiğini ve neyin kendiliğinden düştüğünü tek yerde tutmak.
+
+### Kapsam karşılaştırması (ölçüldü)
+
+| Appsmith sayfası | Django karşılığı | Durum |
+| --- | --- | --- |
+| `YonetimAnaSayfasi` | `/` (Panel) | ✅ karşılanıyor |
+| `UrunlerKatalog` | `/katalog/` | ✅ karşılanıyor |
+| `StokOzet` | `/stok/` | ✅ karşılanıyor |
+| `StokIslemi` | `/stok/islem/<stok_kodu>/` | ✅ karşılanıyor |
+| `Page1` | — | iskelet artığı (`Query1` ve `Query2` birebir aynı SQL), karşılığı gereksiz |
+| `LokasyonYonetimi` | **yok** | ❗ **tek gerçek boşluk** |
+
+### Tek gerçek boşluk: lokasyon yönetimi
+
+Lokasyon ekleme/pasife alma bugün **yalnızca** Appsmith'ten yapılabiliyor; Django'da
+hiç karşılığı yok. Bu, Appsmith'i kapatmanın tek teknik ön koşulu.
+
+Ama bu iş zaten yapılacaktı ve Appsmith'te **zaten yapılamıyordu.** `LokasyonEkle`
+sorgusunun tamamı şu:
+
+```sql
+INSERT INTO lokasyonlar (lokasyon_adi, tip)
+VALUES ({{ YeniLokasyonAdiInput.text }}, {{ YeniLokasyonTipiSelect.selectedOptionValue }});
+```
+
+`ust_lokasyon_id` ve `kod` yok — yani migration 004'ten sonra bu ekranla **bir numune
+dolabı da rafı da açılamıyor**; üstelik tip açılır listesi `Dahili`/`Fason`'u sabit
+gömüyor, `NUMUNE` orada hiç görünmüyor. Yani madde 4 (numuneler) için lokasyon ekranı
+nasılsa sıfırdan yazılacaktı. **Appsmith'i bırakmak yeni iş çıkarmıyor, var olan işin
+yerini değiştiriyor.**
+
+Yeri: madde **2c** (yönetim panelinin üçüncü kartı) — orada anlatıldı.
+
+### Kapatma sırası (her adımı geri alınabilir)
+
+1. **Django lokasyon yönetimi** (madde 2c) + üç lokasyon sorgusunun
+   `v_lokasyonlar_detay` / `yaprak_mi`'ye taşınması (aşağıdaki tuzak bölümü).
+2. **Önce kontrol:** sayıma ait bir giriş hâlâ Appsmith'ten yapılıyor mu? (Sayım verisi
+   Excel'de tutuluyor, bu yüzden büyük ihtimalle hayır — ama kapatmadan önce sorulacak
+   tek soru bu.)
+3. `docker compose stop appsmith` — **silme, durdur.** Geri dönüş `start` ile anında.
+   Kazanç ölçüldü: **1,31 GiB RAM**, yani makinedeki 3,9 GiB'ın üçte biri (`depo-postgres`
+   27 MiB, `depo-gorsel-sunucu` 8 MiB — Appsmith tek başına ikisinin ~40 katı).
+4. Bir süre sorunsuz geçerse: `metaks_DB/docker-compose.yml`'den `appsmith` servisi ve
+   `appsmith_data` volume'ü kaldırılır, `depo-appsmith-arayuz` reposu GitHub'da
+   **arşivlenir** (silinmez — sorgu geçmişi ve alınan kararların kaydı orada).
+
+### Ne kaybetmiyoruz
+
+Appsmith stateless: tüm iş verisi Postgres'te. Kendi volume'ü sadece uygulama tanımını
+ve Appsmith'e özel kullanıcı hesaplarını tutuyor; uygulama tanımı da zaten
+`depo-appsmith-arayuz` reposunda. Kapatmak veri kaybettirmiyor.
+
+### Kendiliğinden düşen kısıtlar
+
+- `depo-appsmith-arayuz`'da bekleyen iş (`StokIslemi/LokasyonlariGetir` ve
+  `LokasyonYonetimi/LokasyonlarListele`'ye yaprak filtresi) → **iptal**.
+- `metaks_DB` migration'larındaki "önce iki arayüzü düzelt, sonra veri gir" adımı
+  **tek arayüze** iner.
+- View'ların anlamını değiştirirken dört Appsmith tüketicisini koruma zorunluluğu kalkar.
+  (`v_toplam_stok`'un "satılabilir stok" olması kendi başına da doğru karardı, geri
+  almaya gerek yok — fiziksel toplam için `v_fiziksel_stok` var.)
+- `metaks_DB/CLAUDE.md`'deki "rol ayrımı gerekirse ayrı Appsmith uygulamalarıyla
+  çözülür" planı düşer; rol ayrımı Django'da yapılacak (madde 2b).
+
+---
+
 ## 1. Giriş akışı ✅ TAMAMLANDI (2026-07-30)
 
 Giriş kutusu ana ekranın en altında, modül kartlarının da altında kalıyordu.
@@ -43,8 +118,8 @@ dokunulmadı.
 
 ## 2. Yönetim paneli (`/yonetim/`)
 
-Tek bir yönetim giriş noktası; içinde şimdilik iki kart: **Kullanıcılar** ve **Ürünler**.
-Diğer sayfalarla aynı tasarım dili. Sadece yetkili kullanıcıya görünür.
+Tek bir yönetim giriş noktası; içinde üç kart: **Kullanıcılar**, **Ürünler**,
+**Lokasyonlar**. Diğer sayfalarla aynı tasarım dili. Sadece yetkili kullanıcıya görünür.
 
 ### 2a. Kullanıcı yönetimi
 
@@ -63,6 +138,29 @@ Postgres'ine dokunulmuyor) — yani bu iş `metaks_DB` tarafında hiçbir şey b
 Şu an giriş yapan herkes her ürüne her işlem tipini uygulayabiliyor. İç ağda tek ekip
 için bugün yeterli; **fason/dış kullanıcı girdiği anda** gözden geçirilmeli. Kullanıcı
 ekranı yapılırken en azından "yönetici mi" ayrımının yeri hazırlansın.
+
+### 2c. Lokasyon yönetimi — Appsmith'i kapatmanın ön koşulu
+
+Bugün lokasyon eklemenin/pasife almanın tek yolu Appsmith; Django'da hiç yok
+(bkz. madde 0). Liste + ekleme + pasife alma.
+
+- **Liste kaynağı `v_lokasyonlar_detay`** (ham `lokasyonlar` değil): `kod`, `tam_ad`,
+  `yaprak_mi` oradan geliyor. Dolap→raf hiyerarşisi girintili gösterilsin.
+- **Ekleme formu**: ad, tip (`DAHILI`/`FASON`/`NUMUNE` — sabit gömme yok, kısıttan
+  okunur), isteğe bağlı **üst lokasyon** (seçilirse raf, seçilmezse dolap/depo) ve `kod`.
+- **Silme yok, pasife alma var** (`aktif_mi = false`) — Appsmith'in zaten yaptığı şey ve
+  doğrusu bu: `stok_hareketleri`'nden gelen FK `ON DELETE RESTRICT`, geçmiş silinmemeli.
+
+**Yeni bir veritabanı fonksiyonu gerekmiyor** — bu, `stok_hareketleri` ve `urunler`'den
+farklı. Orada kural fonksiyonda çünkü tek bir INSERT'le ifade edilemiyordu (yeterli stok
+hesabı, üç tabloya yayılan tek transaction). Lokasyonda migration 004 kuralların
+**tamamını bildirimsel** yazdı: `tip` CHECK'i, `kok_mu`/`ust_kok_mu` üretilmiş
+kolonlarıyla bileşik FK (derinlik 2'de sabit), `uq_lokasyonlar_kod`, üst lokasyona
+kapsamlanmış `uq_lokasyonlar_ust_ad_tip`. Yani kapı zaten kısıtların kendisi; hatalı
+satırı veritabanı reddediyor. Django formu doğrudan yazabilir.
+
+⚠️ Tek teknik detay: `kok_mu` ve `ust_kok_mu` **GENERATED** kolonlar — `Lokasyon`
+modeline alan olarak eklenmemeli, yoksa Django INSERT'te onlara da yazmaya çalışır.
 
 Orta boy iş. Bağımsız.
 
@@ -217,11 +315,9 @@ yazılamadığı için `v_lokasyon_stok_ozet`'te hiç görünmezler):
 | `views.py:431` (hareket geçmişi filtresi) | `.all()` — hiç filtre yok | aynı, üstelik pasifler de dahil |
 | `views.py:81` (ana ekran KPI) | `filter(aktif_mi=True).count()` | **"Aktif lokasyon" rafları depo sayar** (5 → 23) |
 
-Appsmith'te iki yer: `StokIslemi/LokasyonlariGetir`,
-`LokasyonYonetimi/LokasyonlarListele`. Ayrıca
-`LokasyonYonetimi/YeniLokasyonTipiSelect.json` tip listesini sabit gömüyor
-(`Dahili`/`Fason`) — yeni tip orada görünmez, yani numune lokasyonu Appsmith'ten
-eklenemez (sorun değil, kasıtlı olarak metaks_DB tarafından girilecek).
+Appsmith'teki iki yer (`StokIslemi/LokasyonlariGetir`,
+`LokasyonYonetimi/LokasyonlarListele`) **artık düzeltilmeyecek** — madde 0, Appsmith
+emekliye ayrılıyor. Bu, düzeltilecek yer sayısını beşten üçe indiriyor.
 
 ---
 
@@ -236,8 +332,13 @@ eklenemez (sorun değil, kasıtlı olarak metaks_DB tarafından girilecek).
   kazanç küçük.
 - **Otomatik tazeleme yok** — açık duran sekme yenilenene kadar eski veriyi gösterir.
   Canlı stok ekranında `hx-trigger="every 30s"` mantıklı olur, katalogda gereksiz.
-- **Üretim ayarları** (DEBUG, SECRET_KEY, ALLOWED_HOSTS, HTTPS) ve hosting kararı.
-  Giriş eklendiği için artık kritik: parolalar bugün HTTP üzerinden gidiyor, **dışarı
-  açılmadan önce** HTTPS ve gerçek bir `SECRET_KEY` şart.
+- **Üretim ayarları** (DEBUG, SECRET_KEY, HTTPS) ve hosting kararı. Giriş eklendiği
+  için artık kritik: parolalar bugün HTTP üzerinden gidiyor, **dışarı açılmadan önce**
+  HTTPS ve gerçek bir `SECRET_KEY` şart. 2026-07-31'de sunucu `0.0.0.0:8000`'e alındığı
+  için (bkz. CLAUDE.md, Ağ erişimi) uygulama artık yerel ağa da açık — Tailscale trafiği
+  şifreli ama LAN trafiği değil. `DJANGO_DEBUG=true` da ağ üzerinden hata sayfası (kaynak
+  kod, SQL, dosya yolları) gösteriyor. İkisi de "sadece kendi cihazlarım" varsayımına
+  dayanıyor; ofis ağında başkaları varsa **`100.64.0.6:8000`'e bağlanmak** (yalnız
+  tailnet arayüzü) tek kelimelik düzeltme.
 - **Branch modeli** — kardeş repolardaki `master`/`dev`/`review` düzeni buraya
   uygulanmadı, karar bekliyor.
