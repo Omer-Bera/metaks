@@ -477,9 +477,10 @@ Bu fazın ayrıntılı planı, kullanıcının ChatGPT'den alıp değerlendirmem
 prompt'un kendisinde bazı hatalar vardı (örn. `urunler`'de olmayan bir `urun_id` varsayımı,
 yanlış ürün/görsel sayıları) ama gereksinimleri gerçek eksikleri ortaya çıkardı.
 
-- ~~depo ve raf lokasyonları~~ 🔶 kısmi — `lokasyonlar` tablosuna 3 test/placeholder satırı
-  girildi (Ana Depo, Sevkiyat Alanı — DAHILI; Fason Atölye 1 — FASON). **Gerçek işletme
-  lokasyonlarıyla değiştirilmeli**, sadece Appsmith'i test edebilmek için.
+- ~~depo ve raf lokasyonları~~ ✅ **gerçek işletme lokasyonları girildi (2026-07-30)** —
+  `Metaks`/`Depo 1`/`Fabrika` (DAHILI), `Kaplama`/`Skor` (FASON). Eski 3 test/placeholder
+  satırı (Ana Depo/Sevkiyat Alanı/Fason Atölye 1) soft-deactivate edildi (`aktif_mi = false`,
+  hard-delete değil — `stok_hareketleri`'ndeki 21 test kaydı bunlara FK ile bağlı).
 - ~~mevcut stok hesaplama~~ ✅ **canlıya uygulandı** — `v_lokasyon_stok_ozet`/
   `v_toplam_stok` view'ları (`sql/migrations/002_lokasyon_stok_view.sql`), kullanıcı
   onayıyla ortak DB'ye işlendi.
@@ -538,10 +539,9 @@ karşı test edildi ve `dev`'e pushlandı (detaylar o reponun `CLAUDE.md`'sinde)
 1. **✅ Çoklu kategori seçimi** — `KategoriFilterSelect`, `SELECT_WIDGET` → `MULTI_SELECT_WIDGET_V2`'ye
    çevrildi, `KatalogUrunleriGetir` artık `kategori_adi = ANY(selectedOptionValues)` kullanıyor.
 2. **✅ Gerçek lokasyon verisi + Lokasyon Yönetimi sayfası** — yeni `LokasyonYonetimi` sayfası
-   (ekle/listele/pasifleştir) kuruldu. **Gerçek işletme lokasyonlarını girmek hâlâ kullanıcıya
-   ait** — Claude lokasyon isimlerini bilmediği/uyduramayacağı için 3 test satırı
-   (Ana Depo/Sevkiyat Alanı/Fason Atölye 1) henüz değiştirilmedi, sadece bunu değiştirecek araç
-   hazır.
+   (ekle/listele/pasifleştir) kuruldu. **Gerçek işletme lokasyonları 2026-07-30'da kullanıcı
+   tarafından bildirildi ve girildi**: `Metaks`/`Depo 1`/`Fabrika` (DAHILI), `Kaplama`/`Skor`
+   (FASON). Eski 3 test satırı (Ana Depo/Sevkiyat Alanı/Fason Atölye 1) pasifleştirildi.
 3. **✅ "Sadece stokta olanları listele" filtresi** — `SadeceStoktaOlanlarSwitch` +
    `v_toplam_stok` LEFT JOIN. Gerçek lokasyon/sayım verisi girilene kadar ~0 sonuç verecek,
    öngörüldüğü gibi.
@@ -559,7 +559,9 @@ karşı test edildi ve `dev`'e pushlandı (detaylar o reponun `CLAUDE.md`'sinde)
 ### Faz 6: Barkod ve sipariş entegrasyonu
 
 ChatGPT'nin Prompt 5'i ("Sipariş yönetimi") bu fazın sipariş kısmını detaylandırıyor,
-henüz hiçbir parçası kurulmadı:
+henüz hiçbir parçası kurulmadı. **2026-07-30'da kullanıcı onayı**: barkod tarafı zor
+değil, ama depo/ürün sistemi (Faz 4/5) tamamen bitmeden ele alınmayacak — bilinçli olarak
+sona bırakıldı.
 
 - sipariş ve rezervasyon akışı — önerilen varlıklar: `musteriler`, `siparisler`,
   `siparis_kalemleri`, `siparis_durum_gecmisi`, `stok_rezervasyonlari`. Kurallar arasında
@@ -579,6 +581,15 @@ henüz hiçbir parçası kurulmadı:
   olarak şimdilik ertelendi.
 - İlk sürümde kapasite planlama/otomatik çizelgeleme yapılmayacak (kullanıcının kendi
   kısıtı) — sade bir pano/tablo yeterli.
+
+### Faz 8: Numune takibi (fikir aşamasında, 2026-07-30)
+
+Kullanıcının Faz 4/5/6 (depo+ürün+sipariş sistemi) tamamlandıktan sonra ele almayı
+düşündüğü, henüz tasarlanmamış bir sonraki adım: hangi numunenin hangi rafta/lokasyonda
+olduğunu takip etmek. Muhtemelen `lokasyonlar` altyapısına benzer ama ayrı bir varlık
+gerektirir (numuneler kalıcı stok kalemi değil — bkz. `urunler`'in "sadece değişmeyen
+fiziksel öznitelikler" ilkesi, numune kavramı buna uymuyor). Henüz gereksinim toplanmadı,
+şema tasarımı yapılmadı.
 
 ---
 
