@@ -203,56 +203,85 @@ kullanıcı kimsenin kullanmadığını doğruladıktan sonra `docker compose st
 
 ---
 
-## 3. Ürün ekleme / düzenleme
+## 3. Ürün ekleme / düzenleme ✅ TAMAMLANDI (2026-07-31)
 
-Kendi sayfası (`/urun/ekle/`), yönetim panelinden ve liste sayfalarından erişilir.
+`/urun/ekle/` ve `/urun/<stok_kodu>/duzenle/` — aynı formu (`UrunFormu`) kullanıyor.
+Kod `katalog/urun_servisi.py` (`stok_servisi.py` deseninde ince çağrı katmanı,
+`urun_kaydet()` sarmalayıcı + görsel dosya yaz/sil), `katalog/urun_yonetimi.py`
+(view'lar) ve `katalog/forms.py::UrunFormu`'da.
 
-> **Ön koşul karşılandı (2026-07-30):** `urun_kaydet()` canlıda. Django tarafı artık
-> `katalog/stok_servisi.py` deseninde ince bir çağrı katmanı yazacak — iş kuralı
-> tekrarlanmayacak, dönen Türkçe mesaj olduğu gibi taşınacak.
+**Kapsam kararları (kullanıcıyla netleştirildi, 2026-07-31):** yalnızca ekleme değil
+**ekleme + düzenleme** birlikte; erişim **giriş yapmış herkes** (`@login_required`,
+yönetim panelindeki `is_staff` değil — stok işlemiyle aynı kapı); kategori **var olan
+seçim + formdan yeni açma** birlikte; **ana ürün/varyant ilişkisi dahil** (urun_tipi
+ANA_URUN/ALT_PARCA/VARYANT + üst ürün + varyant adı).
 
 ### Giriş noktaları
 
-- **Ürün sayısının yanına "+ Ürün ekle" butonu** (katalog ve stok sayfalarında),
-  yalnızca **giriş yapmış** kullanıcıya görünür — müşteriye ürün gösterirken açılan
-  katalog sayfasında yazma butonu görünmesin.
-- **Boş arama sonucundan ekleme:** kullanıcı bir stok kodu arayıp bulamadığında
-  "Bu koda ait ürün yok — `1005120` ile ürün ekle" bağlantısı çıksın. İhtiyacın gerçekten
-  doğduğu an burası; kod da forma önceden doldurulmuş gelir.
+- Katalog/stok sayfalarında sonuç sayısının yanında **"+ Ürün ekle"** — yalnızca
+  giriş yapmış kullanıcıya (`_govde.html`).
+- **Boş arama sonucundan ekleme:** arama sıfır sonuç verirse "'`X`' koduyla ürün
+  ekle" bağlantısı, kod forma önceden dolu gelir.
+- Ürün detay panelinde **"Ürünü düzenle"** — katalog ve stok panelinde ortak
+  (kategori/ölçü stokla ilgili değil, `stok_goster`'a bağlı değil).
 
-### Form alanları
+### GUNCELLE modu KISMİ değil — en riskli kısım buydu
 
-Zorunlu olan tek kolon `urunler.stok_kodu`; kalanların hepsi NULL kabul ediyor ya da
-varsayılanı var. Ama pratikte kataloğun işe yaraması için gereken çekirdek: **stok kodu,
-kategori, ürün tipi, ölçü ve ana görsel.**
+`urun_kaydet()` her çağrıda **tüm alanları yeniden yazıyor**; boş bırakılan alan
+NULL'a döner (tek istisna görsel — verilmezse mevcut durum korunur). Bu yüzden
+düzenleme formu ürünün güncel tüm alanlarını `initial=` ile dolduruyor
+(`models.Urun` — ham `urunler`, `AktifUrun`/view değil, çünkü PASİF/taslak bir
+ürünü de açabilmek gerekiyor). **Gerçek bir üründe (1001013) doğrulandı:** GET ile
+form yüklenip hiçbir alan değiştirilmeden POST edildi, veritabanı satırı
+**birebir aynı** kaldı.
 
-Form ikiye ayrılsın: kısa bir **temel** bölüm + katlanır **detay** bölümü. Sebebi ölçüm:
-`boya_mine`, `montaj_durumu`, `hammadde_adi`, `kaplama_adi` bugün **1.780 ürünün
-hiçbirinde** dolu değil — hepsini öne koymak formu kimsenin doldurmadığı alanlarla
-şişirirdi (detay panelinin "sadece dolu alanları göster" mantığının aynısı).
+### İki cross-DB tuzağı ölçülerek bulundu
 
-### Bu iş neden stok işleminden zor — ölçülmüş sebepler
+Lokasyon formunda (madde 2c) düşülen tuzağın aynısı burada da pusuya yatmıştı:
+`ModelChoiceField`'ların (kategori/hammadde/kaplama) `ModelForm` yerine düz
+`forms.Form` içinde kullanılması ve queryset'lerin `__init__`'te elle
+`using('metaks')` ile atanması bu riski baştan bertaraf etti — `UrunFormu` bilerek
+`ModelForm` DEĞİL (yazmanın tek kapısı zaten `urun_kaydet()`, bir `.save()` değil).
 
-1. **Satır eklemek yetmiyor, ürün görünmez kalır.** `urunler`'e INSERT edilen kayıt
-   `katalog_durumu` varsayılanı olan `PASIF` ile doğar ve **öyle kalır**: bu değeri
-   yöneten hiçbir trigger yok (kontrol edildi — `urunler` üzerinde trigger sıfır),
-   AKTİF ataması migration 001'deki **tek seferlik backfill UPDATE**'ti. Ayrıca
-   `chk_urunler_katalog_durumu_aktif_mi_tutarli` kısıtı `katalog_durumu` ile `aktif_mi`'nin
-   birlikte hareket etmesini zorunlu kılıyor.
-   Yani ekleme akışı bir bütün: görsel yükle → `urun_gorselleri`'ne
-   `ana_gorsel_mi=true, aktif_mi=true` satırı → `urunler`'i `AKTIF` + `aktif_mi=true` yap.
-   Üçü **tek transaction'da**, yoksa yarım ürün kalır.
-2. **Görsel dosyası nereye yazılacak?** Görselleri nginx `gorsel-sunucu` servisi
-   `<stok_kodu>_<sira_no>.<uzantı>` adlandırmasıyla sunuyor ve dizinin
-   (`metaks_DB/images/final/products`) sahibi `metaks_DB`; nginx'e `:ro` bağlı, yazan
-   taraf host. Bu repo bugün hiç dosya yazmıyor — Django'ya o dizine yazma yetkisi
-   vermek gerçek bir bağlantı kararı.
+**Kategori oluşturma büyük/küçük harf duyarsız:** `kategoriler.kategori_adi`
+UNIQUE kısıtı Postgres'te harf duyarlı ("Toka" ≠ "TOKA"); duyarsız arama
+(`urun_servisi.kategori_id_cozumle`) var olanı bulup kullanıyor, sessizce
+neredeyse-aynı iki kategori açılmasını önlüyor.
 
-**Sıralama kararı:** önce dosya, sonra DB. Fonksiyon hata verirse yazılan dosya silinir.
-Ters sırada çökme olursa var olmayan dosyayı gösteren kırık ürün kalır; bu sırada en
-kötü ihtimalle sahipsiz bir dosya kalır, o da zararsız.
+### Bir gerçek veri tutarlılığı hatası bulundu ve düzeltildi
 
-Büyük iş, ön koşullu.
+JS `urun_tipi` VARYANT/ALT_PARCA seçilince üst ürün alanını gösteriyor, ANA_URUN'a
+dönülünce **gizliyor ama temizlemiyor** — kullanıcı önce VARYANT + üst ürün yazıp
+sonra ANA_URUN'a dönerse tarayıcı gizli kalan eski değeri yine de POST eder. DB bunu
+reddetmiyor bile (kısıt yalnızca VARYANT/ALT_PARCA'da üst ürünü zorunlu kılıyor,
+ANA_URUN'da yasaklamıyor) — `UrunFormu.clean()`'de `urun_tipi == 'ANA_URUN'` olunca
+`parent_stok_kodu`/`varyant_adi` bilerek temizleniyor.
+
+### Doğrulama
+
+Önce Django test client ile Python seviyesinde (taslak, görsel+kategori, varyant,
+mükerrer kod, round-trip düzenleme — hızlı iterasyon için), sonra gerçek tarayıcıda
+**35/35 kontrol**: taslak/AKTİF geçişleri, iki ayrı mesaj dalı (EKLE+görsel:
+"eklendi ve katalogda yayına alındı" / GUNCELLE+görsel: "güncellendi"), stok kodu
+kilidi (disabled alan, formda tamperlense bile yok sayılıyor), varyant
+oluşturma + üst ürünsüz reddi, yetki kapısı (yönetici olmayan erişebiliyor),
+mobil, şablon sızıntısı, konsol. Diğer altı takım da yeşil (toplam 202). Test
+satırları UI üzerinden eklenip **doğrudan SQL + dosya sistemiyle** temizlendi
+(uygulama "sil" sunmuyor — lokasyon ile aynı tasarım); sonda `urunler`/
+`kategoriler`/`urun_gorselleri` satır sayılarının başlangıca döndüğü, diskteki
+test görsellerinin silindiği ve `stok_hareketleri`'nin hiç değişmediği ölçüldü.
+
+Yol boyunca iki kendi hatamı yakaladım: `urun_formu.html`'e Django mesaj çerçevesi
+gösterimini eklemeyi unutmuştum (başarı mesajları sessizce kayboluyordu) ve
+başlıktaki "flex-wrap emniyet kemeri" notunu yine iki satırlık `{# #}` ile yazıp
+HTML'e sızdırmıştım (bu projede **4. kez** düşülen tuzak) — `stok_islem.html`'de de
+aynı kopyalanan iki satırlık yorum vardı, ikisi de düzeltildi.
+
+**Kasıtlı kapsam dışı bırakılanlar:** hammadde/kaplama için "yeni ekle" yok (bugünkü
+veride ikisi de 0 dolu satır — kategori'nin aksine talep de yok); ana ürün seçimi
+düz metin kutusu, arama/otomatik tamamlama yok (`urun_kaydet()` zaten "üst ürün
+bulunamadı" diye kendi Türkçe hatasını veriyor, ikinci bir doğrulama katmanı
+gerekmedi).
 
 ---
 
@@ -270,9 +299,9 @@ otomatik odaklanan bir metin kutusu ("Stok kodu"). Enter'a basılınca:
 - **Tam eşleşme** → doğrudan o kodun `stok_islem` formuna yönlendirir. Yeni bir form
   yazılmıyor, var olan (ve doğrulanmış) forma bir kısayol.
 - **Eşleşme yok** → "bulunamadı" + yazım hatası ihtimaline karşı `arama_metni` ile
-  öneri + **madde 3 tamamlandıktan sonra**: "bu kodla yeni ürün oluştur" bağlantısı,
-  formu koda önceden doldurulmuş açar. Bu zaten madde 3'te planlanan "boş arama
-  sonucundan ekleme" ile birebir aynı desen — iki kez tasarlanmıyor.
+  öneri + "bu kodla yeni ürün oluştur" bağlantısı, formu koda önceden doldurulmuş
+  açar. Madde 3 artık ✅ tamamlandı — bu, orada zaten kurulan "boş arama
+  sonucundan ekleme" bağlantısının (`_govde.html`) aynısı, iki kez tasarlanmadı.
 
 **QR/barkod bedavaya geliyor, kamera taraması şimdi değil.** USB/Bluetooth barkod
 okuyucular klavye gibi davranır (kodu yazıp Enter basar); yani yukarıdaki tek metin
@@ -287,10 +316,8 @@ otomatik tamamlama (var olan `arama_metni` araması üzerinden) eklemek yeterli 
 stok sayfasının ağır kart ızgarasını burada tekrarlamaya gerek yok, hızlı girişin
 bütün amacı o ızgarayı atlamak.
 
-**Sıra:** madde 3'ten sonra — "yeni ürün oluştur" bacağı ona bağımlı, diğer üç bacak
-(kod yaz, barkod okut, otomatik tamamlamadan seç) madde 3 olmadan da çalışır ama tek
-başına küçük bir ekran için ayrı sıra açmak yerine 3'le birlikte bitirilmesi mantıklı.
-Küçük iş.
+**Sıra:** madde 3 tamamlandığı için ön koşul karşılandı, sıradaki küçük iş bu
+olabilir. Küçük iş.
 
 ---
 

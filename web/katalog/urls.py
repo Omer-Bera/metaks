@@ -1,7 +1,7 @@
 from django.contrib.auth import views as auth_views
 from django.urls import path
 
-from . import lokasyon_yonetimi, views, yonetim
+from . import lokasyon_yonetimi, urun_yonetimi, views, yonetim
 
 app_name = 'katalog'
 
@@ -32,6 +32,11 @@ urlpatterns = [
     ),
     path('misafir/', views.misafir_devam, name='misafir'),
     path('cikis/', auth_views.LogoutView.as_view(), name='cikis'),
+
+    # Ürün ekleme/düzenleme — yönetim paneli DEĞİL: is_staff değil, giriş yapmış
+    # herkes kullanabiliyor (bkz. urun_yonetimi.py).
+    path('urun/ekle/', urun_yonetimi.urun_ekle, name='urun_ekle'),
+    path('urun/<str:stok_kodu>/duzenle/', urun_yonetimi.urun_duzenle, name='urun_duzenle'),
 
     # Yönetim paneli — hepsi is_staff kapısının arkasında (bkz. yonetim.py).
     path('yonetim/', yonetim.panel, name='yonetim'),

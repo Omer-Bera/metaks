@@ -63,6 +63,21 @@
                     {% endfor %}
                 </dl>
 
+                {% comment %}
+                Düzenleme girişi katalog VE stok panelinde ortak — kategori/ölçü gibi
+                bilgiler stokla ilgili değil, "Stok işlemi yap" butonunun aksine
+                stok_goster'a bağlı değil. Yalnızca giriş yapmış kullanıcıya.
+                {% endcomment %}
+                {% if user.is_authenticated %}
+                <div class="mt-4">
+                    <a href="{% url 'katalog:urun_duzenle' urun.stok_kodu %}"
+                       class="inline-flex items-center gap-1.5 text-sm text-slate-500
+                              underline underline-offset-4 transition hover:text-slate-900">
+                        Ürünü düzenle
+                    </a>
+                </div>
+                {% endif %}
+
                 {% if stok_goster %}
                 {% comment %}
                 Stok dökümü yalnızca stok sayfasından açılan panelde. Katalog sayfası

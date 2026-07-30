@@ -204,6 +204,109 @@ class StokHareketi(models.Model):
         return f'{self.hareket_id}: {self.islem_tipi} {self.stok_kodu} x{self.miktar}'
 
 
+class Kategori(models.Model):
+    """`kategoriler` tablosunun haritalaması — hem okuma (açılır liste) hem yazma
+    (ürün eklerken yeni kategori açma) için.
+
+    `kategori_adi`'na bilerek `unique=True` KONULMADI — aynı gerekçe `Lokasyon.kod`
+    ile birebir (bkz. o alanın docstring'i): proje henüz `DATABASE_ROUTERS`
+    eklemediği için Django'nun otomatik `validate_unique()`'i `using('metaks')`
+    olmadan SQLite `default`'a giderdi. Tekillik `katalog/urun_servisi.py::
+    kategori_id_cozumle()`'de büyük/küçük harf DUYARSIZ olarak elle kontrol
+    ediliyor (veritabanındaki kısıt harf duyarlı, "Toka"/"TOKA" yakalanmaz).
+    """
+
+    kategori_id = models.AutoField(primary_key=True)
+    kategori_adi = models.CharField(max_length=100)
+    aktif_mi = models.BooleanField(default=True)
+
+    class Meta:
+        managed = False
+        db_table = 'kategoriler'
+        ordering = ['kategori_adi']
+
+    def __str__(self):
+        return self.kategori_adi
+
+
+class Hammadde(models.Model):
+    """`hammaddeler` tablosunun salt-okunur haritalaması (ürün formundaki seçim).
+
+    Bugünkü veride (2026-07-30) 1.780 ürünün HİÇBİRİNDE dolu değil — bu yüzden
+    kategori'nin aksine formda "yeni ekle" seçeneği yok, sadece var olanlardan seçim.
+    """
+
+    hammadde_id = models.AutoField(primary_key=True)
+    hammadde_adi = models.CharField(max_length=100)
+    aktif_mi = models.BooleanField(default=True)
+
+    class Meta:
+        managed = False
+        db_table = 'hammaddeler'
+        ordering = ['hammadde_adi']
+
+    def __str__(self):
+        return self.hammadde_adi
+
+
+class Kaplama(models.Model):
+    """`kaplamalar` tablosunun salt-okunur haritalaması — bkz. `Hammadde` (aynı gerekçe)."""
+
+    kaplama_id = models.AutoField(primary_key=True)
+    kaplama_adi = models.CharField(max_length=100)
+    aktif_mi = models.BooleanField(default=True)
+
+    class Meta:
+        managed = False
+        db_table = 'kaplamalar'
+        ordering = ['kaplama_adi']
+
+    def __str__(self):
+        return self.kaplama_adi
+
+
+class Urun(models.Model):
+    """`urunler` tablosunun ham haritalaması — `AktifUrun`'un (view) aksine
+    PASİF/taslak satırları da kapsar.
+
+    SADECE ürün düzenleme formunu ÖN DOLDURMAK için var. `AktifUrun` burada
+    yetmez: `v_aktif_urunler` yalnızca `katalog_durumu = 'AKTIF'` satırları
+    gösteriyor, ama düzenlemenin asıl anlamlı olduğu durumlardan biri tam olarak
+    PASİF bir taslağı tamamlamak (görsel ekleyip AKTİF'e geçirmek) — o ürün bu
+    view'da hiç yok. Ayrıca `AktifUrun`'da bulunmayan `stok_takip_edilsin_mi`,
+    `kalip_versiyonu`, `katalog_durumu`, `aktif_mi` de formun ihtiyacı.
+
+    YAZMA İÇİN KULLANILMAZ: tek yazma kapısı `urun_servisi.py::urun_kaydet()`
+    (`urun_kaydet()` DB fonksiyonu). Bu model salt-okunur.
+    """
+
+    stok_kodu = models.CharField(max_length=100, primary_key=True)
+    kategori_id = models.IntegerField(null=True)
+    hammadde_id = models.IntegerField(null=True)
+    kaplama_id = models.IntegerField(null=True)
+    parent_stok_kodu = models.CharField(max_length=100, null=True)
+    urun_tipi = models.CharField(max_length=20)
+    varyant_adi = models.CharField(max_length=100, null=True)
+    kalip_versiyonu = models.CharField(max_length=100, null=True)
+    olcu_mm = models.DecimalField(max_digits=6, decimal_places=2, null=True)
+    boy_ligne = models.DecimalField(max_digits=6, decimal_places=2, null=True)
+    boya_mine = models.CharField(max_length=100, null=True)
+    gramaj_gr = models.DecimalField(max_digits=10, decimal_places=3, null=True)
+    montaj_durumu = models.CharField(max_length=50, null=True)
+    aciklama = models.TextField(null=True)
+    kritik_stok_esigi = models.IntegerField()
+    stok_takip_edilsin_mi = models.BooleanField()
+    aktif_mi = models.BooleanField()
+    katalog_durumu = models.CharField(max_length=30)
+
+    class Meta:
+        managed = False
+        db_table = 'urunler'
+
+    def __str__(self):
+        return self.stok_kodu
+
+
 def yerel_tarih(alan='islem_tarihi'):
     """Naive UTC timestamp'i timestamptz'ye çeviren ORM ifadesi.
 

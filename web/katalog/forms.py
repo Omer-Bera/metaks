@@ -7,17 +7,19 @@ oradan bedavaya geliyor. Elle yazılsaydı Django'nun kendi kurallarının ikinc
 kopyası olurdu ve sürüm yükseltmelerinde sessizce ayrışırdı — `stok_servisi.py`'nin
 `stok_hareketi_kaydet()` karşısındaki duruşunun aynısı.
 
-Kullanıcı formları SQLite `default` bağlantısında çalışıyor. Lokasyon formu
-(`LokasyonEklemeFormu`) farklı: paylaşımlı METAKS Postgres'teki `lokasyonlar`
-tablosuna yazıyor — bkz. o formun kendi docstring'i, cross-DB `ModelForm` kullanırken
-düşülen ve burada bilerek kaçınılan bir tuzak var.
+Kullanıcı formları SQLite `default` bağlantısında çalışıyor. Lokasyon ve ürün
+formları farklı: paylaşımlı METAKS Postgres'e yazıyorlar — ikisinde de cross-DB
+`ModelForm` kullanırken düşülen ve burada bilerek kaçınılan tuzaklar var, kendi
+docstring'lerinde anlatılıyor. `UrunFormu` bilerek `ModelForm` DEĞİL, düz
+`forms.Form` — gerekçe kendi docstring'inde.
 """
 
 from django import forms
 from django.contrib.auth.forms import AdminPasswordChangeForm, UserCreationForm
 from django.contrib.auth.models import User
 
-from .models import Lokasyon
+from . import urun_servisi
+from .models import Hammadde, Kaplama, Kategori, Lokasyon
 
 # Girdi kutularının ortak görünümü. Şablonlarda tek tek yazmak yerine burada:
 # form alanları Django tarafından basıldığı için sınıfın da Python tarafında
@@ -203,6 +205,142 @@ class LokasyonEklemeFormu(forms.ModelForm):
         self.fields['ust_lokasyon'].required = False
         self.fields['kod'].required = False
         _girdileri_bicimlendir(self)
+
+
+class UrunFormu(forms.Form):
+    """Ürün ekleme VE düzenleme — `/urun/ekle/` ve `/urun/<kod>/duzenle/` aynı
+    formu kullanıyor (`katalog/urun_yonetimi.py`); fark stok_kodu'nun
+    düzenlemede salt-okunur olması ve initial verinin `models.Urun`'dan gelmesi.
+
+    Bilerek `ModelForm` DEĞİL, düz `forms.Form`: yazmanın tek kapısı
+    `urun_servisi.urun_kaydet()` (bir fonksiyon çağrısı, `Model.save()` değil) ve
+    kategori oluşturma ayrı bir adım (`urun_servisi.kategori_id_cozumle`).
+    `ModelForm`'un otomatik `full_clean()`/`validate_unique()` makinesi burada
+    hiç devreye girmiyor — `LokasyonEklemeFormu`'nda ölçülüp bulunan cross-DB
+    tuzağını (bkz. o formun docstring'i) baştan gereksiz kılıyor.
+
+    ÖNEMLİ — GUNCELLE modu KISMİ değil: `urun_kaydet()` her çağrıda TÜM alanları
+    yeniden yazıyor, boş bırakılan alan NULL'a döner (tek istisna görsel). Bu
+    yüzden düzenleme view'ı formu HER ZAMAN ürünün güncel tüm alanlarıyla
+    `initial=` doldurmak ZORUNDA — bkz. `urun_servisi.urun_kaydet` docstring'i.
+    """
+
+    # ---- Temel ----
+    stok_kodu = forms.CharField(
+        label='Stok kodu', max_length=100,
+        help_text='Fiziksel üründeki/kataloğdaki kod. Kaydedildikten sonra değiştirilemez.',
+    )
+
+    kategori = forms.ModelChoiceField(
+        label='Kategori', queryset=Kategori.objects.none(), required=False,
+        empty_label='— seçilmedi —',
+    )
+    yeni_kategori_adi = forms.CharField(
+        label='Ya da yeni kategori', max_length=100, required=False,
+        help_text='Doldurulursa yukarıdaki seçim yok sayılır. Aynı isimde (büyük/küçük '
+                   'harf fark etmez) kategori zaten varsa yenisi açılmaz, o kullanılır.',
+    )
+
+    urun_tipi = forms.ChoiceField(
+        label='Ürün tipi', choices=urun_servisi.URUN_TIPLERI, initial='ANA_URUN',
+    )
+    parent_stok_kodu = forms.CharField(
+        label='Ana ürünün stok kodu', max_length=100, required=False,
+        help_text='Alt parça/varyant seçildiyse zorunlu. Kodu bilmiyorsanız önce '
+                   'katalogda arayıp bulun, sonra buraya yazın.',
+    )
+    varyant_adi = forms.CharField(label='Varyant adı', max_length=100, required=False)
+
+    olcu_mm = forms.DecimalField(
+        label='Ölçü (mm)', max_digits=6, decimal_places=2, required=False,
+    )
+
+    ana_gorsel = forms.ImageField(
+        label='Ana görsel', required=False,
+        help_text='jpg, jpeg ya da png. Boş bırakılırsa (eklemede) ürün görsel '
+                   'eklenene kadar taslak kalır — hata değil, sonra tamamlanabilir; '
+                   '(düzenlemede) mevcut görsel olduğu gibi kalır.',
+    )
+
+    # ---- Detay (katlanır bölüm) ----
+    hammadde = forms.ModelChoiceField(
+        label='Hammadde', queryset=Hammadde.objects.none(), required=False,
+        empty_label='— seçilmedi —',
+    )
+    kaplama = forms.ModelChoiceField(
+        label='Kaplama', queryset=Kaplama.objects.none(), required=False,
+        empty_label='— seçilmedi —',
+    )
+    boy_ligne = forms.DecimalField(
+        label='Boy (ligne)', max_digits=6, decimal_places=2, required=False,
+    )
+    boya_mine = forms.CharField(label='Boya/mine', max_length=100, required=False)
+    gramaj_gr = forms.DecimalField(
+        label='Gramaj (gr)', max_digits=10, decimal_places=3, required=False,
+    )
+    montaj_durumu = forms.CharField(label='Montaj durumu', max_length=50, required=False)
+    kalip_versiyonu = forms.CharField(label='Kalıp versiyonu', max_length=100, required=False)
+    aciklama = forms.CharField(
+        label='Açıklama', required=False, widget=forms.Textarea(attrs={'rows': 3}),
+    )
+    kritik_stok_esigi = forms.IntegerField(label='Kritik stok eşiği', min_value=0, initial=0)
+    stok_takip_edilsin_mi = forms.BooleanField(
+        label='Stok takibi yapılsın', required=False, initial=True,
+        help_text='Kapatılırsa bu ürün stok sayımına dahil edilmez.',
+    )
+
+    def __init__(self, *args, stok_kodu_kilitli=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Formun tanımlandığı anda Kategori/Hammadde/Kaplama sorgulanamaz (import
+        # sırasında henüz DB bağlantısı yok, üstelik using('metaks') gerekiyor) —
+        # queryset'ler burada, her form örneği kurulurken atanıyor.
+        self.fields['kategori'].queryset = Kategori.objects.using('metaks').filter(aktif_mi=True)
+        self.fields['hammadde'].queryset = Hammadde.objects.using('metaks').filter(aktif_mi=True)
+        self.fields['kaplama'].queryset = Kaplama.objects.using('metaks').filter(aktif_mi=True)
+        if stok_kodu_kilitli:
+            # Düzenlemede stok_kodu değiştirilemez: urun_kaydet() GUNCELLE modunda
+            # onu kimlik olarak kullanıyor, değiştirmiyor (metaks_DB migration 005,
+            # "KAPSAM DIŞI: stok_kodu değiştirme").
+            self.fields['stok_kodu'].disabled = True
+            self.fields['stok_kodu'].help_text = 'Düzenlemede değiştirilemez.'
+        _girdileri_bicimlendir(self)
+
+    def clean(self):
+        veri = super().clean()
+
+        kategori = veri.get('kategori')
+        yeni_kategori_adi = (veri.get('yeni_kategori_adi') or '').strip()
+        if kategori and yeni_kategori_adi:
+            self.add_error(
+                'yeni_kategori_adi',
+                'Var olan bir kategori seçtiniz; yeni kategori adını boş bırakın.',
+            )
+        veri['yeni_kategori_adi'] = yeni_kategori_adi or None
+
+        # Bu kontrol Python tarafında, DB'ye hiç gitmeden — sadece iki alanın
+        # birlikte tutarlılığı, bir referans doğrulaması değil. Ana ürünün
+        # GERÇEKTEN var olup olmadığını (ve DB'nin kendi Türkçe mesajını)
+        # urun_kaydet() zaten kontrol ediyor, burada tekrarlanmıyor.
+        urun_tipi = veri.get('urun_tipi')
+        parent = (veri.get('parent_stok_kodu') or '').strip()
+        if urun_tipi == 'ANA_URUN':
+            # JS bu alanları gizliyor ama TEMİZLEMİYOR: kullanıcı önce VARYANT seçip
+            # üst ürün yazsa, sonra fikrini değiştirip ANA_URUN'a dönse, gizli kalan
+            # eski değer yine de POST edilir. urun_kaydet() bunu reddetmiyor bile
+            # (kısıt sadece VARYANT/ALT_PARCA'da üst ürünü zorunlu kılıyor, ANA_URUN'da
+            # yasaklamıyor) — yani bu temizlik yapılmazsa "ana ürün" görünen ama aslında
+            # bir üst ürüne bağlı tutarsız bir satır sessizce kaydedilebilirdi.
+            parent = ''
+            veri['varyant_adi'] = ''
+        elif urun_tipi and not parent:
+            etiket = dict(urun_servisi.URUN_TIPLERI).get(urun_tipi, urun_tipi)
+            self.add_error(
+                'parent_stok_kodu',
+                f'{etiket} tipindeki bir ürün ana ürüne bağlanmalıdır.',
+            )
+        veri['parent_stok_kodu'] = parent or None
+
+        return veri
 
 
 class ParolaBelirlemeFormu(AdminPasswordChangeForm):

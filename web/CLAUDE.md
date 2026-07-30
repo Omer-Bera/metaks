@@ -185,6 +185,8 @@ Yani hiçbir kimlik bilgisi ve parola hash'i repoya girmiyor.
 | Stok Durumu | `/stok/` | Aynı galeri + kart başına stok durumu + "sadece stokta olanlar" anahtarı + detayda lokasyon dökümü |
 | Stok işlemi | `/stok/islem/<stok_kodu>/` | Hareket kaydı (giriş zorunlu) |
 | Hareket Geçmişi | `/stok/hareketler/` | `stok_hareketleri` dökümü, filtreli (salt-okunur) |
+| Ürün ekle | `/urun/ekle/` | Yeni ürün (giriş zorunlu, yönetici şart değil) |
+| Ürün düzenle | `/urun/<stok_kodu>/duzenle/` | Var olan ürünü düzenleme (aynı form) |
 | Yönetim | `/yonetim/` | Yönetici kartları. `is_staff` şart |
 | Kullanıcılar | `/yonetim/kullanicilar/` | Hesap listesi, ekleme, parola, pasife alma |
 | Lokasyonlar | `/yonetim/lokasyonlar/` | Hiyerarşik liste, ekleme, pasife alma |
@@ -460,6 +462,84 @@ sonuç Metaks 250 / Depo 1 200. Mükerrer gönderim de canlı doğrulandı: ayn�
 Bu denemelerin bıraktığı satırlar `stok_hareketleri`'nde duruyor (ledger append-only,
 silinmiyor); açıklama alanlarından ayırt edilebilirler.
 
+## Ürün ekleme/düzenleme (2026-07-31)
+
+`/urun/ekle/` ve `/urun/<stok_kodu>/duzenle/` aynı formu (`katalog/forms.py::
+UrunFormu`) paylaşıyor. Kod `katalog/urun_servisi.py` (yazma katmanı — `urun_kaydet()`
+sarmalayıcı + görsel dosya yaz/sil, `stok_servisi.py` ile aynı desen) ve
+`katalog/urun_yonetimi.py`'de (view'lar). Erişim `@login_required` — **yönetici şart
+değil**, stok işlemiyle aynı kapı; kullanıcı/lokasyon yönetiminden (`is_staff`) burada
+bilinçli olarak ayrışıyor.
+
+### GUNCELLE modu KISMİ değil — tasarımın en riskli noktası
+
+`urun_kaydet()` (metaks_DB migration 005) her çağrıda `urunler`'in **tüm alanlarını**
+yeniden yazıyor; boş bırakılan alan NULL'a döner (tek istisna görsel — verilmezse
+mevcut ana görsel ve AKTİF/PASİF durumu dokunulmadan kalır). Bu, "kısmi güncelleme"
+alışkanlığıyla yazılırsa **veri kaybına** yol açar. Çözüm: düzenleme view'ı formu HER
+ZAMAN ürünün güncel tüm alanlarıyla `initial=` dolduruyor; form normal bir HTML formu
+olduğu için değiştirilmeyen alanlar zaten mevcut değerleriyle geri gönderiliyor —
+ayrıca bir "değişmeyenleri koru" mantığı yok, doğruluk tamamen doğru ön doldurmaya
+dayanıyor. **Gerçek bir üründe (1001013) doğrulandı**: GET ile form yüklenip hiç
+değiştirilmeden POST edildi, veritabanı satırı önce/sonra **birebir aynı** kaldı.
+
+Bu yüzden düzenleme formu `AktifUrun` (`v_aktif_urunler`) üzerinden değil yeni
+`models.Urun` (ham `urunler`, salt-okunur, yalnızca ön doldurma için) üzerinden
+yükleniyor: `v_aktif_urunler` yalnızca `katalog_durumu='AKTIF'` satırları gösteriyor,
+ama düzenlemenin asıl anlamlı olduğu durumlardan biri PASİF bir **taslağı**
+tamamlamak (eksik görseli ekleyip AKTİF'e geçirmek) — o satır view'da hiç yok.
+
+### İki cross-DB tuzağı — lokasyon formundakiyle aynı aile
+
+`UrunFormu` bilerek `ModelForm` DEĞİL, düz `forms.Form`: yazmanın tek kapısı bir
+fonksiyon çağrısı (`urun_kaydet()`), `Model.save()` değil, ve kategori oluşturma ayrı
+bir adım. Bu, `LokasyonEklemeFormu`'nda (madde 2c) ölçülüp bulunan riski —
+`ModelForm`'un FK alanları için `using('metaks')` olmadan otomatik kurduğu queryset'in
+SQLite `default`'a gidip çökmesi — baştan gereksiz kılıyor. Kategori/hammadde/kaplama
+`ModelChoiceField`'larının queryset'leri yine de `__init__`'te elle `using('metaks')`
+ile atanıyor (aksi hâlde form OLUŞTURULURKEN bile "no such table" ile çöktüğü ölçüldü).
+
+**Kategori oluşturma büyük/küçük harf duyarsız.** `kategoriler.kategori_adi` UNIQUE
+kısıtı Postgres'te harf duyarlı ("Toka" ≠ "TOKA"); `unique=True` model alanına
+konulmadı (aynı cross-DB riski) ve tekillik `urun_servisi.kategori_id_cozumle()`'de
+elle, duyarsız aranıyor — var olanla sadece harf durumunda ayrışan bir isim yeni
+kategori açmıyor, var olanı kullanıyor.
+
+### Bulunan gerçek hata: JS'in gizlediği alan temizlenmiyordu
+
+`urun_tipi` VARYANT/ALT_PARCA seçilince üst ürün + varyant adı alanlarını gösterip
+ANA_URUN'a dönülünce **gizleyen** JS, değeri hiç temizlemiyordu — tarayıcı gizli
+kalan eski değeri yine de POST eder. `urun_kaydet()` bunu reddetmiyor bile (kısıt
+yalnızca VARYANT/ALT_PARCA'da üst ürünü zorunlu kılıyor, ANA_URUN'da yasaklamıyor),
+yani tutarsız bir satır ("ana ürün" ama yine de bir üst ürüne bağlı) sessizce
+kaydedilebilirdi. `UrunFormu.clean()`'de `urun_tipi == 'ANA_URUN'` olunca bu iki
+alan bilerek temizleniyor.
+
+### Görsel dosyası
+
+Sıra **önce dosya, sonra DB**: `urun_kaydet()` reddederse az önce yazılan dosya
+(`urun_servisi.gorsel_sil`) geri alınır. Ters sırada çökme olsaydı var olmayan bir
+dosyayı gösteren kırık ürün kalırdı. Dosya adı (`<stok_kodu>_<sıra>.<uzantı>`)
+diske yazılmadan ÖNCE `urun_sonraki_gorsel_sirasi()`'yle hesaplanıyor — sıralamanın
+gereği. Kabul edilen uzantılar jpg/jpeg/png (kaynak korpusun tamamı bu üçü); doğrulama
+`forms.ImageField` üzerinden (Pillow gerektiriyor, `requirements.txt`'e eklendi) —
+gerçek bir resim olmayan dosya kabul edilmiyor.
+
+Yazma yolu `settings.URUN_GORSEL_DIZINI` (varsayılan: sibling-repo düzeni,
+`metaks_DB/images/final/products`) — `GORSEL_SUNUCU_BASE_URL`'in **yazma tarafı**
+karşılığı; nginx aynı dizini `:ro` sunuyor, yazan taraf host (bu Django süreci).
+Görseli değiştirmek eskisini silmiyor: `urun_kaydet()` eski ana görseli
+`ana_gorsel_mi=FALSE` yaparak ikincil bir görsele düşürüyor, dosya diskte kalıyor —
+uygulama hiçbir zaman var olan bir görsel dosyasını silmiyor, yalnızca kendi bu
+istekte yazdığı (ve DB'nin reddettiği) dosyayı geri alıyor.
+
+### Kasıtlı kapsam dışı
+
+Hammadde/kaplama için "yeni ekle" yok (kategori'nin aksine) — bugünkü 1.780 ürünün
+hiçbirinde ikisi de dolu değil, talep de yok. Üst ürün seçimi düz metin kutusu,
+arama/otomatik tamamlama yok — `urun_kaydet()` zaten "üst ürün bulunamadı" diye
+kendi Türkçe hatasını veriyor, ikinci bir ön-doğrulama katmanı gerekmedi.
+
 ## Hareket geçmişi ve zaman dilimi tuzağı
 
 `/stok/hareketler/` — `stok_hareketleri` dökümü; ürün/açıklama araması, işlem tipi,
@@ -538,8 +618,8 @@ kadar eski veriyi gösterir. Otomatik tazeleme gerekirse HTMX'te tek satır
 (`hx-trigger="every 30s"`); katalogda gereksiz, canlı stok ekranında mantıklı olur.
 
 Henüz yapılmadı — sıradaki işlerin listesi ve gerekçeleri **`YAPILACAKLAR.md`**'de
-(giriş akışı, CSV dışa aktarma, yönetim paneli, ürün ekleme, numune takibi). Burada
-sadece o listeyi okurken bilinmesi gereken kalıcı kısıtlar:
+(CSV dışa aktarma, numune takibi; giriş akışı/yönetim paneli/ürün ekleme artık ✅
+tamamlandı). Burada sadece o listeyi okurken bilinmesi gereken kalıcı kısıtlar:
 
 - **Otomatik test yok** (`katalog/tests.py` boş). Doğrulama tek kullanımlık tarayıcı
   script'leriyle yapıldı. Kalıcı test yazmak düşünmeyi gerektiriyor: Django test
@@ -547,23 +627,9 @@ sadece o listeyi okurken bilinmesi gereken kalıcı kısıtlar:
   `depo_sistemi`'ne karşı istenmeyen bir davranış. Muhtemel yol:
   `SimpleTestCase`/`databases = {'default'}` + `v_aktif_urunler`'ı taklit eden bir
   fixture katmanı, ya da salt-okunur bir test şeması.
-- **Ürün ekleme, stok işleminden belirgin şekilde daha zor.** `urunler`'e elle INSERT
-  edilmez; tek kapı `metaks_DB` migration 005'in eklediği **`urun_kaydet()`**
-  (`stok_hareketi_kaydet()` ile aynı desen). Sebep: `katalog_durumu` AKTİF'e kendi
-  kendine geçmiyor (bu kolonu yöneten trigger yok, AKTİF ataması migration 001'deki
-  tek seferlik backfill'di) ve `chk_urunler_katalog_durumu_aktif_mi_tutarli`,
-  `katalog_durumu` ile `aktif_mi`'nin birlikte hareket etmesini şart koşuyor.
-  Ekleme bu yüzden bölünemez: görsel dosyası → `urun_gorselleri` (`ana_gorsel_mi`)
-  → `urunler` AKTİF, hepsi tek transaction'da.
-  **Düzeltme (2026-07-30):** daha önce burada "yeni satır PASİF doğar ve öyle kalır"
-  yazıyordu — yanlıştı. Varsayılanlara güvenen bir INSERT *görünmez ürün* bırakmıyor,
-  doğrudan **patlıyordu**: `aktif_mi` varsayılanı TRUE, `katalog_durumu` varsayılanı
-  PASİF, ikisi de yukarıdaki CHECK ile çelişiyordu. Migration 005 `aktif_mi`
-  varsayılanını FALSE yaparak bu çelişkiyi giderdi.
-  Görsel dizininin sahibi `metaks_DB` (nginx `gorsel-sunucu`, `:ro` bağlı — yazan
-  taraf host); bu repo bugün hiç dosya yazmıyor. Sıralama **önce dosya, sonra DB**:
-  fonksiyon hata verirse dosya silinir; ters sırada var olmayan görseli gösteren
-  kırık ürün kalırdı.
+- **Ürün ekleme/düzenleme ✅ tamamlandı (2026-07-31)** — bkz. yukarıdaki "Ürün
+  ekleme/düzenleme" bölümü. Tek yazma kapısı `urun_kaydet()` (`stok_hareketi_kaydet()`
+  ile aynı desen); Django artık ona bir çağrı katmanı (`urun_servisi.py`) yazdı.
 - **Test hareketleri ledger'da duruyor**: 2026-07-30'daki doğrulama kayıtları
   (`1001013` ve `1001020` üzerinde, açıklamalarından ayırt edilebilir) silinmedi —
   defter append-only. Kullanıcıyla kararlaştırılan yol: **ürün tamamlandığında

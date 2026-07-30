@@ -1,0 +1,157 @@
+{% extends "katalog/base.html" %}
+
+{% block title %}METAKS · {{ baslik }}{% endblock %}
+
+{% block content %}
+<header class="sticky top-0 z-40 bg-white/85 backdrop-blur-md border-b border-slate-200">
+    {% comment %}
+    flex-wrap emniyet kemeri: uzun e-posta dar ekranda taşmak yerine alt satıra
+    insin (bkz. hareketler.html — aynı tuzak, bu sayfada uzun test e-postasıyla
+    ölçüldü).
+    {% endcomment %}
+    <div class="max-w-3xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center gap-3">
+        <a href="{% url 'katalog:urun_listesi' %}"
+           class="flex items-center gap-1.5 text-sm text-slate-500 transition hover:text-slate-900">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2"
+                 viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+            Katalog
+        </a>
+        <span class="hidden sm:block flex-1"></span>
+        <span class="text-sm text-slate-500">{{ request.user.email|default:request.user.username }}</span>
+        <form method="post" action="{% url 'katalog:cikis' %}">
+            {% csrf_token %}
+            <button type="submit" class="text-sm text-slate-500 underline underline-offset-4
+                    transition hover:text-slate-900">Çıkış</button>
+        </form>
+    </div>
+</header>
+
+{% if messages %}
+<div class="max-w-3xl mx-auto px-4 sm:px-6 pt-6 space-y-2">
+    {% comment %}
+    urun_kaydet()'in kendi Türkçe mesajı burada basılıyor (ör. "taslak olarak
+    eklendi", "katalogda yayına alındı", "güncellendi") — view mesajı ayrıca
+    üretmiyor, DB'ninkini olduğu gibi taşıyor.
+    {% endcomment %}
+    {% for mesaj in messages %}
+    <div class="flex items-start gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50
+                px-3.5 py-2.5 text-sm text-emerald-900">
+        <svg class="w-4 h-4 mt-0.5 shrink-0" fill="none" stroke="currentColor"
+             stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/>
+        </svg>
+        <span>{{ mesaj }}</span>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<main class="max-w-3xl mx-auto px-4 sm:px-6 py-6 pb-16">
+
+    <div class="flex items-center gap-4 mb-6">
+        {% if mevcut_gorsel_url %}
+        <img src="{{ mevcut_gorsel_url }}" alt="{{ urun.stok_kodu }}" onerror="gorselHata(this)"
+             class="w-16 h-16 rounded-xl border border-slate-200 bg-white object-contain p-1.5">
+        <div class="hidden w-16 h-16 rounded-xl border border-slate-200 bg-slate-50"></div>
+        {% endif %}
+        <div>
+            <h1 class="text-xl font-semibold text-slate-900">{{ baslik }}</h1>
+            {% if urun %}
+            <p class="mt-0.5 text-sm">
+                {% if urun.katalog_durumu == 'AKTIF' %}
+                <span class="text-emerald-700">Katalogda yayında</span>
+                {% else %}
+                <span class="text-amber-700">Taslak — henüz katalogda görünmüyor</span>
+                {% endif %}
+            </p>
+            {% endif %}
+        </div>
+    </div>
+
+    <form method="post" enctype="multipart/form-data"
+          class="rounded-xl border border-slate-200 bg-white p-5 sm:p-6 space-y-5">
+        {% csrf_token %}
+
+        {% comment %}
+        Alana bağlanamayan hatalar (ör. urun_kaydet()'in RAISE EXCEPTION mesajı)
+        formun başında; aksi hâlde hiçbir yerde görünmezdi.
+        {% endcomment %}
+        {% if form.non_field_errors %}
+        <div class="rounded-lg border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-sm text-rose-900">
+            {% for hata in form.non_field_errors %}<p>{{ hata }}</p>{% endfor %}
+        </div>
+        {% endif %}
+
+        {% include "katalog/_form_alani.html" with alan=form.stok_kodu %}
+
+        <div class="grid sm:grid-cols-2 gap-4">
+            {% include "katalog/_form_alani.html" with alan=form.kategori %}
+            {% include "katalog/_form_alani.html" with alan=form.yeni_kategori_adi %}
+        </div>
+
+        {% include "katalog/_form_alani.html" with alan=form.urun_tipi %}
+
+        {% comment %}
+        Üst ürün/varyant adı yalnızca sunum amaçlı gizleniyor — zorunluluğu
+        UrunFormu.clean() (varlığını urun_kaydet()) zaten doğruluyor. İki yerde
+        aynı kural tekrarlanmasın diye JS burada SADECE görünürlük değiştiriyor.
+        {% endcomment %}
+        <div id="ust-urun-alani" class="{% if form.urun_tipi.value == 'ANA_URUN' %}hidden{% endif %}">
+            {% include "katalog/_form_alani.html" with alan=form.parent_stok_kodu %}
+        </div>
+        <div id="varyant-adi-alani"
+             class="{% if form.urun_tipi.value != 'VARYANT' %}hidden{% endif %}">
+            {% include "katalog/_form_alani.html" with alan=form.varyant_adi %}
+        </div>
+
+        {% include "katalog/_form_alani.html" with alan=form.olcu_mm %}
+        {% include "katalog/_form_alani.html" with alan=form.ana_gorsel %}
+
+        <details class="rounded-lg border border-slate-200">
+            <summary class="cursor-pointer select-none px-4 py-2.5 text-sm font-medium
+                             text-slate-700">Detaylar (isteğe bağlı)</summary>
+            <div class="p-4 pt-1 border-t border-slate-200 space-y-5">
+                <div class="grid sm:grid-cols-2 gap-4">
+                    {% include "katalog/_form_alani.html" with alan=form.hammadde %}
+                    {% include "katalog/_form_alani.html" with alan=form.kaplama %}
+                </div>
+                <div class="grid sm:grid-cols-2 gap-4">
+                    {% include "katalog/_form_alani.html" with alan=form.boy_ligne %}
+                    {% include "katalog/_form_alani.html" with alan=form.gramaj_gr %}
+                </div>
+                <div class="grid sm:grid-cols-2 gap-4">
+                    {% include "katalog/_form_alani.html" with alan=form.boya_mine %}
+                    {% include "katalog/_form_alani.html" with alan=form.montaj_durumu %}
+                </div>
+                {% include "katalog/_form_alani.html" with alan=form.kalip_versiyonu %}
+                {% include "katalog/_form_alani.html" with alan=form.aciklama %}
+                {% include "katalog/_form_alani.html" with alan=form.kritik_stok_esigi %}
+                {% include "katalog/_form_alani.html" with alan=form.stok_takip_edilsin_mi %}
+            </div>
+        </details>
+
+        <div class="flex items-center gap-3 pt-1">
+            <button type="submit"
+                    class="rounded-lg bg-slate-900 px-6 py-2.5 text-sm font-medium text-white
+                           transition hover:bg-slate-700
+                           focus:outline-none focus:ring-4 focus:ring-slate-900/10">Kaydet</button>
+            <a href="{% url 'katalog:urun_listesi' %}"
+               class="text-sm text-slate-500 underline underline-offset-4
+                      transition hover:text-slate-900">Vazgeç</a>
+        </div>
+    </form>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Yalnızca sunum: bkz. yukarıdaki şablon yorumu. Zorunluluk denetimi
+    // UrunFormu.clean() + urun_kaydet()'te.
+    function urunTipiDegisti() {
+        const secili = document.querySelector('select[name="urun_tipi"]').value;
+        document.getElementById('ust-urun-alani').classList.toggle('hidden', secili === 'ANA_URUN');
+        document.getElementById('varyant-adi-alani').classList.toggle('hidden', secili !== 'VARYANT');
+    }
+    document.querySelector('select[name="urun_tipi"]').addEventListener('change', urunTipiDegisti);
+</script>
+{% endblock %}

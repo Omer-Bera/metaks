@@ -153,6 +153,15 @@ GORSEL_SUNUCU_BASE_URL = os.environ.get(
     'GORSEL_SUNUCU_BASE_URL', 'http://localhost:8083/urun-gorselleri/'
 )
 
+# Yukarıdakinin OKUMA (HTTP, tarayıcı) tarafı; bu ise YAZMA (dosya sistemi, Django
+# süreci) tarafı — aynı dizinin iki farklı erişim yolu. nginx bu dizini `:ro`
+# bağlıyor (metaks_DB/docker-compose.yml), yazan taraf host — yani bu Django süreci.
+# Varsayılan, sibling-repo düzenini varsayıyor (CLAUDE.md: metaks_DB ~/ altında kardeş
+# dizin); .env ile farklı bir yerleşim için ezilebilir.
+URUN_GORSEL_DIZINI = os.environ.get(
+    'URUN_GORSEL_DIZINI', str(BASE_DIR.parent / 'metaks_DB' / 'images' / 'final' / 'products')
+)
+
 # Kimlik doğrulama. Kullanıcılar Django'nun kendi auth tablolarında, yani SQLite
 # 'default' bağlantısında tutuluyor — paylaşımlı METAKS Postgres'ine dokunulmuyor.
 #
