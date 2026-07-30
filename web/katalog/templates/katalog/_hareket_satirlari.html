@@ -1,0 +1,76 @@
+{% load humanize %}
+{% comment %}
+Bir sayfa hareket satırı + sonsuz kaydırma nöbetçisi. Nöbetçi bir <tr> olmak zorunda:
+<tbody> içine <div> koymak geçersiz HTML, tarayıcı onu tablonun dışına taşır ve
+"revealed" tetikleyicisi tablonun altında hiç görünmeyebilir.
+
+hareket.tarih (ham islem_tarihi değil) kullanılıyor: kolon naive UTC tutuyor, ham
+değer basılırsa saat 3 saat geri görünür (bkz. models.py::StokHareketi).
+{% endcomment %}
+{% for hareket in sayfa %}
+<tr class="hover:bg-slate-50/70 transition">
+    <td class="px-4 py-2.5 whitespace-nowrap align-top">
+        <div class="text-slate-900">{{ hareket.tarih|date:"j M Y" }}</div>
+        <div class="text-xs text-slate-400">{{ hareket.tarih|date:"H:i" }}</div>
+    </td>
+
+    <td class="px-4 py-2.5 align-top">
+        <div class="flex items-center gap-2.5">
+            {% if hareket.urun %}
+            <img src="{{ hareket.urun.gorsel_url }}" alt="" onerror="gorselHata(this)"
+                 loading="lazy"
+                 class="w-8 h-8 shrink-0 rounded border border-slate-200 bg-white object-contain p-0.5">
+            <div class="hidden w-8 h-8 shrink-0 rounded border border-slate-200 bg-slate-50"></div>
+            {% else %}
+            {# Hareket, katalogda olmayan (PASİF) bir ürüne ait olabilir. #}
+            <div class="w-8 h-8 shrink-0 rounded border border-slate-200 bg-slate-50"
+                 title="Ürün aktif katalogda değil"></div>
+            {% endif %}
+            <div>
+                <div class="font-mono text-[13px] text-slate-900">{{ hareket.stok_kodu }}</div>
+                {% if hareket.urun.kategori_adi %}
+                <div class="text-xs text-slate-400">{{ hareket.urun.kategori_adi }}</div>
+                {% endif %}
+            </div>
+        </div>
+    </td>
+
+    <td class="px-4 py-2.5 align-top">
+        <span class="inline-block rounded-md px-2 py-0.5 text-xs font-medium whitespace-nowrap
+            {% if hareket.islem_tipi == 'GIRIS' %}bg-emerald-100 text-emerald-800
+            {% elif hareket.islem_tipi == 'CIKIS' %}bg-rose-100 text-rose-800
+            {% elif hareket.islem_tipi == 'TRANSFER' %}bg-sky-100 text-sky-800
+            {% elif hareket.islem_tipi == 'SAYIM_DEVRI' %}bg-amber-100 text-amber-800
+            {% else %}bg-slate-100 text-slate-700{% endif %}"
+        >{{ hareket.islem_etiketi }}</span>
+    </td>
+
+    <td class="px-4 py-2.5 text-right align-top tabular-nums text-slate-900">
+        {{ hareket.miktar|intcomma }}</td>
+
+    <td class="px-4 py-2.5 align-top whitespace-nowrap text-slate-600">
+        {% if hareket.kaynak_lokasyon %}{{ hareket.kaynak_lokasyon.lokasyon_adi }}{% else %}<span class="text-slate-300">—</span>{% endif %}
+        <span class="mx-1 text-slate-400">→</span>
+        {% if hareket.hedef_lokasyon %}{{ hareket.hedef_lokasyon.lokasyon_adi }}{% else %}<span class="text-slate-300">—</span>{% endif %}
+    </td>
+
+    <td class="px-4 py-2.5 align-top text-slate-600">{{ hareket.yapan_kullanici }}</td>
+
+    <td class="px-4 py-2.5 align-top text-slate-500">{{ hareket.aciklama|default:"" }}</td>
+</tr>
+{% endfor %}
+
+{% if sonraki_url %}
+<tr hx-get="{{ sonraki_url }}"
+    hx-trigger="revealed"
+    hx-target="this"
+    hx-swap="outerHTML">
+    <td colspan="7" class="px-4 py-6 text-center">
+        <svg class="inline-block animate-spin w-5 h-5 text-slate-300" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity=".25"/>
+            <path d="M22 12a10 10 0 0 0-10-10" stroke="currentColor" stroke-width="3"
+                  stroke-linecap="round"/>
+        </svg>
+    </td>
+</tr>
+{% endif %}

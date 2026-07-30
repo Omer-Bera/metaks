@@ -16,6 +16,7 @@ urlpatterns = [
     path('stok/', views.stok_listesi, name='stok_listesi'),
     path('stok/urun/<str:stok_kodu>/', views.stok_urun_detay, name='stok_urun_detay'),
     path('stok/islem/<str:stok_kodu>/', views.stok_islem, name='stok_islem'),
+    path('stok/hareketler/', views.hareket_gecmisi, name='hareket_gecmisi'),
 
     # Django'nun hazır giriş/çıkış view'ları; sadece şablonları bu app'ten.
     # Ana ekrandaki giriş kutusu da buraya POST ediyor (hatalı denemede bu sayfa açılır).

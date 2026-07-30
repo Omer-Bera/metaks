@@ -1,15 +1,22 @@
+from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.db import connections
 from django.db.models import Count, Q, Subquery
 from django.http import QueryDict
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 
 from . import stok_servisi
-from .models import AktifUrun, Lokasyon, LokasyonStok, ToplamStok
+from .models import (
+    AktifUrun,
+    Lokasyon,
+    LokasyonStok,
+    StokHareketi,
+    ToplamStok,
+    yerel_tarih,
+)
 
 # Kart ızgarasının bir "sayfası". 2/3/4/6 kolona tam bölünüyor (bkz. _urun_kartlari.html
 # breakpoint'leri) — son satır yarım kalmıyor.
@@ -47,9 +54,17 @@ def ana_ekran(request):
     hareketli_urun = ToplamStok.objects.using('metaks').count()
     stogu_olan = ToplamStok.objects.using('metaks').filter(toplam_miktar__gt=0).count()
 
-    with connections['metaks'].cursor() as imlec:
-        imlec.execute('SELECT max(islem_tarihi) FROM stok_hareketleri')
-        son_hareket = imlec.fetchone()[0]
+    # yerel_tarih(): stok_hareketleri'ndeki naive UTC damgasını aware hâle getiriyor,
+    # yoksa şablon onu yerel saat sanıp 3 saat geri gösteriyor (bkz. models.py).
+    son_hareketler = list(
+        StokHareketi.objects.using('metaks')
+        .annotate(tarih=yerel_tarih())
+        .select_related('kaynak_lokasyon', 'hedef_lokasyon')[:5]
+    )
+    for hareket in son_hareketler:
+        hareket.islem_etiketi = stok_servisi.ISLEM_TIPI_ETIKETLERI.get(
+            hareket.islem_tipi, hareket.islem_tipi
+        )
 
     return render(
         request,
@@ -67,7 +82,7 @@ def ana_ekran(request):
             'hareketli_urun': hareketli_urun,
             'stogu_olan': stogu_olan,
             'sayim_yuzdesi': round(100 * hareketli_urun / aktif_urun, 1) if aktif_urun else 0,
-            'son_hareket': son_hareket,
+            'son_hareketler': son_hareketler,
         },
     )
 
@@ -324,6 +339,120 @@ def stok_listesi(request):
 # --------------------------------------------------------------------------------------
 # Detay paneli
 # --------------------------------------------------------------------------------------
+
+
+# --------------------------------------------------------------------------------------
+# Hareket geçmişi
+# --------------------------------------------------------------------------------------
+
+HAREKET_SAYFA_BOYUTU = 50
+
+
+def _tarih_cozumle(metin):
+    """<input type="date">'ten gelen YYYY-AA-GG metnini date'e çevirir; geçersizse None."""
+    try:
+        return date.fromisoformat(metin.strip())
+    except (AttributeError, ValueError):
+        return None
+
+
+def hareket_gecmisi(request):
+    """stok_hareketleri dökümü: kim, ne zaman, hangi üründe, nereden nereye.
+
+    Salt-okunur — yazmanın tek yolu stok_hareketi_kaydet() (bkz. stok_servisi).
+
+    Tarihler `yerel_tarih()` ile aware hâle getiriliyor; hem gösterim hem de tarih
+    aralığı filtresi bunun üzerinden çalışıyor. Ham naive UTC kolonuna göre filtrelemek
+    gün sınırlarında 3 saatlik kaymaya yol açardı (bkz. models.py::StokHareketi).
+    """
+    arama = request.GET.get('q', '').strip()
+    tip = request.GET.get('tip', '').strip()
+    lokasyon = _tam_sayi(request.GET.get('lokasyon', ''))
+    kullanici = request.GET.get('kullanici', '').strip()
+    baslangic = _tarih_cozumle(request.GET.get('baslangic', ''))
+    bitis = _tarih_cozumle(request.GET.get('bitis', ''))
+
+    hareketler = (
+        StokHareketi.objects.using('metaks')
+        .annotate(tarih=yerel_tarih())
+        .select_related('kaynak_lokasyon', 'hedef_lokasyon')
+    )
+
+    if arama:
+        hareketler = hareketler.filter(
+            Q(stok_kodu__icontains=arama) | Q(aciklama__icontains=arama)
+        )
+    if tip in stok_servisi.ISLEM_TIPI_DEGERLERI:
+        hareketler = hareketler.filter(islem_tipi=tip)
+    if lokasyon:
+        hareketler = hareketler.filter(
+            Q(kaynak_lokasyon_id=lokasyon) | Q(hedef_lokasyon_id=lokasyon)
+        )
+    if kullanici:
+        hareketler = hareketler.filter(yapan_kullanici=kullanici)
+    if baslangic:
+        hareketler = hareketler.filter(tarih__date__gte=baslangic)
+    if bitis:
+        hareketler = hareketler.filter(tarih__date__lte=bitis)
+
+    sayfalayici = Paginator(hareketler, HAREKET_SAYFA_BOYUTU)
+    sayfa = sayfalayici.get_page(request.GET.get('sayfa'))
+
+    # Ürün görselleri tek ek sorguda (N+1 yok). Hareket, katalogda olmayan (PASİF) bir
+    # ürüne de ait olabilir — o zaman görsel yok, şablon yer tutucu basıyor.
+    kodlar = {hareket.stok_kodu for hareket in sayfa.object_list}
+    urunler = {
+        urun.stok_kodu: urun
+        for urun in AktifUrun.objects.using('metaks').filter(stok_kodu__in=kodlar)
+    }
+    for hareket in sayfa.object_list:
+        hareket.urun = urunler.get(hareket.stok_kodu)
+        # Ham değer ('SAYIM_DEVRI') yerine okunur etiket. Şablonda sözlük araması
+        # yapılamadığı için (değişken anahtar desteklenmiyor) burada iliştiriliyor.
+        hareket.islem_etiketi = stok_servisi.ISLEM_TIPI_ETIKETLERI.get(
+            hareket.islem_tipi, hareket.islem_tipi
+        )
+
+    parametreler = QueryDict(mutable=True)
+    for anahtar, deger in [
+        ('q', arama), ('tip', tip), ('lokasyon', lokasyon or ''),
+        ('kullanici', kullanici),
+        ('baslangic', baslangic.isoformat() if baslangic else ''),
+        ('bitis', bitis.isoformat() if bitis else ''),
+    ]:
+        if deger:
+            parametreler[anahtar] = deger
+
+    context = {
+        'sayfa': sayfa,
+        'toplam': sayfalayici.count,
+        'aktif_sekme': 'hareketler',
+        'islem_tipleri': stok_servisi.ISLEM_TIPLERI,
+        'lokasyonlar': list(Lokasyon.objects.using('metaks').all()),
+        'kullanicilar': sorted(
+            StokHareketi.objects.using('metaks')
+            .order_by()
+            .values_list('yapan_kullanici', flat=True)
+            .distinct()
+        ),
+        'secili': {
+            'q': arama, 'tip': tip, 'lokasyon': lokasyon, 'kullanici': kullanici,
+            'baslangic': baslangic.isoformat() if baslangic else '',
+            'bitis': bitis.isoformat() if bitis else '',
+        },
+        'filtre_var': bool(arama or tip or lokasyon or kullanici or baslangic or bitis),
+        'sonraki_url': None,
+    }
+    if sayfa.has_next():
+        sonraki = parametreler.copy()
+        sonraki['sayfa'] = sayfa.next_page_number()
+        context['sonraki_url'] = '?' + sonraki.urlencode()
+
+    if request.headers.get('HX-Request'):
+        if sayfa.number > 1:
+            return render(request, 'katalog/_hareket_satirlari.html', context)
+        return render(request, 'katalog/_hareket_govde.html', context)
+    return render(request, 'katalog/hareketler.html', context)
 
 
 def _sayi(deger, birim):

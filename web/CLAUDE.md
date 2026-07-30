@@ -114,21 +114,28 @@ python manage.py runserver
 
 ## Git
 
-`metaks_DB` ve `depo-appsmith-arayuz` ile aynı desen izlenmesi planlanıyor: repo-scoped
-`user.name`/`user.email` (global değil, zaten ayarlı), commit signing global 1Password
-SSH agent config'inden miras alınıyor. GitHub remote'u henüz eklenmedi (2026-07-30
-itibarıyla bilinçli olarak sadece lokal) — eklendiğinde `master`/`dev`/`review`
-üç-branch modelinin buraya da uygulanması, diğer iki repoyla tutarlılık için mantıklı
-olur ama henüz karar verilmedi.
+`metaks_DB` ve `depo-appsmith-arayuz` ile aynı desen: repo-scoped `user.name`/`user.email`
+(global değil), commit signing global 1Password SSH agent config'inden miras alınıyor.
+
+Remote **2026-07-30'da eklendi**: `Omer-Bera/depo-web-arayuz`, **private** (kardeş iki
+repo da private; bu iç iş yazılımı, şema ayrıntıları ve iş mantığı içeriyor).
+
+Şu an tek branch (`master`) var. Kardeş repolarda `master`/`dev`/`review` üç-branch
+modeli kullanılıyor; buraya da uygulamak tutarlılık için mantıklı olur ama **henüz
+karar verilmedi**, o yüzden bilerek oluşturulmadı.
+
+`.gitignore` kapsamı: `.env`, `db.sqlite3` (uygulama kullanıcıları burada), `venv/`.
+Yani hiçbir kimlik bilgisi ve parola hash'i repoya girmiyor.
 
 ## Sayfa yapısı
 
 | Sayfa | URL | Ne yapar |
 | --- | --- | --- |
-| Ana ekran | `/` | Modüllere yönlendirme, özet sayılar, giriş kutusu |
+| Ana ekran | `/` | Modüllere yönlendirme, özet sayılar, son hareketler, giriş kutusu |
 | Ürün Kataloğu | `/katalog/` | Görsel galeri. **Stoktan hiç söz etmez.** |
 | Stok Durumu | `/stok/` | Aynı galeri + kart başına stok durumu + "sadece stokta olanlar" anahtarı + detayda lokasyon dökümü |
 | Stok işlemi | `/stok/islem/<stok_kodu>/` | Hareket kaydı (giriş zorunlu) |
+| Hareket Geçmişi | `/stok/hareketler/` | `stok_hareketleri` dökümü, filtreli (salt-okunur) |
 
 ### Ana ekran
 
@@ -301,6 +308,39 @@ sonuç Metaks 250 / Depo 1 200. Mükerrer gönderim de canlı doğrulandı: ayn�
 Bu denemelerin bıraktığı satırlar `stok_hareketleri`'nde duruyor (ledger append-only,
 silinmiyor); açıklama alanlarından ayırt edilebilirler.
 
+## Hareket geçmişi ve zaman dilimi tuzağı
+
+`/stok/hareketler/` — `stok_hareketleri` dökümü; ürün/açıklama araması, işlem tipi,
+lokasyon (kaynak **veya** hedef), kullanıcı ve tarih aralığı filtreleri. Salt-okunur;
+yazmanın tek yolu hâlâ `stok_hareketi_kaydet()`. `StokHareketi` modeli bu yüzden
+bilinçli olarak yalnızca okuma için var.
+
+Filtrelerin hepsi gerçek form alanı olduğu için burada tek bir `<form>` yeterli:
+HTMX form üzerinden istek attığında içindeki tüm alanları kendiliğinden gönderiyor,
+katalogdaki `hx-include` düzenine gerek kalmıyor (orada kategori şeritleri buton
+olduğu için form yaklaşımı çalışmıyordu).
+
+### Zaman dilimi: kolon naive UTC tutuyor (dikkat)
+
+`stok_hareketleri.islem_tarihi` / `created_at` **`timestamp without time zone`** ve
+Postgres oturumu UTC olduğu için `CURRENT_TIMESTAMP` buraya **UTC duvar saatini naive
+olarak** yazıyor. Yani 17:41'de yapılan işlem tabloda `14:41` görünüyor. Django
+`USE_TZ=True` ile çalıştığından bu değer olduğu gibi basılırsa kullanıcıya **3 saat
+geri** gösterilir — ana ekranda tam olarak bu olmuştu.
+
+Çözüm `models.py::yerel_tarih()`: Postgres'in `timezone('UTC', ts)` fonksiyonuyla
+değeri UTC kabul edip `timestamptz`'ye çeviriyor, Django da şablonda `TIME_ZONE`
+(Europe/Istanbul) değerine göre yerelleştiriyor. Bu ifade **hem gösterimde hem tarih
+aralığı filtresinde** kullanılmalı; ham kolona göre filtrelemek gün sınırlarında
+3 saatlik kaymaya yol açar. Üretilen SQL doğru:
+`django_datetime_cast_date(timezone(UTC, islem_tarihi), Europe/Istanbul, UTC)`.
+
+Sonsuz kaydırma nöbetçisi burada bir `<tr>`; `<tbody>` içine `<div>` koymak geçersiz
+HTML olduğu için tarayıcı onu tablonun dışına taşır ve `revealed` hiç tetiklenmez.
+Bu yol sayfa boyutu geçici olarak 10'a düşürülüp gerçek tarayıcıda doğrulandı
+(nöbetçinin `<tbody>` içinde kaldığı ve eklenen satırların 7 hücreli geçerli `<tr>`
+olduğu dahil).
+
 ### Verinin arayüzü şekillendirdiği yerler
 
 Bunlar `v_aktif_urunler`'ın 1.780 satırı üzerinde ölçüldü (2026-07-30). Veri girildikçe
@@ -357,9 +397,12 @@ Henüz yapılmadı:
   shell'inden oluşturuldu. Ekip için kullanıcı eklemek gerekirse `/admin/` kullanılabilir
   ya da basit bir yönetim ekranı gerekir. İlk parola geliştirme sırasında konuldu,
   değiştirilmeli.
-- **Hareket geçmişi ekranı yok**: `stok_hareketleri`'ne yazılıyor ama okunacak bir liste
-  (ürün/lokasyon/kullanıcı bazlı hareket dökümü) henüz yok. Sayım denetimi için doğal
-  sonraki adım.
+- **Test hareketleri ledger'da duruyor**: 2026-07-30'daki doğrulama kayıtları
+  (`1001013` ve `1001020` üzerinde, açıklamalarından ayırt edilebilir) silinmedi —
+  defter append-only. Kullanıcıyla kararlaştırılan yol: **ürün tamamlandığında
+  `metaks_DB` tarafında numaralı bir migration ile temizlenecek** (şema otoritesi
+  orası). O zamana kadar hareket geçmişinde görünmeye devam edecekler.
+- **Hareket geçmişinde dışa aktarma (CSV/Excel) yok**: sayım denetimi için istenebilir.
 - **Ürün ekleme, stok işleminden belirgin şekilde daha zor**: satırın yanında görsel
   dosyası da gerekiyor (nginx'in servis ettiği dizine yükleme) ve bir ürün ancak
   geçerli ana görseli varsa AKTİF sayılıyor. Sıralamada stok giriş/çıkıştan sonra.

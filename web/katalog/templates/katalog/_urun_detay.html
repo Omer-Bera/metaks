@@ -111,14 +111,23 @@
                 Yazma sayfasına giriş noktası. Giriş yapılmamışsa @login_required
                 kullanıcıyı giriş sayfasına, oradan da buraya geri gönderiyor.
                 {% endcomment %}
-                <a href="{% url 'katalog:stok_islem' urun.stok_kodu %}"
-                   class="mt-4 inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5
-                          text-sm font-medium text-white transition hover:bg-slate-700
-                          focus:outline-none focus:ring-4 focus:ring-slate-900/10">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2"
-                         viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-                    Stok işlemi yap
-                </a>
+                <div class="mt-4 flex flex-wrap items-center gap-2">
+                    <a href="{% url 'katalog:stok_islem' urun.stok_kodu %}"
+                       class="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5
+                              text-sm font-medium text-white transition hover:bg-slate-700
+                              focus:outline-none focus:ring-4 focus:ring-slate-900/10">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2"
+                             viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                        Stok işlemi yap
+                    </a>
+                    <a href="{% url 'katalog:hareket_gecmisi' %}?q={{ urun.stok_kodu|urlencode }}"
+                       class="inline-flex items-center gap-2 rounded-lg border border-slate-300
+                              bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition
+                              hover:border-slate-400 hover:text-slate-900
+                              focus:outline-none focus:ring-4 focus:ring-slate-900/5">
+                        Hareketleri
+                    </a>
+                </div>
                 {% endif %}
 
                 {% if urun.parent_stok_kodu %}

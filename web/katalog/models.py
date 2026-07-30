@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.db.models import F, Func, Value
 
 
 class AktifUrun(models.Model):
@@ -87,6 +88,58 @@ class Lokasyon(models.Model):
 
     def __str__(self):
         return self.lokasyon_adi
+
+
+class StokHareketi(models.Model):
+    """stok_hareketleri tablosunun salt-okunur haritalaması (hareket geçmişi ekranı).
+
+    YAZMA İÇİN KULLANILMAZ. Hareket eklemenin tek yolu stok_hareketi_kaydet()
+    fonksiyonudur (bkz. katalog/stok_servisi.py); bu model sadece okuma içindir.
+
+    ZAMAN DİLİMİ TUZAĞI: islem_tarihi/created_at `timestamp without time zone` ve
+    Postgres oturumu UTC olduğu için CURRENT_TIMESTAMP buraya **UTC duvar saatini
+    naive olarak** yazıyor. Yani 17:41'de yapılan bir işlem tabloda 14:41 görünür.
+    Django USE_TZ=True ile çalıştığından bu naive değer olduğu gibi basılırsa
+    kullanıcıya 3 saat geri gösterilir. Sorgularken `yerel_tarih()` yardımcısı
+    kullanılmalı: değeri UTC kabul edip timestamptz'ye çevirir, Django da şablonda
+    TIME_ZONE'a (Europe/Istanbul) göre yerelleştirir.
+    """
+
+    hareket_id = models.BigAutoField(primary_key=True)
+    stok_kodu = models.CharField(max_length=100)
+    miktar = models.IntegerField()
+    kaynak_lokasyon = models.ForeignKey(
+        'Lokasyon', models.DO_NOTHING, db_column='kaynak_lokasyon_id',
+        null=True, related_name='+',
+    )
+    hedef_lokasyon = models.ForeignKey(
+        'Lokasyon', models.DO_NOTHING, db_column='hedef_lokasyon_id',
+        null=True, related_name='+',
+    )
+    islem_tipi = models.CharField(max_length=20)
+    aciklama = models.TextField(null=True)
+    islem_tarihi = models.DateTimeField()
+    yapan_kullanici = models.CharField(max_length=255)
+
+    class Meta:
+        managed = False
+        db_table = 'stok_hareketleri'
+        # En yeni önce. hareket_id ikincil: aynı saniyedeki hareketler kararlı sırada
+        # kalsın (sayfalama tutarlılığı için şart).
+        ordering = ['-islem_tarihi', '-hareket_id']
+
+    def __str__(self):
+        return f'{self.hareket_id}: {self.islem_tipi} {self.stok_kodu} x{self.miktar}'
+
+
+def yerel_tarih(alan='islem_tarihi'):
+    """Naive UTC timestamp'i timestamptz'ye çeviren ORM ifadesi.
+
+    Postgres'in `timezone('UTC', ts)` fonksiyonu (yani `ts AT TIME ZONE 'UTC'`)
+    naive değeri UTC kabul edip timestamptz üretiyor; Django bunu aware datetime
+    olarak alıyor ve şablonda TIME_ZONE'a göre yerelleştiriyor.
+    """
+    return Func(Value('UTC'), F(alan), function='timezone', output_field=models.DateTimeField())
 
 
 class LokasyonStok(models.Model):

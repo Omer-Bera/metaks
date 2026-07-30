@@ -75,6 +75,9 @@ ISLEM_TIPLERI = [
 
 ISLEM_TIPI_DEGERLERI = {tip['deger'] for tip in ISLEM_TIPLERI}
 
+# Hareket geçmişinde ham değerleri ('SAYIM_DEVRI') değil okunur etiketleri göstermek için.
+ISLEM_TIPI_ETIKETLERI = {tip['deger']: tip['etiket'] for tip in ISLEM_TIPLERI}
+
 
 class StokIslemHatasi(Exception):
     """stok_hareketi_kaydet()'in RAISE EXCEPTION ile döndürdüğü iş kuralı hatası.
