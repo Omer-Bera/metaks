@@ -582,14 +582,29 @@ sona bırakıldı.
 - İlk sürümde kapasite planlama/otomatik çizelgeleme yapılmayacak (kullanıcının kendi
   kısıtı) — sade bir pano/tablo yeterli.
 
-### Faz 8: Numune takibi (fikir aşamasında, 2026-07-30)
+### Faz 8: Numune takibi (şema tarafı ✅ tamamlandı 2026-07-30)
 
-Kullanıcının Faz 4/5/6 (depo+ürün+sipariş sistemi) tamamlandıktan sonra ele almayı
-düşündüğü, henüz tasarlanmamış bir sonraki adım: hangi numunenin hangi rafta/lokasyonda
-olduğunu takip etmek. Muhtemelen `lokasyonlar` altyapısına benzer ama ayrı bir varlık
-gerektirir (numuneler kalıcı stok kalemi değil — bkz. `urunler`'in "sadece değişmeyen
-fiziksel öznitelikler" ilkesi, numune kavramı buna uymuyor). Henüz gereksinim toplanmadı,
-şema tasarımı yapılmadı.
+Hangi numunenin hangi dolapta/rafta olduğunu "kütüphanede kitap bulur gibi" bulmak
+("Numune Dolabı 1 · Raf 3"). Sayım devam ederken aciliyet kazandı: numune dolabını açıp
+3 adet bulan kişinin bunu yazacağı dürüst bir yer yoktu.
+
+**Bu notun önceki hâli ayrı bir varlık gerektireceğini söylüyordu — o değerlendirme
+düzeltildi.** Gerekçe (numune, `urunler`'in "sadece değişmeyen fiziksel öznitelikler"
+ilkesine uymaz) doğru, ama yalnızca numune yerinin `urunler` üzerinde bir **kolon**
+olmasını eler; ayrı bir varlık gerektiğini kanıtlamaz. Numune fiziksel olarak ürünün bir
+adedinin bir yerde durmasıdır ve "depodan numune dolabına taşındı" tam olarak bir
+TRANSFER'dir — yani var olan `lokasyonlar` + `stok_hareketleri` mekanizmasına oturur.
+Bu sayede numune ödünç alınıp geri konduğunda hareket kaydı bedavaya gelir.
+
+`sql/migrations/004_numune_lokasyonlari.sql` canlıya uygulandı: `lokasyonlar.tip`'e
+`NUMUNE`, iki seviyeli dolap→raf hiyerarşisi (`ust_lokasyon_id`, `kod`), yeni
+`v_lokasyonlar_detay` / `v_fiziksel_stok` / `v_numune_konumlari` view'ları,
+`stok_hareketi_kaydet()`'e yaprak kontrolü. `v_toplam_stok` artık **satılabilir** stok
+(numune hariç). Ayrıntı: `docs/aktif-urun-veri-sozlesmesi.md`.
+
+**Sırada ne var:** (1) iki arayüzün lokasyon açılır listeleri `v_lokasyonlar_detay` +
+`yaprak_mi`'ye taşınmalı, (2) ancak ondan sonra gerçek dolap/raf satırları girilmeli.
+Kaç dolap/raf olacağı henüz kullanıcıdan alınmadı.
 
 ---
 

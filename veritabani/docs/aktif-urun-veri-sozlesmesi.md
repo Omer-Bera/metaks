@@ -1,10 +1,16 @@
 # Aktif Ürün Veri Sözleşmesi
 
-Appsmith Ürünler/Katalog sayfasının kullanacağı veri sözleşmesi. Bu belge inceleme +
-migration hazırlığı aşamasının çıktısıdır. **001, 002 ve 003 migration'larının tamamı
-ortak veritabanına uygulandı** (bkz. "Migration sırası") — `v_aktif_urunler`,
-`v_lokasyon_stok_ozet`, `v_toplam_stok` ve `stok_hareketi_kaydet()` artık canlıda
-kullanılabilir.
+**İki arayüz** bu sözleşmeyi okuyor: Appsmith (`depo-appsmith-arayuz`) ve Django+HTMX
+(`depo-web-arayuz`). Buradaki view/fonksiyon imzaları ikisi için de bağlayıcıdır.
+
+**001, 002 ve 003 migration'larının tamamı ortak veritabanına uygulandı** (bkz.
+"Migration sırası") — `v_aktif_urunler`, `v_lokasyon_stok_ozet`, `v_toplam_stok` ve
+`stok_hareketi_kaydet()` canlıda kullanılabilir.
+
+**004 (numune lokasyonları) ve 005 (`urun_kaydet()`) yazıldı ve canlı şemaya karşı
+`BEGIN...ROLLBACK` içinde test edildi, HENÜZ UYGULANMADI.** İkisi de aşağıda ayrı
+bölümlerde belgelenmiştir. 004 uygulandığında `v_toplam_stok`'un **anlamı değişir**
+(satılabilir stok = numune hariç) — ayrıntı için o bölüme bakın.
 
 ## Aktif ürün kriterleri
 
@@ -43,8 +49,14 @@ için (küçük dosyalar genelde gerçekten küçük/basit ürün fotoğrafları
 | `urunler.katalog_durumu` | yeni kolon | `'AKTIF' \| 'PASIF' \| 'INCELEME_BEKLIYOR'` |
 | `urunler.aktif_mi` | mevcut kolon | değişmedi; `katalog_durumu='AKTIF'` ile her zaman tutarlı (CHECK constraint) |
 | `v_aktif_urunler` | yeni view | Appsmith'in **tek** okuma kaynağı — sadece aktif ürünler, kategori/hammadde/kaplama/ana görsel join'li |
-| `v_lokasyon_stok_ozet` | yeni view | ürün × lokasyon bazında net miktar |
-| `v_toplam_stok` | yeni view | ürün başına tüm lokasyonlar toplamı |
+| `v_lokasyon_stok_ozet` | view (002, 004'te genişledi) | ürün × lokasyon bazında net miktar |
+| `v_toplam_stok` | view (002, **004'te anlamı değişti**) | ürün başına **satılabilir** toplam (004 sonrası NUMUNE hariç) |
+| `v_lokasyonlar_detay` | yeni view (004) | lokasyon açılır listelerinin **tek** kaynağı — hiyerarşi, `tam_ad`, `yaprak_mi` |
+| `v_fiziksel_stok` | yeni view (004) | ürün başına fiziksel toplam (numuneler **dahil**) |
+| `v_numune_konumlari` | yeni view (004) | "bu ürünün numunesi nerede?" |
+| `urun_kaydet()` | yeni fonksiyon (005) | ürün ekleme/güncellemenin **tek** kapısı |
+| `urun_sonraki_gorsel_sirasi()` | yeni fonksiyon (005) | bir sonraki `sira_no` (dosya adı kurmak için) |
+| `urunler.olusturan_kullanici` / `guncelleyen_kullanici` | yeni kolon (005) | denetim izi; eski 2.973 satırda NULL |
 
 `urunler`/`urun_gorselleri`/`kategoriler`/`hammaddeler`/`kaplamalar` şemasında hiçbir
 değişiklik yok, sadece `katalog_durumu` kolonu eklendi. `stok_hareketleri`/`lokasyonlar`
@@ -62,7 +74,11 @@ küçük harfe çevrilip birleştirilmiş hali — tek bir `ILIKE '%...%'` ile h
 için (bkz. `csv_guncelle.py`'deki `arama_metni_olustur()` ile aynı yaklaşım).
 
 `v_lokasyon_stok_ozet`: `stok_kodu`, `lokasyon_id`, `lokasyon_adi`, `lokasyon_tipi`,
-`mevcut_miktar`. `v_toplam_stok`: `stok_kodu`, `toplam_miktar`.
+`mevcut_miktar` **+ 004 sonrası:** `lokasyon_kodu`, `lokasyon_tam_adi`. Yeni kolonlar
+sona eklendi, mevcut kolonların adı/sırası/tipi korundu — isimle seçen sorgular
+etkilenmez.
+
+`v_toplam_stok`: `stok_kodu`, `toplam_miktar`. `v_fiziksel_stok`: aynı kolonlar.
 
 ## Boş değer davranışları
 
@@ -79,9 +95,11 @@ için (bkz. `csv_guncelle.py`'deki `arama_metni_olustur()` ile aynı yaklaşım)
 
 ## Stok hesaplama yöntemi
 
-`stok_hareketleri` ve `lokasyonlar` şu an **boş** (Faz 4 yükleyici script'i henüz
-yazılmadı — `CLAUDE.md`'de belgelenmiş bilinen durum). View'lar bugün 0 satır dönüyor;
-bu beklenen bir durumdur, hata değildir.
+*(2026-07-30 güncellemesi: aşağıdaki "tablolar boş" ifadesi artık geçerli değil —
+`lokasyonlar`'da 8 satır (5 aktif gerçek iş lokasyonu), `stok_hareketleri`'nde 30 satır
+var ve depo sayımı üzerinden aktif olarak veri akıyor. `v_toplam_stok` bugün 8 satır /
+478 adet dönüyor. İşaret kuralı aşağıdaki haliyle geçerli ve `stok_hareketi_kaydet()`
+tarafından uygulanıyor.)*
 
 Kabul edilen işaret kuralı (varsayım — Faz 4 yükleyicisi bu kuralla tutarlı veri
 üretmeli):
@@ -156,6 +174,22 @@ eklenmedi.
    bırakmadan); kalıcı uygulama sonrası `\d stok_hareketleri` ve `\df stok_hareketi_kaydet`
    ile kolonların/fonksiyonun canlıda gerçekten oluştuğu doğrulandı.
 
+4. **⏳ YAZILDI, TEST EDİLDİ, UYGULANMADI (2026-07-30)** —
+   `sql/migrations/004_numune_lokasyonlari.sql` (numune lokasyon hiyerarşisi, yeni
+   view'lar, `stok_hareketi_kaydet()`'e yaprak kontrolü). Canlı şemaya karşı
+   `BEGIN...ROLLBACK` içinde 13 senaryo ile test edildi: `v_toplam_stok` eski/yeni
+   tanım farkı **0 satır**, mevcut 8 lokasyon etkilenmedi, derinlik-3 / mükerrer kod /
+   mükerrer raf adı / üst lokasyona hareket reddedildi, yetersiz stok kontrolü
+   regresyonu geçti. Rollback dosyası da test edildi — kolon/view/fonksiyon/kısıt
+   dört ölçütte de **0 fark** ile geri getiriyor.
+5. **⏳ YAZILDI, TEST EDİLDİ, UYGULANMADI (2026-07-30)** —
+   `sql/migrations/005_urun_kaydet_fonksiyonu.sql` (`urun_kaydet()`,
+   `urun_sonraki_gorsel_sirasi()`, denetim izi kolonları, `aktif_mi` varsayılan
+   düzeltmesi). 19 senaryo ile test edildi; regresyon olarak mevcut 1780 AKTİF /
+   1193 PASİF dağılımı ve `v_aktif_urunler`'ın 1780 satırı **değişmedi**.
+   004 ve 005 birlikte de test edildi (yeni ürün → numune rafına giriş → `satilabilir=0`,
+   `fiziksel=2` uçtan uca senaryosu).
+
 Her biri `BEGIN`/`COMMIT` içinde, tek transaction, hata olursa otomatik geri alınır.
 Her biri için ayrı bir `_rollback.sql` dosyası var. 002 ve 003, 001'e bağımlı değil
 (002 ayrı tablolar üzerinde; 003 `stok_hareketleri`'ne dokunuyor ama `v_aktif_urunler`
@@ -216,6 +250,237 @@ tekrar gönderirse fonksiyon yeni satır eklemez, `atlandi=TRUE` döner. Ayrıca
 ek bir önlem olarak önerilir ama tek başına yeterli değildir (ağ tekrar denemesi
 istemci tarafı devre dışı bırakmayı atlayabilir) — asıl güvence veritabanı seviyesindeki
 UNIQUE kısıt.
+
+## Numune lokasyonları (migration 004 — yazıldı, test edildi, UYGULANMADI)
+
+Numune ayrı bir varlık değil: var olan `lokasyonlar` + `stok_hareketleri`
+mekanizmasının üzerine oturuyor. Numune, ürünün bir adedinin bir yerde durmasıdır;
+"depodan numune dolabına taşındı" tam olarak bir TRANSFER'dir, dolayısıyla numune
+ödünç alınıp geri konduğunda hareket kaydı bedavaya gelir.
+
+### Şema değişikliği
+
+- `lokasyonlar.tip` artık `'DAHILI' | 'FASON' | 'NUMUNE'`.
+- `lokasyonlar.ust_lokasyon_id` (self-FK, NULL = kök) ve `lokasyonlar.kod` (VARCHAR(20),
+  tekil, NULL olabilir) eklendi. Dolap: `kod='N1'`, `ust_lokasyon_id=NULL`.
+  Raf: `kod='N1-R3'`, `ust_lokasyon_id=<N1>`.
+- **Derinlik 2 ile sınırlı** (dolap → raf) ve bu şemada zorlanıyor: `kok_mu`/`ust_kok_mu`
+  üretilmiş kolonları + bileşik FK. Bu iki kolon iç tesisattır, **arayüzler okumamalı**.
+- `uq_lokasyonlar_ad_tip` kaldırıldı, yerine `(COALESCE(ust_lokasyon_id,-1), lokasyon_adi, tip)`
+  tekil indeksi geldi — eskisi Dolap 1'in "Raf 3"ü ile Dolap 2'nin "Raf 3"ünü çakıştırıp
+  hiyerarşiyi bloke ediyordu. Kök lokasyonlar için davranış birebir korundu.
+- **Mevcut 8 lokasyon hiç etkilenmiyor**: hepsi `ust_lokasyon_id=NULL, kod=NULL, yaprak_mi=true`.
+
+### `v_lokasyonlar_detay` — açılır listelerin tek kaynağı
+
+Kolonlar: `lokasyon_id`, `lokasyon_adi`, `kod`, `tip`, `aktif_mi`, `ust_lokasyon_id`,
+`ust_lokasyon_adi`, `ust_kod`, `tam_ad`, `yaprak_mi`.
+
+`tam_ad` = kök ise `lokasyon_adi`, alt ise `"<üst> · <alt>"` (örn. `Numune Dolabı 1 · Raf 3`).
+`yaprak_mi` = hiç alt lokasyonu yok. Bu tanım `stok_hareketi_kaydet()`'in içindeki
+kontrolle **birebir aynıdır** — aksi halde UI'da seçilebilen ama fonksiyonun reddettiği
+bir lokasyon oluşurdu.
+
+```sql
+-- Stok işlemi ekranının lokasyon açılır listesi
+SELECT lokasyon_id, tam_ad, tip
+FROM v_lokasyonlar_detay
+WHERE aktif_mi = true AND yaprak_mi = true
+ORDER BY (tip = 'NUMUNE'), tam_ad;   -- depo lokasyonları önce
+```
+
+> **Numune rafları tipe göre DIŞLANMAMALIDIR.** Numune dolabını açıp 3 adet bulan kişi
+> bunu ancak numune rafını seçebilirse yazabilir; dışlamak çözülmek istenen problemi
+> ortadan kaldırır. Doğru filtre `yaprak_mi` (dolaplar çıkar, raflar kalır). Liste
+> şişmesi sıralama + arama (Appsmith Select'te "Allow searching") ile çözülür.
+
+### Sadece yaprak lokasyona hareket yazılabilir
+
+`stok_hareketi_kaydet()` artık kaynak ya da hedef olarak alt lokasyonu olan bir lokasyon
+verilirse Türkçe `RAISE EXCEPTION` atıyor:
+
+> `"Numune Dolabı 1" bir üst lokasyondur (alt lokasyonları var); stok hareketi doğrudan buraya yazılamaz, alt lokasyonlardan birini seçin.`
+
+Fonksiyonun imzası ve geri kalan davranışı **değişmedi**.
+
+### `v_toplam_stok`'un anlamı değişti — satılabilir stok
+
+004 sonrası `v_toplam_stok` **NUMUNE tipindeki lokasyonları hariç tutar**. Fiziksel
+toplam (numuneler dahil) için `v_fiziksel_stok` kullanılır. İkisinin de kolonları aynı:
+`stok_kodu`, `toplam_miktar`.
+
+Bu, var olan bir view'ın anlamını değiştirmektir. Gerekçe:
+
+1. Henüz hiç NUMUNE lokasyonu yok, yani değişiklik **bugün sonucu hiç değiştirmiyor** —
+   uygulama öncesi doğrulandı: iki tanım arasında **0 fark satırı** (8 satır / 478 adet).
+2. View'ın dört tüketicisinin **dördü de zaten "satılabilir stok"** anlamında kullanıyor
+   (`YonetimAnaSayfasi/OzetIstatistikler` ×2, `StokOzet/StokOzetGetir`,
+   `UrunlerKatalog/KatalogUrunleriGetir`). Alternatif — `v_toplam_stok` fiziksel kalsın,
+   satılabilir yeni view olsun — bu dördünün de düzeltilmesini gerektirir ve düzeltilmeyen
+   biri **sessizce yanlış cevap verir**. Vitrindeki 2 numune yüzünden bir ürünün "kritik
+   değil" görünmesi yanlış olurdu.
+
+### `v_numune_konumlari` — "numunem nerede?"
+
+Kolonlar: `stok_kodu`, `lokasyon_id`, `lokasyon_kodu`, `lokasyon_tam_adi`, `mevcut_miktar`.
+Sadece `mevcut_miktar > 0` olan NUMUNE satırlarını döner.
+
+### ⚠️ Uygulama sırası (bu sıra önemlidir)
+
+Migration'ın kendisi **bilerek etkisizdir** — hiçbir NUMUNE lokasyonu oluşturmaz, sadece
+oluşturulabilmesinin önünü açar. Tehlikeli adım veri girişidir, DDL değil:
+
+1. **Migration 004** — etkisiz, güvenli. Açılır listeler hâlâ 5 satır döner.
+2. **Arayüzlerin lokasyon sorguları düzeltilir** (`v_lokasyonlar_detay` + `yaprak_mi`):
+   + Appsmith: `pages/StokIslemi/queries/LokasyonlariGetir`,
+     `pages/LokasyonYonetimi/queries/LokasyonlarListele`
+   + Django: `katalog/views.py:651` (stok işlem formu),
+     `katalog/views.py:431` (hareket geçmişi filtresi — bugün hiç filtre yok)
+3. **Ancak o zaman** numune dolap/raf satırları girilir.
+
+Adım 3 önce yapılırsa devam eden sayımın yapıldığı ekranın lokasyon kutusu onlarca
+satırla dolar ve kullanılamaz hâle gelir.
+
+Ayrıca `pages/LokasyonYonetimi/widgets/YeniLokasyonTipiSelect.json` tip listesini sabit
+gömüyor (`Dahili`/`Fason`) — kırılma değil, eksiklik: Appsmith'ten numune lokasyonu
+eklenemez. Numune lokasyonları şimdilik SQL ile giriliyor.
+
+## `urun_kaydet()` (migration 005 — yazıldı, test edildi, UYGULANMADI)
+
+### Neden zorunlu
+
+`urunler`'e sade bir INSERT ürünü "görünmez" bırakmıyor, **doğrudan patlıyor** (canlıda
+ölçüldü):
+
+```text
+INSERT INTO urunler (stok_kodu) VALUES ('X');
+ERROR:  new row for relation "urunler" violates check constraint
+        "chk_urunler_katalog_durumu_aktif_mi_tutarli"
+```
+
+Çünkü `aktif_mi` DEFAULT `TRUE` ile `katalog_durumu` DEFAULT `'PASIF'` birbiriyle
+çelişiyor ve CHECK ikisinin birlikte hareket etmesini şart koşuyor. ORM'den gelen her
+kısmi INSERT hata verir. **005 bu varsayılanı da düzeltiyor** (`aktif_mi` DEFAULT `FALSE`),
+böylece sade INSERT geçerli bir PASİF taslak üretir. `scripts/database/yukle.py`
+`aktif_mi`'yi açıkça yazdığı için etkilenmez (doğrulandı).
+
+Ayrıca `katalog_durumu`'nu yöneten **hiçbir trigger yok** (doğrulandı: `urunler`,
+`urun_gorselleri`, `stok_hareketleri` üzerindeki 26 trigger'ın hepsi `tgisinternal=t`,
+yani FK kısıt trigger'ları). AKTİF ataması 001'deki tek seferlik backfill'di.
+
+### İmza
+
+```sql
+urun_kaydet(
+    p_mod                   VARCHAR,            -- 'EKLE' | 'GUNCELLE'  (zorunlu)
+    p_stok_kodu             VARCHAR,            -- zorunlu
+    p_yapan_kullanici       VARCHAR,            -- zorunlu (denetim izi)
+    p_kategori_id           INTEGER DEFAULT NULL,
+    p_hammadde_id           INTEGER DEFAULT NULL,
+    p_kaplama_id            INTEGER DEFAULT NULL,
+    p_urun_tipi             VARCHAR DEFAULT 'ANA_URUN',
+    p_parent_stok_kodu      VARCHAR DEFAULT NULL,
+    p_varyant_adi           VARCHAR DEFAULT NULL,
+    p_kalip_versiyonu       VARCHAR DEFAULT NULL,
+    p_olcu_mm               NUMERIC DEFAULT NULL,
+    p_boy_ligne             NUMERIC DEFAULT NULL,
+    p_boya_mine             VARCHAR DEFAULT NULL,
+    p_gramaj_gr             NUMERIC DEFAULT NULL,
+    p_montaj_durumu         VARCHAR DEFAULT NULL,
+    p_aciklama              TEXT    DEFAULT NULL,
+    p_kritik_stok_esigi     INTEGER DEFAULT 0,
+    p_stok_takip_edilsin_mi BOOLEAN DEFAULT TRUE,
+    p_ana_gorsel_dosya_adi  VARCHAR DEFAULT NULL
+) RETURNS TABLE (
+    stok_kodu      VARCHAR,
+    katalog_durumu VARCHAR,   -- 'AKTIF' | 'PASIF'
+    gorsel_id      BIGINT,    -- görsel verilmediyse NULL
+    mesaj          TEXT       -- kullanıcıya gösterilecek Türkçe açıklama
+)
+```
+
+İlk üç parametre konumsaldır; kalanlar için **adlandırılmış parametre** (`p_olcu_mm := 12.5`)
+kullanın — 19 parametrenin sırasını takip etmek kırılgandır.
+
+### Tasarım kararları
+
+- **Tek fonksiyon + zorunlu `p_mod`**: sessiz upsert bilerek reddedildi. Ekleme
+  ekranında yanlış yazılan bir stok kodu, sessiz upsert'te mevcut bir ürünü fark
+  edilmeden ezerdi. `p_mod` niyeti açık kılıyor, doğrulama bloğu tek yerde kalıyor.
+- **`GUNCELLE` = TAM KAYIT (full replace)**: form bütün alanları göndermeli, gönderilmeyen
+  alan NULL'a çekilir. `COALESCE`'lı "kısmi güncelleme" bilerek seçilmedi — o tasarımda
+  dolu bir alanı bir daha asla boşaltamazsınız.
+- **AKTİF olma kuralı: tek şart ana görsel** (kullanıcı kararı, 2026-07-30). Kategori/ölçü
+  zorunlu değil — mevcut 1780 AKTİF ürünün 31'i kategorisiz, 65'i ölçüsüz olduğu için daha
+  sıkı bir kural eski veriyle çelişirdi. Ana görselsiz ürün PASİF kalır; bu bir hata değil,
+  **taslak üründür**.
+- **Ayrı idempotency UUID'sine gerek yok**: `stok_kodu` birincil anahtar olduğundan doğal
+  idempotency anahtarıdır (EKLE modunda ikinci gönderim anlaşılır bir hata verir).
+- **Kapsam dışı**: `stok_kodu` değiştirme. GUNCELLE modunda `stok_kodu` kimliktir.
+
+### Doğrulamalar (hepsi Türkçe `RAISE EXCEPTION`)
+
+Geçersiz `p_mod` · boş `p_stok_kodu` · boş `p_yapan_kullanici` · negatif
+`p_kritik_stok_esigi` · EKLE'de zaten var olan stok kodu · GUNCELLE'de bulunamayan ürün ·
+var olmayan `kategori_id`/`hammadde_id`/`kaplama_id` · izinli olmayan `urun_tipi` ·
+`ALT_PARCA`/`VARYANT` için eksik `parent_stok_kodu` · kendine parent · var olmayan parent ·
+görsel adı yerine yol verilmesi (`/` veya `\` içeren değer reddedilir).
+
+### Ana görsel davranışı
+
+- `p_ana_gorsel_dosya_adi` verilirse: önce o ürünün diğer ana görselleri indirilir, sonra
+  yenisi `ana_gorsel_mi=true, aktif_mi=true` olarak yazılır (`uq_urun_tek_ana_gorsel`
+  kısmi tekil indeksi gereği bu sıra zorunlu). Ürün `AKTIF` olur.
+- Aynı dosya adı tekrar verilirse **yeni satır açılmaz**, mevcut satır yeniden ana görsel
+  yapılır (`uq_urun_gorselleri_dosya` gereği).
+- Verilmezse: EKLE'de ürün PASİF taslak doğar; GUNCELLE'de mevcut durum ve görseller
+  **korunur** (görseli olan ürün pasife düşmez).
+- **`ana_gorsel_mi` yetkili alandır, `sira_no` değil.** Eski pipeline `sira_no=1`'i birincil
+  kabul ediyordu; bundan sonra `sira_no` yalnızca sıralama/dosya adı ekidir. Bir ürünün
+  ikinci görseli ana görsel yapılırsa `sira_no=2` olup `ana_gorsel_mi=true` olabilir.
+
+### Görsel dosyası — DB dışında kalan kısım
+
+- Dosyalar `images/final/products/` altında, adlandırma `<stok_kodu>_<sira_no>.<uzantı>`.
+  Django **doğrudan bu dizine yazar** (tek dizin, tek URL tabanı, mevcut
+  `scripts/images/gorsel_eslesme_raporu.py` çalışmaya devam eder).
+  **Koşul: asla üzerine yazma, sadece yeni dosya.** Bu dizin `CLAUDE.md`'de "load-bearing"
+  olarak işaretli.
+- `sira_no` için `urun_sonraki_gorsel_sirasi(p_stok_kodu) RETURNS INTEGER` çağrılır
+  (`MAX(sira_no)+1`, ürün yoksa 1).
+- Uzantı **yeni yüklemelerde** küçük harfe çevrilir ve `jpeg` → `jpg` normalize edilir.
+  Mevcut 435 `jpeg` kaydına dokunulmaz.
+- **Sıra: önce dosya, sonra DB.** Fonksiyon hata verirse yazılan dosya silinir. Ters
+  sırada bir çökme, DB'de var olmayan dosyayı gösteren kırık bir ürün bırakır; bu sırada
+  ise en kötü ihtimalle sahipsiz bir dosya kalır — ve onu bulan araç zaten mevcut.
+- ⚠️ **VPS/Raspberry Pi'ye taşınırsa bu bağlantı yeniden düşünülmeli**: bugün Django ile
+  nginx aynı hostta ve dizin `docker-compose.yml`'de nginx'e `:ro` bağlı; yazan taraf
+  host. Ayrı makinelere dağılırsa paylaşımlı bir birim (NFS/S3 vb.) ya da bir yükleme
+  servisi gerekir.
+
+### Django çağrı örneği
+
+```python
+with connections['metaks'].cursor() as cur:
+    cur.execute(
+        "SELECT stok_kodu, katalog_durumu, gorsel_id, mesaj "
+        "FROM urun_kaydet(%s, %s, %s, p_kategori_id := %s, p_olcu_mm := %s, "
+        "                 p_ana_gorsel_dosya_adi := %s)",
+        ['EKLE', stok_kodu, request.user.email, kategori_id, olcu_mm, dosya_adi],
+    )
+    stok_kodu, katalog_durumu, gorsel_id, mesaj = cur.fetchone()
+```
+
+`stok_servisi.py`'deki desenin aynısı: iş kuralları Python'da **tekrarlanmaz**, Türkçe
+mesaj doğrudan fonksiyondan gelir.
+
+### Denetim izi
+
+`urunler.olusturan_kullanici` EKLE'de, `guncelleyen_kullanici` GUNCELLE'de yazılır;
+GUNCELLE ayrıca `updated_at`'i ilerletir (bu kolonun bakımını bugüne kadar hiçbir şey
+yapmıyordu — 2973/2973 satırda `created_at`'e eşitti). Mevcut 2.973 satırda ikisi de
+NULL kalır: o ürünleri kimin oluşturduğunu gerçekten bilmiyoruz, NULL "bilinmiyor"
+demektir.
 
 ## Test sonuçları
 
