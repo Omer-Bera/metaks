@@ -1,6 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db.models import Count, Q, Subquery
@@ -11,11 +12,13 @@ from django.urls import reverse
 from . import stok_servisi
 from .models import (
     AktifUrun,
+    Kategori,
     Lokasyon,
     LokasyonDetay,
     LokasyonStok,
     StokHareketi,
     ToplamStok,
+    Urun,
     yerel_tarih,
 )
 
@@ -622,6 +625,45 @@ def _lokasyon_stok(stok_kodu):
     return satirlar
 
 
+def _islem_urunu(stok_kodu):
+    """Stok işlem ekranının ürün kaynağı: AKTİF **ve** PASİF ürünlerin ikisi de.
+
+    Eskiden bu ekran ürünü doğrudan `AktifUrun`'dan (`v_aktif_urunler`) alıyordu ve o
+    view yalnızca `katalog_durumu='AKTIF'` satırları gösteriyor — yani kataloğun
+    %40'ına (2026-07-31: 2.973 ürünün 1.193'ü PASİF) arayüzden hiç stok işlemi
+    yapılamıyordu. Bu bir iş kuralı değildi, kaynak seçiminin yan etkisiydi:
+    `AktifUrun` görsel ve kategori adını hazır verdiği için seçilmişti.
+    Veritabanı tarafında böyle bir kısıt YOK — `stok_hareketi_kaydet()` PASİF bir
+    ürünü sorunsuz kabul ediyor (canlı şemada BEGIN/ROLLBACK içinde ölçüldü).
+    Devam eden depo sayımında elinde ürünle duran personelin kodu girememesi
+    gerçek bir eksikti; 3b (hızlı giriş) bunu görünür kıldı.
+
+    Dönen nesne her iki durumda da şablonun beklediği üç alanı taşıyor:
+    `stok_kodu`, `kategori_adi`, `gorsel_url` (+ `pasif` bayrağı).
+    """
+    urun = AktifUrun.objects.using('metaks').filter(pk=stok_kodu).first()
+    if urun is not None:
+        urun.pasif = False
+        return urun
+
+    urun = get_object_or_404(Urun.objects.using('metaks'), pk=stok_kodu)
+    urun.pasif = True
+    # PASİF ürünün görseli YOK — bu bir varsayım değil, tanımın kendisi:
+    # katalog_durumu AKTİF olmanın koşulu zaten doğrulanmış bir ana görseli olması
+    # (migration 001). Ölçüldü de: 1.193 PASİF ürünün 0'ında herhangi bir
+    # urun_gorselleri satırı var. Şablon bu None'da yer tutucuya düşüyor.
+    urun.gorsel_url = None
+    urun.kategori_adi = (
+        Kategori.objects.using('metaks')
+        .filter(pk=urun.kategori_id)
+        .values_list('kategori_adi', flat=True)
+        .first()
+        if urun.kategori_id
+        else None
+    )
+    return urun
+
+
 @login_required
 def stok_islem(request, stok_kodu):
     """Bir ürün için stok hareketi kaydı (GİRİŞ/ÇIKIŞ/TRANSFER/SAYIM/DÜZELTME).
@@ -635,7 +677,7 @@ def stok_islem(request, stok_kodu):
     paylaşılan `depo_admin` kullanıcısıyla bağlanıldığı için current_user'a güvenilemez —
     "kim yaptı" bilgisi uygulamadan açıkça geçirilmek zorunda.
     """
-    urun = get_object_or_404(AktifUrun.objects.using('metaks'), pk=stok_kodu)
+    urun = _islem_urunu(stok_kodu)
     sonuc = None
     hata = None
     # Gönderilen değerler: hata durumunda formu boşaltmamak için geri basılıyor.
@@ -700,4 +742,115 @@ def stok_islem(request, stok_kodu):
             'hata': hata,
             'aktif_sekme': 'stok',
         },
+    )
+
+
+# --------------------------------------------------------------------------------------
+# Hızlı stok işlemi girişi (/stok/hizli/)
+#
+# Günde onlarca kez aynı işlemi yapan depo personeli için kısayol. Bugünkü yol (stok
+# sayfası -> kart ızgarasından ürünü gözle bul -> detay panelinden "Stok işlemi yap")
+# KALIYOR — ürünü görselinden tanımak için doğru yol o. Burası yalnızca kodu bilen/
+# okutan kişinin ızgarayı atlaması için.
+#
+# Yeni bir işlem formu YAZILMIYOR: burası yalnızca doğru stok_islem sayfasına
+# yönlendiriyor. O form zaten uçtan uca doğrulanmış, ikinci bir kopyası zamanla ondan
+# ayrışırdı.
+#
+# Barkod okuyucular ek kod GEREKTİRMİYOR: USB/Bluetooth okuyucular klavye gibi davranır
+# (kodu yazıp Enter'a basar), yani aşağıdaki düz <form> gönderimi onlarla çalışır.
+# Bu yüzden ana yol bilinçli olarak JS'siz. Telefon kamerasıyla QR okuma ayrı bir iş ve
+# bugün mümkün değil: getUserMedia "secure context" (HTTPS) istiyor, site düz HTTP
+# (bkz. YAPILACAKLAR.md, "Sırası gelmemiş" -> HTTPS).
+# --------------------------------------------------------------------------------------
+
+# Öneri listesinde gösterilecek en fazla satır. Kutunun altına sığacak kadar; burası
+# stok sayfasının kart ızgarasının yerini almaya çalışmıyor.
+ONERI_SAYISI = 8
+
+
+def _oneriler(kod, *, limit=ONERI_SAYISI):
+    """Koda benzeyen ürünler — yazım hatası / yanlış okunan barkod için.
+
+    `AktifUrun.arama_metni` yerine ham `urunler.stok_kodu` üzerinde arıyor, iki sebeple:
+    (1) `arama_metni` yalnızca `v_aktif_urunler`'da var, yani 2.973 ürünün 1.780'ini
+    kapsıyor — bu kutu artık PASİF ürünleri de bulmak zorunda; (2) buraya kod yazılıyor,
+    açıklama değil. Kategori ve görsel ayrı birer toplu sorguyla ekleniyor (ürün başına
+    sorgu değil).
+    """
+    if not kod:
+        return []
+
+    urunler = list(
+        Urun.objects.using('metaks')
+        .filter(stok_kodu__icontains=kod)
+        .order_by('stok_kodu')[:limit]
+    )
+    if not urunler:
+        return []
+
+    kodlar = [u.stok_kodu for u in urunler]
+    kategoriler = dict(
+        Kategori.objects.using('metaks')
+        .filter(pk__in={u.kategori_id for u in urunler if u.kategori_id})
+        .values_list('kategori_id', 'kategori_adi')
+    )
+    # Görsel yalnızca AKTİF ürünlerde var (PASİF'lerin 0'ında görsel kaydı bulunuyor),
+    # yani bu sorgu doğal olarak sadece bir kısmını dolduruyor.
+    gorseller = dict(
+        AktifUrun.objects.using('metaks')
+        .filter(pk__in=kodlar)
+        .values_list('stok_kodu', 'ana_gorsel_dosya_adi')
+    )
+
+    for urun in urunler:
+        urun.kategori_adi = kategoriler.get(urun.kategori_id)
+        dosya = gorseller.get(urun.stok_kodu)
+        urun.gorsel_url = settings.GORSEL_SUNUCU_BASE_URL + dosya if dosya else None
+        urun.pasif = urun.katalog_durumu != 'AKTIF'
+    return urunler
+
+
+@login_required
+def hizli_islem(request):
+    """Tek kutulu hızlı giriş: kod -> o ürünün stok işlem formu.
+
+    Giriş zorunlu, çünkü bu sayfanın tek çıktısı `stok_islem` ve orası zaten
+    `@login_required`. Kapıyı buraya koymak, kullanıcının kodu yazıp Enter'a
+    bastıktan SONRA giriş ekranıyla karşılaşmasını önlüyor.
+    """
+    kod = request.GET.get('kod', '').strip()
+    urun = None
+
+    if kod:
+        # iexact güvenli: `urunler`de yalnızca büyük/küçük harfte ayrışan iki kod YOK
+        # (ölçüldü). 2.973 kodun 306'sı harf içeriyor ("1805012-YENI"), yani harf
+        # duyarlılığı gerçek bir sorun — okuyucudan ya da klavyeden farklı gelebilir.
+        urun = (
+            Urun.objects.using('metaks').filter(stok_kodu=kod).first()
+            or Urun.objects.using('metaks').filter(stok_kodu__iexact=kod).first()
+        )
+        if urun is not None:
+            return redirect('katalog:stok_islem', stok_kodu=urun.stok_kodu)
+
+    return render(
+        request,
+        'katalog/hizli_islem.html',
+        {
+            'kod': kod,
+            # kod doluyken buraya düşülmüşse tam eşleşme bulunamamış demektir.
+            'bulunamadi': bool(kod),
+            'oneriler': _oneriler(kod),
+            'aktif_sekme': 'stok',
+        },
+    )
+
+
+@login_required
+def hizli_oneriler(request):
+    """Kutunun altındaki canlı öneri listesi (HTMX ile tazelenen parça)."""
+    return render(
+        request,
+        'katalog/_hizli_oneriler.html',
+        {'oneriler': _oneriler(request.GET.get('kod', '').strip())},
     )

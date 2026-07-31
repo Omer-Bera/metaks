@@ -184,7 +184,8 @@ kendiliğinden kapattı — depo `veritabani/`nin üçlü modelini kullanıyor.
 | Panel | `/` | Modüllere yönlendirme, özet sayılar, son hareketler |
 | Ürün Kataloğu | `/katalog/` | Görsel galeri. **Stoktan hiç söz etmez.** |
 | Stok Durumu | `/stok/` | Aynı galeri + kart başına stok durumu + "sadece stokta olanlar" anahtarı + detayda lokasyon dökümü |
-| Stok işlemi | `/stok/islem/<stok_kodu>/` | Hareket kaydı (giriş zorunlu) |
+| Stok işlemi | `/stok/islem/<stok_kodu>/` | Hareket kaydı (giriş zorunlu). AKTİF **ve** PASİF ürünler |
+| Hızlı işlem | `/stok/hizli/` | Tek kutu: kod/barkod → doğrudan stok işlem formu (giriş zorunlu) |
 | Hareket Geçmişi | `/stok/hareketler/` | `stok_hareketleri` dökümü, filtreli (salt-okunur) |
 | Ürün ekle | `/urun/ekle/` | Yeni ürün (giriş zorunlu, yönetici şart değil) |
 | Ürün düzenle | `/urun/<stok_kodu>/duzenle/` | Var olan ürünü düzenleme (aynı form) |
@@ -456,6 +457,28 @@ NOT NULL ve Postgres'e tek bir paylaşılan `depo_admin` kullanıcısıyla bağl
 `current_user`'a güvenilemez — değer uygulamadan açıkça geçiriliyor
 (`request.user.email or username`).
 
+### Ekran artık PASİF ürünleri de açıyor (2026-07-31)
+
+Bu ekran ürünü eskiden doğrudan `AktifUrun`'dan (`v_aktif_urunler`) alıyordu; o view
+yalnızca `katalog_durumu='AKTIF'` satırları gösterdiği için **2.973 ürünün 1.193'üne
+(kataloğun %40'ı) arayüzden hiç stok işlemi yapılamıyordu** — devam eden depo
+sayımının tam ortasında. Bu bir iş kuralı değildi, kaynak seçiminin yan etkisiydi:
+`AktifUrun` görsel ve kategori adını hazır verdiği için seçilmişti.
+
+Veritabanı tarafında böyle bir kısıt **yok**: `stok_hareketi_kaydet()` PASİF bir ürünü
+sorunsuz kabul ediyor (canlı şemada `BEGIN`/`ROLLBACK` içinde ölçüldü). Eksiği
+görünür kılan şey hızlı giriş ekranı oldu — elinde ürünle duran depocuya "bulunamadı"
+demek yanlış cevaptı.
+
+Çözüm `views.py::_islem_urunu()`: önce `AktifUrun`, bulunamazsa ham `Urun`
+(`urunler`). İkinci dalda `kategori_adi` tek bir `Kategori` sorgusuyla, `gorsel_url`
+ise `None` olarak ekleniyor. `None` bir tahmin değil tanımın kendisi: AKTİF olmanın
+koşulu zaten doğrulanmış bir ana görseli olmak (migration 001) ve ölçüldü de —
+1.193 PASİF ürünün **0'ında** herhangi bir `urun_gorselleri` satırı var. Şablon bu
+durumda yer tutucu basıyor ve "katalogda pasif, sebebi görselsizlik, stok işlemine
+engel değil" diye açıklayıp düzenleme formuna bağlıyor. Uyarı değil bilgi: yoksa
+kullanıcı "sayımı girdim ama listede yok" diye arardı.
+
 ### Pasif lokasyonlar
 
 `v_lokasyon_stok_ozet`, artık kullanılmayan lokasyonlardaki geçmiş hareketleri de
@@ -488,6 +511,59 @@ sonuç Metaks 250 / Depo 1 200. Mükerrer gönderim de canlı doğrulandı: ayn�
 Bu denemelerin bıraktığı satırlar 2026-07-31'de `veritabani` migration 006 ile
 temizlendi (defter uygulama üzerinden append-only; silmenin yolu numaralı migration).
 Defter bugün boş.
+
+## Hızlı stok işlemi girişi (2026-07-31)
+
+`/stok/hizli/` — tek büyük, otomatik odaklanan kutu. Kod girilince o ürünün
+`stok_islem` formuna **yönlendiriyor**; yeni bir işlem formu yazılmadı. Kart
+ızgarasından ürünü gözle bulma yolu (stok sayfası → detay paneli → "Stok işlemi yap")
+**kalıyor** — bu onun yerine değil, yanına bir kısayol.
+
+### Ana yol bilinçli olarak JS'siz
+
+Kutu düz bir `<form method="get">` içinde. Sebep barkod okuyucular: USB/Bluetooth
+okuyucular klavye gibi davranır (kodu yazıp Enter'a basar), yani donanımla okutma
+**ek kod olmadan** çalışıyor. HTMX yalnızca kutunun altındaki öneri listesini
+tazeliyor (`hx-trigger="input changed delay:200ms"`), Enter'ı hiç ellemiyor —
+form gönderimi native kalıyor.
+
+Telefon kamerasıyla QR okuma ayrı bir iş ve bugün **mümkün değil**: `getUserMedia`
+"secure context" (HTTPS) istiyor, site düz HTTP. Donanım okuyucu ihtiyacı
+karşılıyorsa kamera taramasını hiç yazmak gerekmeyebilir.
+
+### Öneriler `arama_metni` üzerinden DEĞİL
+
+`_oneriler()` ham `urunler.stok_kodu` üzerinde `icontains` arıyor, `AktifUrun.
+arama_metni` üzerinde değil — iki sebeple: (1) `arama_metni` yalnızca
+`v_aktif_urunler`'da var, yani 2.973 ürünün 1.780'ini kapsıyor, oysa bu kutu artık
+PASİF ürünleri de bulmak zorunda; (2) buraya **kod** yazılıyor, açıklama değil.
+Kategori ve görsel ürün başına değil, ikişer toplu sorguyla ekleniyor (öneri
+sayfası toplam 3 `metaks` sorgusu).
+
+Eşleşme önce harf duyarlı, sonra `iexact`: `urunler`de yalnızca büyük/küçük harfte
+ayrışan iki kod **yok** (ölçüldü), yani `iexact` belirsizlik üretmiyor; 2.973 kodun
+306'sı harf içerdiği için (`1805012-YENI`) duyarlılık gerçek bir sorun.
+
+### Giriş noktaları ve kapı
+
+Ana ekranda kart + stok sayfasında "Hızlı işlem" bağlantısı. **Katalog sayfasında
+bilerek yok**: orası ön büroda müşteriye ürün gösterme ekranı, iki sayfanın ayrılma
+sebebi bu. Sekme şeridine dördüncü öğe eklenmedi — mobilde daraltıyor (yönetim
+panelinde de aynı gerekçeyle eklenmemişti).
+
+`@login_required` sayfanın kendisinde: tek çıktısı `stok_islem` ve orası zaten giriş
+istiyor; kapıyı buraya koymak kullanıcının kodu yazıp Enter'a bastıktan **sonra**
+giriş ekranıyla karşılaşmasını önlüyor.
+
+### Doğrulama
+
+Python seviyesinde 28/28 (giriş kapısı, boş kutu, tam eşleşme, boşluk kırpma, harf
+duyarsızlığı, PASİF dalı, bulunamadı dalı, öneri sınırı, sorgu sayısı), gerçek
+tarayıcıda 21/21 (otomatik odak, HTMX canlı öneri, öneriye tıklama, Enter yolu,
+PASİF ürünün formu, kırık görsel yok, giriş noktalarının doğru sayfalarda olması,
+mobil, şablon sızıntısı, konsol). PASİF ürüne form üzerinden POST da denendi —
+satır bırakmayan senaryoyla (sayılan miktar mevcutla aynı → `atlandi`), yani
+`stok_hareketi_kaydet()` gerçekten çalıştı ve defter 0 satırda kaldı.
 
 ## Ürün ekleme/düzenleme (2026-07-31)
 

@@ -29,15 +29,51 @@
 
 <main class="max-w-3xl mx-auto px-4 sm:px-6 py-6 pb-16">
 
+    {% comment %}
+    Görsel koşullu: bu ekran artık PASİF ürünleri de açıyor (bkz. views._islem_urunu) ve
+    PASİF olmanın tanımı zaten "doğrulanmış ana görseli yok" — 1.193 PASİF ürünün
+    0'ında görsel kaydı var. Koşulsuz <img> boş src ile istek atardı.
+    {% endcomment %}
     <div class="flex items-center gap-4 mb-6">
+        {% if urun.gorsel_url %}
         <img src="{{ urun.gorsel_url }}" alt="{{ urun.stok_kodu }}" onerror="gorselHata(this)"
              class="w-20 h-20 rounded-xl border border-slate-200 bg-white object-contain p-1.5">
         <div class="hidden w-20 h-20 rounded-xl border border-slate-200 bg-slate-50"></div>
+        {% else %}
+        <div class="grid place-items-center w-20 h-20 shrink-0 rounded-xl border border-slate-200
+                    bg-slate-50 text-slate-300">
+            <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="1.5"
+                 viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="3" y="4" width="18" height="16" rx="2"/>
+                <circle cx="8.5" cy="9.5" r="1.5"/><path d="m4 17 5-5 4 4 3-3 4 4"/>
+            </svg>
+        </div>
+        {% endif %}
         <div>
             <h1 class="font-mono text-2xl font-semibold tracking-tight text-slate-900">{{ urun.stok_kodu }}</h1>
             <p class="text-sm text-slate-500">{{ urun.kategori_adi|default:"Kategorisiz" }}</p>
         </div>
     </div>
+
+    {% if urun.pasif %}
+    {% comment %}
+    Uyarı DEĞİL, bilgilendirme: stok işlemi tamamen geçerli (veritabanı PASİF ürünü
+    kabul ediyor, ölçüldü). Kullanıcının bilmesi gereken tek şey bu ürünün katalog/stok
+    galerisinde görünmediği ve sebebi — yoksa "sayımı girdim ama listede yok" diye
+    arar. Düzeltme yolu tek tık ötede.
+    {% endcomment %}
+    <div class="mb-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+        <p class="text-sm text-slate-700">
+            Bu ürün katalogda <span class="font-medium">pasif</span>: doğrulanmış bir ana
+            görseli olmadığı için katalog ve stok galerilerinde görünmüyor.
+            Stok işlemi yapmaya engel değil.</p>
+        <p class="mt-1.5 text-sm">
+            <a href="{% url 'katalog:urun_duzenle' urun.stok_kodu %}"
+               class="text-slate-600 underline underline-offset-4 transition hover:text-slate-900">
+                Görsel ekleyip yayına al</a>
+        </p>
+    </div>
+    {% endif %}
 
     {% if sonuc and not sonuc.atlandi %}
     <div class="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">

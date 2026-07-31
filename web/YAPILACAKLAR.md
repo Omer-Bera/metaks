@@ -5,9 +5,12 @@ burası "sırada ne var" sorusunun cevabı.
 
 Sıra kullanıcıyla kararlaştırıldı (2026-07-30):
 **giriş akışı → yönetim paneli/kullanıcılar → ürün ekleme → numune takibi → CSV.**
+Araya 3b (hızlı stok işlemi girişi) girdi ve 2026-07-31'de tamamlandı.
 
-4 ve 5 numaralı işler `veritabani` tarafında şema hazırlığı bekliyor; o iş paralel
-yürüyebilir, 1 ve 2 hiçbir şeye bağlı değil.
+**Bugün açık kalan maddeler: 2b (rol/yetki ayrımı), 4 (numune takibi), 5 (CSV dışa
+aktarma).** 1, 2a, 2c, 3 ve 3b ✅ tamamlandı. 4'ün `veritabani` tarafı da hazır
+(migration 004 uygulandı, Django'nun lokasyon açılır listeleri `yaprak_mi`'ye
+taşındı) — kalan iş gerçek dolap/raf satırlarının girilmesi ve arayüz rozetleri.
 
 ---
 
@@ -242,39 +245,48 @@ gerekmedi).
 
 ---
 
-## 3b. Hızlı stok işlemi girişi (depo sahası ekranı, 2026-07-31 fikri)
+## 3b. Hızlı stok işlemi girişi ✅ TAMAMLANDI (2026-07-31)
 
-Kullanıcı sorusu: depo personeli mal geldiğinde/çıktığında bilgiyi nereden girecek?
-Bugünkü yol (stok sayfasına gir → ürünü görsel ızgaradan bul → detay panelinden "Stok
-işlemi yap") **kalacak** — ürünü gözle tanıyıp bulmak için doğru yol. Ama günde
-onlarca kez aynı işlemi yapan biri için ekstra tıklama.
+`/stok/hizli/` — tek büyük, otomatik odaklanan kutu; kod girilince o ürünün
+`stok_islem` formuna yönlendiriyor. Kod `views.py::hizli_islem` / `hizli_oneriler` /
+`_oneriler`, şablonlar `hizli_islem.html` + `_hizli_oneriler.html`. Mimari
+gerekçeler CLAUDE.md'de. Aşağıdaki tasarım notlarının **tamamı** uygulandı:
+düz form (barkod okuyucu için JS'siz yol), bulunamadı dalında ön doldurulmuş "yeni
+ürün oluştur" bağlantısı, kutunun altında HTMX otomatik tamamlama.
 
-**Karar: evet, ayrı bir ekran mantıklı** — ama minimal bir giriş noktası olarak,
-`stok_islem` formunun yerine geçmeden. Tasarım: `/stok/hizli/`'de tek büyük,
-otomatik odaklanan bir metin kutusu ("Stok kodu"). Enter'a basılınca:
+### Kapsam, uygulama sırasında büyüdü: PASİF ürünler
 
-- **Tam eşleşme** → doğrudan o kodun `stok_islem` formuna yönlendirir. Yeni bir form
-  yazılmıyor, var olan (ve doğrulanmış) forma bir kısayol.
-- **Eşleşme yok** → "bulunamadı" + yazım hatası ihtimaline karşı `arama_metni` ile
-  öneri + "bu kodla yeni ürün oluştur" bağlantısı, formu koda önceden doldurulmuş
-  açar. Madde 3 artık ✅ tamamlandı — bu, orada zaten kurulan "boş arama
-  sonucundan ekleme" bağlantısının (`_govde.html`) aynısı, iki kez tasarlanmadı.
+Yazarken ortaya çıkan gerçek eksik: `stok_islem` ürünü `AktifUrun`'dan
+(`v_aktif_urunler`) okuyordu, o da yalnızca AKTİF satırları gösteriyor — yani
+**2.973 ürünün 1.193'üne (kataloğun %40'ı) arayüzden hiç stok işlemi
+yapılamıyordu**, devam eden sayımın ortasında. Veritabanında böyle bir kısıt yok
+(`stok_hareketi_kaydet()` PASİF ürünü kabul ediyor, canlı şemada `BEGIN`/`ROLLBACK`
+içinde ölçüldü); engel yalnızca Django'nun kaynak seçimiydi.
 
-**QR/barkod bedavaya geliyor, kamera taraması şimdi değil.** USB/Bluetooth barkod
-okuyucular klavye gibi davranır (kodu yazıp Enter basar); yani yukarıdaki tek metin
-kutusu donanımla okutma için **ek kod gerektirmeden** çalışır. Telefon kamerasıyla QR
-okuma ayrı bir şey: `getUserMedia` tarayıcı API'si "secure context" (HTTPS) istiyor,
-site bugün düz HTTP — YAPILACAKLAR'ın "Sırası gelmemiş" bölümündeki HTTPS maddesi
-çözülmeden kamera taraması zaten çalışmaz. Donanım okuyucu gerçek ihtiyacı bugün
-karşılıyorsa kamera taramasını hiç yazmaya gerek kalmayabilir.
+Kullanıcı onayıyla `stok_islem` ham `urunler`'e de bakacak şekilde genişletildi
+(`views._islem_urunu`). PASİF ürün açıldığında görsel yerine yer tutucu ve
+"katalogda pasif, sebebi görselsizlik, stok işlemine engel değil" açıklaması +
+düzenleme bağlantısı basılıyor. Ayrıntı CLAUDE.md.
 
-**Listeden seçme** ayrı bir ekran gerektirmiyor: kutunun altına HTMX ile hafif bir
-otomatik tamamlama (var olan `arama_metni` araması üzerinden) eklemek yeterli —
-stok sayfasının ağır kart ızgarasını burada tekrarlamaya gerek yok, hızlı girişin
-bütün amacı o ızgarayı atlamak.
+### Doğrulama
 
-**Sıra:** madde 3 tamamlandığı için ön koşul karşılandı, sıradaki küçük iş bu
-olabilir. Küçük iş.
+Python seviyesinde 28/28, gerçek tarayıcıda 21/21 — liste CLAUDE.md'de. Geçici test
+hesapları zaman damgalı ön ekle açılıp sonda silindi; `stok_hareketleri` 0 satırda
+kaldı, `urunler`/`urun_gorselleri`/`lokasyonlar` hiç değişmedi.
+
+### Yapılmayan (bilinçli)
+
+Telefon kamerasıyla QR okuma: `getUserMedia` "secure context" (HTTPS) istiyor, site
+düz HTTP — aşağıdaki HTTPS maddesi çözülmeden zaten çalışmaz. Donanım okuyucular
+(USB/Bluetooth, klavye gibi davranırlar) bugünkü kutuyla ek kod olmadan çalışıyor,
+yani gerçek ihtiyaç karşılanıyorsa kamera taraması hiç gerekmeyebilir.
+
+### Özgün tasarımdan sapılan tek nokta
+
+Not, önerilerin `arama_metni` üzerinden yapılmasını söylüyordu. Uygulanmadı: o kolon
+yalnızca `v_aktif_urunler`'da var (1.780/2.973) ve bu kutu PASİF ürünleri de bulmak
+zorunda; ayrıca buraya kod yazılıyor, açıklama değil. Arama ham
+`urunler.stok_kodu` üzerinde yapılıyor. Geri kalan her şey nottaki gibi.
 
 ---
 

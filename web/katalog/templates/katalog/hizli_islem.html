@@ -1,0 +1,102 @@
+{% extends "katalog/base.html" %}
+
+{% block title %}METAKS · Hızlı stok işlemi{% endblock %}
+
+{% block content %}
+<header class="sticky top-0 z-40 bg-white/85 backdrop-blur-md border-b border-slate-200">
+    {% comment %}
+    flex-wrap emniyet kemeri: uzun e-posta dar ekranda taşmak yerine alt satıra insin
+    (stok_islem.html ve hareketler.html'de de aynı tuzak, gerçek bir e-postayla ölçüldü).
+    {% endcomment %}
+    <div class="max-w-2xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center gap-3">
+        <a href="{% url 'katalog:stok_listesi' %}"
+           class="flex items-center gap-1.5 text-sm text-slate-500 transition hover:text-slate-900">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2"
+                 viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+            Stok
+        </a>
+        <span class="hidden sm:block flex-1"></span>
+        <span class="text-sm text-slate-500">{{ request.user.email|default:request.user.username }}</span>
+        <form method="post" action="{% url 'katalog:cikis' %}">
+            {% csrf_token %}
+            <button type="submit" class="text-sm text-slate-500 underline underline-offset-4
+                    transition hover:text-slate-900">Çıkış</button>
+        </form>
+    </div>
+</header>
+
+<main class="max-w-2xl mx-auto px-4 sm:px-6 py-10 pb-16">
+
+    <h1 class="text-2xl font-semibold tracking-tight text-slate-900">Hızlı stok işlemi</h1>
+    <p class="mt-1.5 text-sm text-slate-500">
+        Stok kodunu yazın ya da barkodu okutun. Enter'a bastığınızda o ürünün işlem
+        formu açılır.
+    </p>
+
+    {% comment %}
+    Düz <form method="get">: ana yol bilinçli olarak JS'siz. USB/Bluetooth barkod
+    okuyucular klavye gibi davranır (kodu yazıp Enter'a basar), yani bu form onlarla
+    ek kod olmadan çalışıyor. Aşağıdaki HTMX yalnızca öneri listesini tazeliyor;
+    Enter yine formu gönderiyor (hx-trigger yalnızca `input` olayında).
+    {% endcomment %}
+    <form method="get" action="{% url 'katalog:hizli_islem' %}" class="mt-6">
+        <label for="kod" class="sr-only">Stok kodu</label>
+        <div class="relative">
+            <svg class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400
+                        pointer-events-none" fill="none" stroke="currentColor" stroke-width="1.75"
+                 viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 5v14M7 5v14M11 5v14M15 5v10M19 5v14"/>
+            </svg>
+            <input
+                type="text"
+                id="kod"
+                name="kod"
+                value="{{ kod }}"
+                autofocus
+                autocomplete="off"
+                autocapitalize="off"
+                spellcheck="false"
+                enterkeyhint="go"
+                placeholder="Stok kodu"
+                class="w-full rounded-2xl border-2 border-slate-300 bg-white pl-12 pr-4 py-4
+                       font-mono text-xl tracking-tight placeholder:font-sans
+                       placeholder:text-base placeholder:tracking-normal placeholder:text-slate-400
+                       transition focus:border-slate-500 focus:outline-none
+                       focus:ring-4 focus:ring-slate-900/5"
+                hx-get="{% url 'katalog:hizli_oneriler' %}"
+                hx-trigger="input changed delay:200ms"
+                hx-target="#oneriler"
+                hx-swap="innerHTML"
+            >
+        </div>
+    </form>
+
+    {% if bulunamadi %}
+    <div class="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+        <p class="text-sm font-medium text-amber-900">
+            “{{ kod }}” koduyla bir ürün bulunamadı.</p>
+        <p class="mt-1.5 text-sm text-amber-800">
+            {% comment %}
+            Bağlantı, katalogdaki "boş arama sonucundan ekleme" akışının aynısı
+            (_govde.html) — iki kez tasarlanmadı, aynı ?stok_kodu= ön doldurması.
+            {% endcomment %}
+            <a href="{% url 'katalog:urun_ekle' %}?stok_kodu={{ kod|urlencode }}"
+               class="font-medium underline underline-offset-4 transition hover:text-amber-950">
+                Bu kodla yeni ürün oluştur</a>
+        </p>
+    </div>
+    {% endif %}
+
+    <div id="oneriler" class="mt-5">
+        {% include "katalog/_hizli_oneriler.html" %}
+    </div>
+
+    <p class="mt-8 text-xs leading-relaxed text-slate-400">
+        Ürünü koddan değil görselinden tanımak istiyorsanız
+        <a href="{% url 'katalog:stok_listesi' %}"
+           class="underline underline-offset-2 transition hover:text-slate-600">stok
+            sayfasındaki</a> kart ızgarası duruyor — bu ekran onun yerine geçmiyor,
+        yanına bir kısayol.
+    </p>
+</main>
+{% endblock %}

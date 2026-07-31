@@ -70,6 +70,18 @@ sıralama) bunun dışında kalıyor ve durumu buradaki #filtre-durumu üzerinde
                       transition hover:text-slate-900">+ Ürün ekle</a>
             {% endif %}
 
+            {% comment %}
+            Hızlı giriş bağlantısı yalnızca STOK sayfasında: katalog ön büroda müşteriye
+            ürün göstermek için ve orada stok işlemi diye bir kavram yok (iki sayfanın
+            ayrılma sebebi bu). Sekme şeridine dördüncü bir öğe eklenmedi — mobilde
+            daraltıyor (yönetim panelinde de aynı gerekçeyle eklenmemişti).
+            {% endcomment %}
+            {% if stok_goster and user.is_authenticated %}
+            <a href="{% url 'katalog:hizli_islem' %}"
+               class="text-sm text-slate-500 underline underline-offset-4
+                      transition hover:text-slate-900">Hızlı işlem</a>
+            {% endif %}
+
             {% if stok_goster %}
             {% comment %}
             Stok anahtarı takas edilen bloğun içinde: hedef URL'i diğer filtreleri de taşıdığı

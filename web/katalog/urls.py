@@ -18,6 +18,12 @@ urlpatterns = [
     path('stok/islem/<str:stok_kodu>/', views.stok_islem, name='stok_islem'),
     path('stok/hareketler/', views.hareket_gecmisi, name='hareket_gecmisi'),
 
+    # Hızlı giriş: kart ızgarasını atlayıp doğrudan stok_islem'e giden kısayol.
+    # 'stok/hizli/' <str:stok_kodu> desenlerinden ÖNCE gelmiyor çünkü çakışmıyorlar
+    # (stok/islem/... ve stok/urun/... kendi ön eklerine sahip).
+    path('stok/hizli/', views.hizli_islem, name='hizli_islem'),
+    path('stok/hizli/oneriler/', views.hizli_oneriler, name='hizli_oneriler'),
+
     # Django'nun hazır giriş/çıkış view'ları; sadece şablonları bu app'ten.
     # Kök URL giriş yapılmamışken buraya yönlendiriyor (bkz. views.ana_ekran).
     # redirect_authenticated_user: giriş yapmış biri /giris/'e gelirse panele döner,
