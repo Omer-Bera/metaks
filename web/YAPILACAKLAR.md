@@ -123,9 +123,10 @@ hâli): `views.py:81` (ana ekran KPI), `:453` (hareket geçmişi filtresi), `:67
 
 **İki cross-DB tuzağı ölçülerek bulundu ve önlendi** (ikisi de proje henüz
 `DATABASE_ROUTERS` eklemediği için — CLAUDE.md): (1) `ModelForm`'un FK alanı için
-otomatik kurduğu açılır liste sorgusu `using('metaks')` olmadan SQLite `default`'a
+otomatik kurduğu açılır liste sorgusu `using('metaks')` olmadan `default`'a
 gidip "no such table" ile çöküyordu — `__init__`'te queryset elle atanarak
-çözüldü. (2) `kod`'a `unique=True` koymak Django'nun otomatik `validate_unique()`'ini
+çözüldü. (`default` o tarihte SQLite'tı; 2026-07-31'de Postgres'e alındı — tuzak
+aynen duruyor, yalnızca hata metni `relation does not exist`'e döndü.) (2) `kod`'a `unique=True` koymak Django'nun otomatik `validate_unique()`'ini
 yine yanlış bağlantıya sorgu attırırdı — bilerek konulmadı, kısıt ihlali gerçek
 INSERT'in `IntegrityError`'ı yakalanıp `constraint_name`'e göre Türkçeleştiriliyor.
 
@@ -339,9 +340,12 @@ Bağımsız iş. Küçük.
 
 ## veritabani tarafı — ✅ TAMAMLANDI (2026-07-30)
 
-Devir metni `docs/metaks-db-istekleri.md`'de. Migration 004 (numune lokasyonları) ve
-005 (`urun_kaydet()`) canlı `depo_sistemi`'ne uygulandı ve doğrulandı; öncesi/sonrası
-birebir aynı (8 lokasyon, 30 hareket, 1780 AKTİF, `v_toplam_stok` 8 satır / 478 adet).
+Migration 004 (numune lokasyonları) ve 005 (`urun_kaydet()`) canlı `depo_sistemi`'ne
+uygulandı ve doğrulandı; öncesi/sonrası birebir aynı (o günkü hâliyle 8 lokasyon,
+30 hareket, 1780 AKTİF, `v_toplam_stok` 8 satır / 478 adet — lokasyonlar ve defter
+2026-07-31'de temizlendi, bkz. aşağısı). Sözleşmenin güncel/tam hâli
+`veritabani/docs/aktif-urun-veri-sozlesmesi.md`'de; migration'ların uygulanma
+kayıtları `veritabani/CLAUDE.md`'nin "Database schema" bölümünde.
 
 Sonuçta kullanılabilir hâle gelenler:
 

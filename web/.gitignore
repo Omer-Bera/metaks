@@ -4,7 +4,10 @@ __pycache__/
 *.pyc
 
 # Django
-db.sqlite3
+# 2026-07-31'de 'default' bağlantısı Postgres'e (metaks_web) taşındı; kalan
+# db.sqlite3.yedek-* dosyaları taşıma öncesi anlık görüntüdür — parola hash'i
+# içerdikleri için bunlar da git'e girmemeli.
+db.sqlite3*
 staticfiles/
 media/
 

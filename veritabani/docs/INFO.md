@@ -21,7 +21,9 @@ Tamamlanan çalışmalar:
 - Üst üste duran ve hatalı konumlandırılmış görsellerin manuel kontrolü
 - Nihai görsel arşivinin oluşturulması
 
-Nihai görsel arşivinde **2.733 ürün görseli** bulunmaktadır.
+Görsel eşleme hattı toplam **2.733 ürün görseli** üretti; bunların **1.799'u** aktif
+klasörde (`images/final/products/`, DB ile birebir eşleşen), **934'ü** arşivde
+(`images/arsiv/products/`) — aşağıdaki 2026-07-28 kapsam kararına bakın.
 
 > **2026-07-28 güncellemesi:** 857 karışık satırın stok kodu ayrıştırma/normalizasyon işi tamamlandı (bkz. `docs/karisik_stok_kodu_kurali.md`), 1.142 yeni varyant veritabanına yüklendi (toplam **2.973 ürün**). Kalan 216 çözülemeyen karışık kod, 66 hiç işlenmemiş "ölçü karmaşık" satır, 6 stoksuz satır ve dosya adı eski birleşik kod listesini kullandığı için eşleşmeyen 934 görsel — bilinçli bir kapsam kararıyla **arşivlendi** (silinmedi): ürün tarafı `data/reference/arsivlenen_eski_urunler.xlsx`'e, görseller `images/arsiv/products/`'a taşındı. Gerekçe: bu kayıtlar büyük olasılıkla çok eski/düşük cirolu ürünler; aktif sistemi bunlarla şişirmek yerine temiz, çalışan bir sisteme odaklanmayı tercih ettik. Aktif görsel klasörü artık DB ile **%100 eşleşiyor** (1.799/1.799).
 
@@ -79,7 +81,7 @@ Bu veri ileride geliştirilecek Kalıp Modülü için korunmaktadır.
 
 ### `images/final/products/`
 
-Stok kodlarıyla adlandırılmış nihai ürün görsellerini içerir (2.733 dosya). Çalışma/kontrol aşaması için kullanılan kopya `images/working/products/` klasöründedir; ham eşleme raporu (`gorsel_esleme_raporu.csv`) o klasörde tutulur, derlenmiş/özetlenmiş hâli ise `reports/excel/gorsel_eslesme_raporu.xlsx`'tir.
+Stok kodlarıyla adlandırılmış **aktif** ürün görsellerini içerir (**1.799 dosya**, `urun_gorselleri` tablosuyla birebir eşleşiyor). Eşleşmeyen 934 dosya `images/arsiv/products/` altındadır. Çalışma/kontrol aşaması için kullanılan kopya `images/working/products/` klasöründedir; ham eşleme raporu (`gorsel_esleme_raporu.csv`) o klasörde tutulur, derlenmiş/özetlenmiş hâli ise `reports/excel/gorsel_eslesme_raporu.xlsx`'tir.
 
 Bu rapor; Excel satırı, stok kodu, kaynak medya dosyası, oluşturulan dosya adı ve işlem durumunu kayıt altına alır.
 
@@ -89,29 +91,40 @@ Bu rapor; Excel satırı, stok kodu, kaynak medya dosyası, oluşturulan dosya a
 
 ## 📂 Ana Klasör Yapısı
 
+Bu dizin 2026-07-31'de `metaks` deposunun `veritabani/` alt dizini oldu; aşağıdaki
+yollar bu dizine görelidir (depo kökünden `veritabani/...` diye okunur).
+
 ```text
-metaks_DB/
-├── archive/                    # kullanılmayan eski dosyalar (bkz. Arşiv Yapısı)
+veritabani/
+├── archive/                    # kullanılmayan eski dosyalar (gitignored, bkz. Arşiv Yapısı)
+├── backups/                    # yedek_al.sh çıktısı: pg_dump + görsel aynası (gitignored)
 ├── data/
-│   ├── raw/                    # urun_listesi.xlsx (görsel gömülü, ~195 MB)
+│   ├── raw/                    # urun_listesi.xlsx (görsel gömülü, ~195 MB, gitignored)
 │   ├── interim/                 # temizlik/normalizasyon ara dosyaları
 │   ├── processed/                # temiz_urunler_final_v2.xlsx (DB'ye yüklenen)
 │   └── reference/                 # kalip_bilgileri_yedek.xlsx vb.
-├── docs/INFO.md                    # bu dosya
-├── docker-compose.yml
+├── docker/nginx/gorseller.conf       # görsel sunucusunun yapılandırması
+├── docker-compose.yml                 # name: metaks_db (SABİT — bkz. CLAUDE.md)
+├── docs/
+│   ├── INFO.md                          # bu dosya
+│   ├── aktif-urun-veri-sozlesmesi.md     # arayüzün okuduğu view/fonksiyon sözleşmesi
+│   └── karisik_stok_kodu_kurali.md        # karışık kod çözme kuralı + kanıtı
 ├── images/
-│   ├── working/products/            # işlem gören görseller + gorsel_esleme_raporu.csv
-│   └── final/products/               # nihai 2.733 ürün görseli
-├── init_db.sql                        # eski şema (docker-compose tarafından kullanılmıyor)
+│   ├── working/products/                    # işlem gören görseller + gorsel_esleme_raporu.csv
+│   ├── final/products/                       # aktif 1.799 görsel (DB ile eşleşen)
+│   └── arsiv/products/                        # eşleşmeyen 934 görsel
 ├── reports/excel/                      # kontrol ve dönüşüm raporları
 ├── scripts/
 │   ├── cleaning/                        # temizle.py, olcu_temizle.py, duzelt.py, ayir.py
 │   ├── normalization/                    # birlesik_stok_kodlarini_duzelt.py, final_excel_hazirla.py
-│   ├── maintenance/                       # kalip_yedekle.py, *_tekrarlarini_sil.py
-│   ├── database/                           # yukle.py
+│   ├── maintenance/                       # kalip_yedekle.py, *_tekrarlarini_sil.py, yedek_al.sh
+│   ├── database/                           # yukle.py, gorselleri_yukle.py, urun_ara.py
 │   └── images/                              # gorsel_esle_duzeltilmis_v2.py ve türevleri
-├── sql/01_schema.sql                    # GÜNCEL şema (docker-compose tarafından kullanılıyor)
-└── venv/
+├── sql/
+│   ├── 01_schema.sql                    # GÜNCEL şema (docker-compose tarafından kullanılıyor)
+│   ├── migrations/                       # 001–006 + rollback'leri, ELLE uygulanır
+│   └── legacy/init_db.sql                 # eski şema, hiçbir yerde kullanılmıyor
+└── venv/                               # pipeline venv'i (web/venv ile karıştırılmamalı)
 ```
 
 ---
@@ -246,7 +259,12 @@ docker compose up -d
 
 ### `sql/01_schema.sql`
 
-Güncel ve `docker-compose.yml` tarafından fiilen kullanılan şemadır (`docker-entrypoint-initdb.d` altına mount edilir). Kök dizindeki `init_db.sql` daha eski/basit bir sürümdür ve artık konteyner tarafından kullanılmaz — referans olarak saklanmaktadır.
+Güncel ve `docker-compose.yml` tarafından fiilen kullanılan şemadır (`docker-entrypoint-initdb.d` altına mount edilir). `sql/legacy/init_db.sql` daha eski/basit bir sürümdür ve artık konteyner tarafından kullanılmaz — referans olarak saklanmaktadır (2026-07-31'e kadar bu dizinin kökündeydi, güncel şemayla karıştırılmasın diye taşındı).
+
+Şema **canlıda değiştirilirken bu dosya tek başına yeterli değildir**: uygulanmış her
+değişiklik `sql/migrations/` altında numaralı bir dosyadır (`00N_x.sql` +
+`00N_x_rollback.sql`, her biri `BEGIN`/`COMMIT` içinde). Bugün 001–006 uygulanmış
+durumda; ayrıntı için `CLAUDE.md`'nin "Database schema" bölümü.
 
 Temel tablolar:
 
@@ -410,7 +428,7 @@ Excel tarafından oluşturulan şu tip geçici dosyalar (`~$...xlsx`) gerçek ve
 
 ## 🧪 Temel Kontrol Komutları
 
-Nihai görsel sayısı:
+Aktif görsel sayısı (DB'deki `urun_gorselleri` satır sayısıyla eşit olmalı):
 
 ```bash
 find images/final/products -maxdepth 1 -type f \
@@ -421,8 +439,10 @@ find images/final/products -maxdepth 1 -type f \
 Beklenen sonuç:
 
 ```text
-2733
+1799
 ```
+
+Arşivdeki (eşleşmeyen) görseller ayrıca: `ls images/arsiv/products | wc -l` → `934`.
 
 Eşleme raporunun varlığını kontrol etme:
 
@@ -518,9 +538,12 @@ geçiyor, hiçbir tablo doğrudan yazılmıyor.
 - ~~lokasyon yönetimi~~ ✅ `/yonetim/lokasyonlar/` — hiyerarşik liste, ekleme, pasife
   alma, hiç kullanılmamışsa silme.
 - ~~yönetim ana sayfası~~ ✅ `/` (Panel) — özet sayılar ve son hareketler.
-- kullanıcı yetkilendirmesi — Django auth (SQLite `default`), `is_staff` yönetim
-  panelini kapatıyor. İnce rol ayrımı (depo personeli vs. yönetici vs. fason) henüz
-  tasarlanmadı; `web/YAPILACAKLAR.md` madde 2b.
+- kullanıcı yetkilendirmesi — Django auth, `is_staff` yönetim panelini kapatıyor.
+  Django'nun kendi tabloları 2026-07-31'den beri **aynı Postgres sunucusunda ayrı bir
+  veritabanında** (`metaks_web`; öncesinde SQLite'tı). `depo_sistemi`'ye hâlâ hiç
+  `migrate` çalıştırılmıyor — ayrım korundu, yalnızca motor tekleşti ve kullanıcı
+  hesapları da `pg_dumpall` kapsamına girdi. İnce rol ayrımı (depo personeli vs.
+  yönetici vs. fason) henüz tasarlanmadı; `web/YAPILACAKLAR.md` madde 2b.
 
 ### Faz 6: Barkod ve sipariş entegrasyonu
 

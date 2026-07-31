@@ -38,17 +38,44 @@ kurarken artık korunması gereken ikinci bir tüketici yok.
 
 ### İki veritabanı bağlantısı (`config/settings.py`)
 
-- **`default`** (SQLite, `db.sqlite3`, gitignored) — sadece Django'nun kendi çerçeve
-  tabloları (auth, session, admin log). `python manage.py migrate` sadece buraya yazar.
-- **`metaks`** (Postgres, `veritabani`'deki **aynı** paylaşımlı `depo_sistemi` veritabanı,
-  `.env`'den okunan kimlik bilgileriyle) — gerçek METAKS verisi. Buraya **asla**
-  `migrate` çalıştırılmaz; şema tamamen `veritabani/sql/01_schema.sql` +
-  `sql/migrations/`'ın otoritesinde kalır.
+İkisi de Postgres, ikisi de **aynı** `depo-postgres` konteynerinde (port 5433), ama
+**ayrı veritabanları**:
 
-Bu ayrımın bilinçli sebebi: `veritabani`'nin titizlikle sürdürdüğü ham-SQL migration
-disiplinini (numaralı dosyalar, `BEGIN/COMMIT`, önce-test-sonra-uygula) Django'nun kendi
-ORM-migration mekanizmasıyla aynı veritabanında çakıştırmamak. İki ayrı şema-evrim
-mekanizması aynı fiziksel DB'de yaşamıyor.
+- **`default`** (`metaks_web`) — sadece Django'nun kendi çerçeve tabloları (auth,
+  session, admin log). `python manage.py migrate` sadece buraya yazar.
+- **`metaks`** (`depo_sistemi`) — gerçek METAKS verisi. Buraya **asla** `migrate`
+  çalıştırılmaz; şema tamamen `veritabani/sql/01_schema.sql` + `sql/migrations/`'ın
+  otoritesinde kalır.
+
+Bu ayrımın bilinçli sebebi veritabanı **motoru** değil, **şema evrim mekanizmasıdır**:
+`veritabani`'nin titizlikle sürdürdüğü ham-SQL migration disiplinini (numaralı dosyalar,
+`BEGIN/COMMIT`, önce-test-sonra-uygula) Django'nun kendi ORM-migration mekanizmasıyla
+aynı fiziksel veritabanında çakıştırmamak. İki ayrı veritabanı bu ayrımı, tek bir
+motora inmenin bedeli olmadan sağlıyor.
+
+#### `default` 2026-07-31'de SQLite'tan Postgres'e taşındı
+
+Başlangıçta `default` SQLite'tı (`db.sqlite3`) — `startproject` varsayılanı. Yukarıdaki
+gerekçe hiçbir zaman "SQLite iyidir" demiyordu, "iki migration mekanizması aynı DB'de
+yaşamasın" diyordu; ayrı bir **veritabanı** bunu tamamen karşılıyor. Taşımanın iki
+somut sebebi:
+
+1. **Yedekleme boşluğu.** `db.sqlite3` ne git'teydi (gitignored — doğrusu da bu, parola
+   hash'i içeriyor) ne de `veritabani/scripts/maintenance/yedek_al.sh`'de. Yani tüm
+   kullanıcı hesapları tek diskte tek kopyaydı. Artık aynı `pg_dumpall` ikisini de
+   kapsıyor.
+2. **Yazma kilidi.** SQLite yazarken dosyanın tamamını kilitler; Tailscale üzerinden
+   çok cihazlı erişimde oturum yazımı için gereksiz bir kısıt.
+
+Taşınan veri: **1 kullanıcı**. Parola hash'i `dumpdata`/`loaddata` ile birebir korundu
+(SHA-256'ları karşılaştırılarak doğrulandı), yani parola değişmedi. Oturumlar bilerek
+taşınmadı — tek maliyeti bir kez yeniden giriş. Taşıma öncesi anlık görüntü
+`web/db.sqlite3.yedek-2026-07-31` olarak duruyor (gitignore artık `db.sqlite3*`).
+
+**Bu taşıma cross-DB tuzaklarını ÇÖZMEZ.** Aşağıdaki `using('metaks')` tuzakları
+`default`'un SQLite olmasından değil, `DATABASE_ROUTERS` bulunmamasından kaynaklanıyor;
+`default` Postgres olunca yalnızca hata mesajı değişir ("no such table" yerine
+`relation does not exist"`), tuzak yerinde durur.
 
 Sonuç olarak `metaks` bağlantısına dokunan her model **`managed = False`** olmalı
 (bkz. `katalog/models.py::AktifUrun`, `v_aktif_urunler` view'ının haritalaması) ve

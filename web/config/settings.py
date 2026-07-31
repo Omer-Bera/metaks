@@ -82,21 +82,38 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 #
-# 'default' (SQLite) sadece Django'nun kendi çerçeve tablolarını (auth,
-# session, admin log) tutar. Bilinçli bir tercih: veritabani'nin
-# sql/01_schema.sql + sql/migrations/ ile yönettiği paylaşımlı depo_sistemi
-# şemasına Django'nun kendi migration mekanizmasını hiç karıştırmıyoruz —
-# iki ayrı şema-evrim mekanizması aynı veritabanında çakışmasın diye.
+# İKİ BAĞLANTI, AYNI POSTGRES SUNUCUSU, AYRI VERİTABANLARI.
 #
-# 'metaks' ise gerçek, paylaşımlı METAKS Postgres'idir (veritabani/ dizinindeki
-# aynı depo_sistemi). Bu bağlantı üzerinden sadece salt-okunur, unmanaged
-# modellerle (managed = False) v_aktif_urunler gibi zaten var olan view'lar
-# okunur; buraya asla `python manage.py migrate` çalıştırılmaz.
+# 'default' (metaks_web) sadece Django'nun kendi çerçeve tablolarını (auth,
+# session, admin log) tutar. `python manage.py migrate` YALNIZCA buraya yazar.
+#
+# 'metaks' (depo_sistemi) gerçek METAKS verisidir. Bu bağlantı üzerinden sadece
+# unmanaged modellerle (managed = False) zaten var olan view/tablolar okunur;
+# buraya ASLA `migrate` çalıştırılmaz — şemanın otoritesi tamamen
+# veritabani/sql/01_schema.sql + sql/migrations/'dadır.
+#
+# Ayrımın sebebi veritabanı MOTORU değil, ŞEMA EVRİM MEKANİZMASIDIR: veritabani/
+# elle yazılmış numaralı SQL migration'larla (BEGIN/COMMIT, önce-test-sonra-uygula)
+# yürüyor; Django'nun ORM migration'ları aynı fiziksel veritabanında bununla
+# çakışmamalı. İki AYRI VERİTABANI bu ayrımı, tek bir motora inmenin bedeli
+# olmadan sağlıyor.
+#
+# 2026-07-31'e kadar 'default' SQLite'tı (startproject varsayılanı). Postgres'e
+# alındı çünkü: (1) db.sqlite3 ne git'te (gitignored) ne yedek_al.sh'de yer
+# alıyordu, yani tüm kullanıcı hesapları tek diskte tek kopyaydı — artık aynı
+# pg_dumpall ikisini birden kapsıyor; (2) SQLite yazarken dosyayı bütünüyle
+# kilitler, Tailscale üzerinden çok cihazlı erişimde oturum yazımı için
+# gereksiz bir kısıt. Taşınan veri: 1 kullanıcı (oturumlar bilerek taşınmadı,
+# tek maliyeti yeniden giriş).
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'HOST': os.environ.get('WEB_DB_HOST', 'localhost'),
+        'PORT': os.environ.get('WEB_DB_PORT', '5433'),
+        'NAME': os.environ.get('WEB_DB_NAME', 'metaks_web'),
+        'USER': os.environ.get('WEB_DB_USER', 'depo_admin'),
+        'PASSWORD': os.environ.get('WEB_DB_PASSWORD', ''),
     },
     'metaks': {
         'ENGINE': 'django.db.backends.postgresql',
