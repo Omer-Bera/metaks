@@ -30,8 +30,10 @@ Kullanıcı kararı: Appsmith atıl durumda, Django arayüzü onun yapması gere
 anlamını değiştirirken ya da migration sırası kurarken Appsmith'in sorgularını korumak
 gibi bir kısıt yok.
 
-**Konteyner durduruldu** (`~/metaks/veritabani && docker compose stop appsmith`), silinmedi —
-geri dönüş `docker compose start appsmith` ile anında. Ön koşul olan Django lokasyon
+**Konteyner durduruldu** (`docker compose stop appsmith`), silinmedi. 2026-07-31'deki
+repo birleştirmesinde compose bir kez `down` edildiği için konteynerin kendisi artık
+yok, ama **`metaks_db_appsmith_data` volume'ü duruyor** — yani geri dönüş hâlâ tek
+komut, sadece `start` değil `up`: `cd ~/metaks/veritabani && docker compose up -d appsmith`. Ön koşul olan Django lokasyon
 ekranı (madde 2c) önce tamamlandı, sonra kullanıcı sayımla ilgili hiçbir girişin artık
 Appsmith'ten yapılmadığını doğruladı. Durdurma sonrası ölçüldü: Django'nun beş sayfası
 ve görsel sunucu (8083) sorunsuz, üç tarayıcı test takımı (80 kontrol) yeşil — Django

@@ -59,7 +59,9 @@ Yeri: madde **2c** (yönetim panelinin üçüncü kartı) — orada anlatıldı.
 2. ✅ **Önce kontrol:** sayıma ait bir giriş hâlâ Appsmith'ten yapılıyor mu?
    Kullanıcı doğruladı (2026-07-31): **hayır, kimse kullanmıyor.**
 3. ✅ `docker compose stop appsmith` — **silme, durdur.** Uygulandı (2026-07-31,
-   `~/metaks/veritabani`'den). Geri dönüş `docker compose start appsmith` ile anında.
+   `~/metaks/veritabani`'den). Geri dönüş `docker compose up -d appsmith` ile anında
+   (`start` değil: repo birleştirmesinde compose bir kez `down` edildi, konteyner
+   yok ama `metaks_db_appsmith_data` volume'ü duruyor).
    Kazanç ölçüldü: **1,31 GiB RAM**, yani makinedeki 3,9 GiB'ın üçte biri
    (`depo-postgres` 27 MiB, `depo-gorsel-sunucu` 8 MiB — Appsmith tek başına
    ikisinin ~40 katı). Durdurma sonrası doğrulandı: Django'nun beş sayfası da
