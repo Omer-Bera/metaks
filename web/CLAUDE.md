@@ -601,7 +601,15 @@ davranış kendiliğinden değişir, kodda düzeltme gerekmez:
 Sayfa boyutu 48 (`SAYFA_BOYUTU`) — ızgaranın 2/3/4/6 kolonlu tüm breakpoint'lerine tam
 bölünüyor, son satır yarım kalmıyor.
 
-## Durum (2026-07-30)
+## Durum (2026-07-31)
+
+Bugün ayakta olan sayfaların listesi yukarıdaki "Sayfa yapısı" tablosunda; sıradaki
+işler ve gerekçeleri **`YAPILACAKLAR.md`**'de (açık maddeler: rol/yetki ayrımı, hızlı
+stok işlemi girişi, numune takibi, CSV dışa aktarma). Şema/pipeline tarafının yol
+haritası ise `veritabani/docs/INFO.md`'nin "Güncel Çalışma Noktası" bölümünde.
+
+Aşağısı ilk iki liste sayfasının (2026-07-30) ölçüm kaydı — performans ve sorgu
+sayıları o günden beri değişmedi.
 
 İki liste sayfası (katalog + stok) tamamlandı ve gerçek tarayıcıda (kurulu Chrome,
 puppeteer-core ile sürülerek) uçtan uca doğrulandı: arama, çoklu kategori seçimi,

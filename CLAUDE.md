@@ -11,6 +11,24 @@ Bu dosya deponun tamamı için giriş noktasıdır. Asıl ayrıntı **alt dizinl
 Bir işe başlarken hangisinin içinde çalışıyorsan **o dizinin `CLAUDE.md`'sini** oku;
 ikisine birden dokunan bir iş (çoğu iş öyle) ikisini de gerektirir.
 
+## "Nerede kaldık, sırada ne var"
+
+Bu sorunun cevabı iki dosyada, ikisi de kendi tarafını izliyor:
+
+| Dosya | Neyi izliyor |
+| --- | --- |
+| **`web/YAPILACAKLAR.md`** | Arayüz işleri: numaralı, öncelik sıralı liste. Tamamlananlar ✅ ile yerinde duruyor (neyin neden öyle yapıldığı orada). Sonundaki "Sırası gelmemiş / arka planda duranlar" bölümü, listeye girmeyen ama bilinmesi gereken kalıcı kısıtlar. |
+| **`veritabani/docs/INFO.md`** | Şema/pipeline tarafı: "Güncel Çalışma Noktası" (canlı verinin bugünkü sayıları + uygulanmış migration'lar) ve "Sonraki Fazlar" yol haritası. |
+
+Bugün açık olanlar — arayüz: rol/yetki ayrımı, hızlı stok işlemi girişi, numune
+takibi, CSV dışa aktarma. Şema: Faz 3 (kalıp modülü), Faz 6 (barkod/sipariş),
+Faz 7 (üretim takibi). Faz 8 (numune) **şema tarafında hazır**, kalan iş arayüz ve
+gerçek dolap/raf satırlarının girilmesi — yani o madde iki listede birden görünür,
+aynı işin iki ucu.
+
+Bir iş bitince ilgili maddeyi ✅'e çevirmek ve gerekçesini oraya yazmak bu projenin
+alışkanlığı; listeler böylece hem yapılacakları hem karar kaydını tutuyor.
+
 ## Bu depo 2026-07-31'de iki repodan birleştirildi
 
 Öncesinde `~/metaks_DB` ve `~/depo-web-arayuz` ayrı repolardı. Birleştirmenin

@@ -11,6 +11,10 @@ METAKS'ın depo/katalog sistemi. Tek depo, iki dizin:
 Ayrıntılı mimari bağlam ve kararlar her iki dizinin kendi `CLAUDE.md`'sinde; depo
 geneli için kökteki `CLAUDE.md`.
 
+**Nerede kaldık, sırada ne var:** arayüz için `web/YAPILACAKLAR.md`, şema/pipeline
+için `veritabani/docs/INFO.md`'nin "Güncel Çalışma Noktası" ve "Sonraki Fazlar"
+bölümleri.
+
 ## Hızlı başlangıç
 
 ```bash
