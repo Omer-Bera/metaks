@@ -189,7 +189,7 @@ Yani hiçbir kimlik bilgisi ve parola hash'i repoya girmiyor.
 | Ürün düzenle | `/urun/<stok_kodu>/duzenle/` | Var olan ürünü düzenleme (aynı form) |
 | Yönetim | `/yonetim/` | Yönetici kartları. `is_staff` şart |
 | Kullanıcılar | `/yonetim/kullanicilar/` | Hesap listesi, ekleme, parola, pasife alma |
-| Lokasyonlar | `/yonetim/lokasyonlar/` | Hiyerarşik liste, ekleme, pasife alma |
+| Lokasyonlar | `/yonetim/lokasyonlar/` | Hiyerarşik liste, ekleme, pasife alma, hiç kullanılmamışsa silme |
 
 ### Yönetim paneli ve yetki
 
@@ -275,8 +275,28 @@ bir kolona yazmak Postgres'te hata verir.
 Doğrulama: gerçek tarayıcıda 31/31 kontrol (kök/raf oluşturma, mükerrer ad+tip ve
 mükerrer kod reddi, raf eklenince dolabın kendisinin stok formundan kaybolması,
 pasife alınca stok formundan kaybolup hareket geçmişinde kalması, derinlik
-koruması, yetki kapısı, mobil). Uygulama "sil" sunmadığı için test satırları
-doğrudan SQL ile temizlendi (raf önce — `ON DELETE RESTRICT`).
+koruması, yetki kapısı, mobil).
+
+#### Silme: pasife almanın yerine değil, yanına (2026-07-31)
+
+Pasife alma "artık buraya iş yapılmıyor" demek ve geçmişi korur; çözemediği tek
+durum, **gerçekte hiç var olmamış** bir satırın listede kalıcı olarak durması —
+pasife alınsa bile görünmeye devam eder. `lokasyon_sil` bunun için var.
+
+"Sil" butonu yalnızca veritabanının gerçekten silmeye izin verdiği satırlarda
+basılıyor: defterde hareketi olmayan **ve** altında rafı olmayanlar. Karar üç
+`ON DELETE RESTRICT`'in kendisinde (`stok_hareketleri`'nin iki FK'sı +
+`lokasyonlar_ust_lokasyon_fkey`); `_silinebilir_kimlikler` bunu yalnızca önceden
+hesaplıyor, çünkü silinemeyecek bir satırda buton gösterip kullanıcıya
+tıklattıktan sonra hata vermek olurdu. Defterdeki kullanım alan başına tek
+DISTINCT sorgusuyla toplanıyor, lokasyon başına sorgu değil.
+
+Buton yine de tek savunma değil: `IntegrityError` yakalanıp Türkçeye çevriliyor
+(`_SILME_KISIT_MESAJLARI`) — liste basıldıktan sonra araya bir hareket girerse
+oraya düşülür. Bu yol tarayıcıda gerçekten ölçüldü (butonsuz satıra elle POST →
+"altında raf var" mesajı, satır yerinde kaldı). Django cascade denemiyor: ilgili
+FK'ların hepsi modelde `DO_NOTHING`, yani atılan tek sorgu `DELETE` ve son sözü
+veritabanı söylüyor.
 
 ### Ana ekran
 
@@ -363,14 +383,18 @@ Bu ayrım devam eden depo sayımında anlamlı: "daha neye bakmadık?" sorusunun
 üçüncü durum. "Sadece stokta olanlar" anahtarı yalnızca `var` durumunu bırakıyor
 (`toplam_miktar > 0` alt sorgusu).
 
-**2026-07-30 itibarıyla gerçek stok verisi yok:** `stok_hareketleri`'ndeki 21 kaydın
-tamamı 29 Temmuz'daki test girişleri (her GİRİŞ'in peşinde bir ÇIKIŞ, yuvarlak rakamlar),
-hepsi net 0'a iniyor — yani stoğu >0 olan tek ürün bile yok ve "sadece stokta olanlar"
-bugün boş sonuç veriyor. Ayrıca 30 Temmuz 09:06'da lokasyonlar değişmiş: eski üçü
-(Ana Depo, Sevkiyat Alanı, Fason Atölye 1) pasife alınmış, gerçekleri açılmış —
-**Metaks, Depo 1, Fabrika** (DAHİLİ), **Kaplama, Skor** (FASON). Test hareketlerinin
-hepsi artık pasif olan eski lokasyonlara bağlı. Sayfa sayım ilerledikçe kendiliğinden
-dolacak, kodda değişiklik gerekmiyor.
+**2026-07-31 itibarıyla defter tamamen boş.** Daha önce buradaki 30 kaydın tamamı
+test girişiydi (29 Temmuz Appsmith denemeleri + 30 Temmuz Django doğrulamaları);
+`metaks_DB` migration 006 hepsini sildi ve sequence'i 1'e aldı. Yani `v_toplam_stok`
+sıfır satır, her ürün "Sayılmadı" durumunda ve "sadece stokta olanlar" boş sonuç
+veriyor. Sayfa sayım ilerledikçe kendiliğinden dolacak, kodda değişiklik gerekmiyor.
+(Devam eden sayımın verisi hâlâ Excel'de tutuluyor, veritabanında değil.)
+
+**Lokasyonlar da aynı gün üçe indi:** kullanıcının doğruladığı gerçek konumlar
+**Metaks, Fabrika** (DAHİLİ) ve **Skor** (FASON). Geri kalan beşi (Ana Depo,
+Sevkiyat Alanı, Fason Atölye 1, Depo 1, Kaplama) gerçekte yoktu ve yönetim
+ekranından silindi — defter temizlendiği için `RESTRICT` artık engellemiyordu.
+Yeni konumlar gerektiğinde ekleme formundan açılacak.
 
 ## Stok işlemi (ilk yazma modülü)
 
@@ -459,8 +483,9 @@ GİRİŞ 500 → Metaks, TRANSFER 200 → Depo 1, SAYIM 250. Sayım kaydı ledge
 sonuç Metaks 250 / Depo 1 200. Mükerrer gönderim de canlı doğrulandı: aynı
 `istemci_islem_kimligi` ile iki POST → veritabanında tek satır.
 
-Bu denemelerin bıraktığı satırlar `stok_hareketleri`'nde duruyor (ledger append-only,
-silinmiyor); açıklama alanlarından ayırt edilebilirler.
+Bu denemelerin bıraktığı satırlar 2026-07-31'de `metaks_DB` migration 006 ile
+temizlendi (defter uygulama üzerinden append-only; silmenin yolu numaralı migration).
+Defter bugün boş.
 
 ## Ürün ekleme/düzenleme (2026-07-31)
 
@@ -630,11 +655,14 @@ tamamlandı). Burada sadece o listeyi okurken bilinmesi gereken kalıcı kısıt
 - **Ürün ekleme/düzenleme ✅ tamamlandı (2026-07-31)** — bkz. yukarıdaki "Ürün
   ekleme/düzenleme" bölümü. Tek yazma kapısı `urun_kaydet()` (`stok_hareketi_kaydet()`
   ile aynı desen); Django artık ona bir çağrı katmanı (`urun_servisi.py`) yazdı.
-- **Test hareketleri ledger'da duruyor**: 2026-07-30'daki doğrulama kayıtları
-  (`1001013` ve `1001020` üzerinde, açıklamalarından ayırt edilebilir) silinmedi —
-  defter append-only. Kullanıcıyla kararlaştırılan yol: **ürün tamamlandığında
-  `metaks_DB` tarafında numaralı bir migration ile temizlenecek** (şema otoritesi
-  orası). O zamana kadar hareket geçmişinde görünmeye devam edecekler.
+- **Test hareketleri temizlendi ✅ (2026-07-31)**: kararlaştırılan yol izlendi —
+  `metaks_DB/sql/migrations/006_test_hareketlerini_temizle.sql` (şema/veri otoritesi
+  orası) defterdeki 30 test kaydının tamamını sildi. Tetikleyen ihtiyaç lokasyon
+  silme oldu: `ON DELETE RESTRICT` yüzünden o kayıtlar gerçekte var olmayan dört
+  lokasyonu yerinde tutuyordu. Rollback dosyası 30 satırı `hareket_id` ve
+  `istemci_islem_kimligi`'leriyle geri yazıyor ve uygulanmadan önce gerçekten
+  ölçüldü (uygula → geri al → satır checksum'ı birebir aynı). Migration'ın başındaki
+  sayım kontrolü, araya gerçek bir kayıt girmişse durmasını sağlıyor.
 - **Çoklu görsel galerisi yok**: `v_aktif_urunler` sadece `ana_gorsel_dosya_adi`
   veriyor; 1.780 ürünün 19'unda ikinci bir aktif görsel var (`urun_gorselleri`).
   Kazanç 19 üründe olduğu için ikinci bir unmanaged model eklenmedi.

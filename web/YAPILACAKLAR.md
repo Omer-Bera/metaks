@@ -193,10 +193,29 @@ Doğrulama: gerçek tarayıcıda 31/31 kontrol — kök/raf oluşturma, mükerre
 mükerrer kod reddi (Türkçe mesaj), raf eklenince dolabın kendisinin stok formundan
 kaybolması (artık yaprak değil), pasife alınca hem stok formundan kaybolup hem
 hareket geçmişi filtresinde kalması, raf-altına-raf denemesinin reddi (derinlik
-koruması), yetki kapısı, mobil, şablon sızıntısı, konsol. Uygulama "sil"
-sunmadığı için test satırları UI üzerinden eklenip **doğrudan SQL ile** temizlendi
-(rafın önce silinmesi gerekiyor, `ON DELETE RESTRICT`); sonda lokasyon sayısının
-başlangıca döndüğü ve `stok_hareketleri`'nin hiç değişmediği ayrıca ölçüldü.
+koruması), yetki kapısı, mobil, şablon sızıntısı, konsol.
+
+### Silme eklendi ✅ (2026-07-31)
+
+Ekranın ilk hâlinde silme yoktu; kullanıcı "gerçekte olmayan bazı konumlar
+gözüküyor" deyince eklendi. "Sil" yalnızca **hiç kullanılmamış** satırlarda
+çıkıyor (defterde hareketi yok + altında rafı yok) — kararın kendisi üç
+`ON DELETE RESTRICT`'te, arayüz onu yalnızca önceden hesaplayıp butonu
+gizliyor; ihlal yine de olursa `IntegrityError` Türkçeye çevriliyor.
+Gerekçeler CLAUDE.md'de.
+
+Ön koşul, defterdeki test hareketlerinin temizliğiydi (aşağıdaki madde):
+o 30 kayıt gerçekte var olmayan dört lokasyonu yerinde tutuyordu. Temizlik
+sonrası beş lokasyon (Ana Depo, Sevkiyat Alanı, Fason Atölye 1, Depo 1,
+Kaplama) ekrandan silindi; geriye kullanıcının doğruladığı üç gerçek konum
+kaldı: **Metaks, Fabrika, Skor**.
+
+Doğrulama: gerçek tarayıcıda 24/24 kontrol — geçici dolap+raf üzerinden
+hiyerarşi kısıtı (rafı olan dolapta buton yok), butonsuz satıra elle POST'un
+Türkçe mesajla reddi, raf silinince dolabın silinebilir hâle gelmesi, beş
+lokasyonun tek tek silinmesi, kalan listenin tam olarak üç isim olması, beş
+sayfanın ayakta kalması ve stok işlem formunun yalnızca o üç lokasyonu
+sunması.
 
 Appsmith 2026-07-31'de durduruldu (bkz. madde 0, "Kapatma sırası", 3. adım) —
 kullanıcı kimsenin kullanmadığını doğruladıktan sonra `docker compose stop`.
@@ -422,8 +441,10 @@ tamamlandı.
 - **Otomatik test yok** (`katalog/tests.py` boş). Django test runner'ı `metaks` bağlantısı
   için test veritabanı oluşturmaya çalışır — paylaşımlı `depo_sistemi`'ne karşı istenmeyen
   davranış. Muhtemel yol: `SimpleTestCase` / `databases = {'default'}` + fixture katmanı.
-- **Test hareketleri ledger'da duruyor** (`1001013`, `1001020`) — ürün tamamlandığında
-  `metaks_DB` tarafında numaralı migration ile temizlenecek (kararlaştırıldı).
+- **Test hareketleri temizlendi ✅ (2026-07-31)** — `metaks_DB` migration 006 defterdeki
+  30 test kaydının tamamını sildi, sequence 1'e alındı. Rollback dosyası uygulanmadan
+  önce ölçüldü (uygula → geri al → checksum birebir aynı). Defter bugün boş; ilk gerçek
+  sayım hareketi 1 numarayı alacak.
 - **Çoklu görsel galerisi yok** — 1.780 ürünün sadece 19'unda ikinci aktif görsel var,
   kazanç küçük.
 - **Otomatik tazeleme yok** — açık duran sekme yenilenene kadar eski veriyi gösterir.

@@ -41,14 +41,26 @@
                             {% endif %}
                         </div>
                     </div>
-                    {% if kok.aktif_mi %}
-                    <form method="post"
-                          action="{% url 'katalog:yonetim_lokasyon_pasife_al' kok.lokasyon_id %}">
-                        {% csrf_token %}
-                        <button type="submit" class="text-sm text-slate-500 underline
-                                underline-offset-4 transition hover:text-slate-900">Pasife al</button>
-                    </form>
-                    {% endif %}
+                    {# Silme geri alınamaz ve tek tıklık; onay için tek satır confirm(). #}
+                    <div class="flex items-center gap-4">
+                        {% if kok.aktif_mi %}
+                        <form method="post"
+                              action="{% url 'katalog:yonetim_lokasyon_pasife_al' kok.lokasyon_id %}">
+                            {% csrf_token %}
+                            <button type="submit" class="text-sm text-slate-500 underline
+                                    underline-offset-4 transition hover:text-slate-900">Pasife al</button>
+                        </form>
+                        {% endif %}
+                        {% if kok.silinebilir_mi %}
+                        <form method="post"
+                              action="{% url 'katalog:yonetim_lokasyon_sil' kok.lokasyon_id %}"
+                              onsubmit="return confirm('{{ kok.lokasyon_adi|escapejs }} kalıcı olarak silinecek. Devam edilsin mi?');">
+                            {% csrf_token %}
+                            <button type="submit" class="text-sm text-red-600 underline
+                                    underline-offset-4 transition hover:text-red-800">Sil</button>
+                        </form>
+                        {% endif %}
+                    </div>
                 </div>
 
                 {% if raflar %}
@@ -70,15 +82,26 @@
                                 {% endif %}
                             </div>
                         </div>
-                        {% if raf.aktif_mi %}
-                        <form method="post"
-                              action="{% url 'katalog:yonetim_lokasyon_pasife_al' raf.lokasyon_id %}">
-                            {% csrf_token %}
-                            <button type="submit" class="text-sm text-slate-500 underline
-                                    underline-offset-4 transition hover:text-slate-900"
-                            >Pasife al</button>
-                        </form>
-                        {% endif %}
+                        <div class="flex items-center gap-4">
+                            {% if raf.aktif_mi %}
+                            <form method="post"
+                                  action="{% url 'katalog:yonetim_lokasyon_pasife_al' raf.lokasyon_id %}">
+                                {% csrf_token %}
+                                <button type="submit" class="text-sm text-slate-500 underline
+                                        underline-offset-4 transition hover:text-slate-900"
+                                >Pasife al</button>
+                            </form>
+                            {% endif %}
+                            {% if raf.silinebilir_mi %}
+                            <form method="post"
+                                  action="{% url 'katalog:yonetim_lokasyon_sil' raf.lokasyon_id %}"
+                                  onsubmit="return confirm('{{ raf.lokasyon_adi|escapejs }} kalıcı olarak silinecek. Devam edilsin mi?');">
+                                {% csrf_token %}
+                                <button type="submit" class="text-sm text-red-600 underline
+                                        underline-offset-4 transition hover:text-red-800">Sil</button>
+                            </form>
+                            {% endif %}
+                        </div>
                     </li>
                     {% endfor %}
                 </ul>
@@ -89,7 +112,11 @@
     </div>
 
     <p class="mt-4 text-sm text-slate-500 max-w-prose">
-        Lokasyon silme yok, yalnızca pasife alma — geçmiş hareketler yerinde kalır.
+        <strong class="font-medium text-slate-700">Sil</strong> yalnızca hiç
+        kullanılmamış lokasyonlarda çıkar: hareket geçmişinde kaydı olan ya da
+        altında rafı olan bir lokasyon silinemez, geçmişi korumak için
+        <strong class="font-medium text-slate-700">pasife alınır</strong> — pasif
+        lokasyon yeni işlemde seçilemez ama eski hareketlerde görünmeye devam eder.
         Bir dolabın altına raf eklemek için önce dolabı oluşturun, sonra yeni
         lokasyon formunda üst olarak seçin.
     </p>

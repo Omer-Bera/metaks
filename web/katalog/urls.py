@@ -64,4 +64,9 @@ urlpatterns = [
         lokasyon_yonetimi.lokasyon_pasife_al,
         name='yonetim_lokasyon_pasife_al',
     ),
+    path(
+        'yonetim/lokasyonlar/<int:pk>/sil/',
+        lokasyon_yonetimi.lokasyon_sil,
+        name='yonetim_lokasyon_sil',
+    ),
 ]
