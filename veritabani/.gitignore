@@ -14,6 +14,12 @@ __pycache__/
 # kaydedilen calisma kopyalari, ~195 MB) - asil kopya data/raw/ altinda
 /urun_listesi.xlsx
 
+# Gomulu kucuk resimli katalog (~20 MB) - scripts/images/urun_katalogu_olustur.py
+# ciktisi, DB + images/final/products'tan her an yeniden uretilebilir. Git'te
+# tutulmuyor cunku her yeniden uretimde ~20 MB'lik yeni bir blob birakiyordu
+# (2026-07-31 itibariyla depo gecmisinin %96'si tek basina bu dosyaydi).
+/data/processed/urun_katalogu_gorselli.xlsx
+
 # Excel kilit dosyalari
 ~$*.xlsx
 

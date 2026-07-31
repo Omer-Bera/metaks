@@ -1,0 +1,4 @@
+# Depo geneli. Dizine ozgu kurallar veritabani/.gitignore ve web/.gitignore'da.
+
+# macOS
+.DS_Store

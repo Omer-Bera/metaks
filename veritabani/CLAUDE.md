@@ -12,7 +12,7 @@ METAKS DB is a data-engineering project (not a running application) that cleans,
 
 - Python venv lives in `venv/` — **separate from `web/venv/`**, don't mix them. Activate with `source venv/bin/activate`. `requirements.txt` was added 2026-07-31 (captured from the then-current venv when the repos merged, since a venv can't be moved — absolute paths are baked into its shebangs); recreate with `python3 -m venv venv && venv/bin/pip install -r requirements.txt`. Key packages: `pandas`, `openpyxl`, `psycopg2-binary`, `Pillow` (for thumbnail generation), `SQLAlchemy`.
 - Start everything: `docker compose up -d` — brings up two services: `veritabani` (Postgres 16, container `depo-postgres`) and `gorsel-sunucu` (nginx, container `depo-gorsel-sunucu`, port 8083 — serves product images). Stop: `docker compose down`. Two low-code UI services once lived here too (`nocodb`, removed 2026-07-30; `appsmith`, removed 2026-07-31) — see "UI / arayüz katmanı" below. **Run compose from this directory** — and note the file pins `name: metaks_db` at the top: Compose otherwise derives the project name (and therefore the `pg_data` volume prefix) from the containing directory's name, so the 2026-07-31 move from `~/metaks_DB` to `~/metaks/veritabani` would have made it open a brand-new **empty** volume instead of the existing `metaks_db_pg_data`. Do not remove that line, and do not rename it — the live database is stored under that prefix.
-- The compose file mounts **`sql/01_schema.sql`** as the init script — that file is the authoritative, current schema. The root-level `init_db.sql` is an older/simpler version, not wired into docker-compose; legacy.
+- The compose file mounts **`sql/01_schema.sql`** as the init script — that file is the authoritative, current schema. `sql/legacy/init_db.sql` is an older/simpler version, not wired into docker-compose; legacy (it sat at this directory's root until 2026-07-31, where it read as a second candidate schema — moved under `sql/legacy/` so the authority is unambiguous).
 - DB connection used by all scripts: `host=localhost port=5433 dbname=depo_sistemi user=depo_admin password=supergizlisifre` (credentials hardcoded per-script).
 - Connect manually: `docker exec -it depo-postgres psql -U depo_admin -d depo_sistemi`.
 - No test suite, linter, or build step — this is a manually-run, step-by-step batch pipeline.
@@ -111,7 +111,11 @@ tablolari_disa_aktar.py  full Excel dump of current urunler/urun_gorselleri/kate
                           not guaranteed identical to live DB state after ad-hoc changes)
 urun_katalogu_olustur.py builds data/processed/urun_katalogu_gorselli.xlsx: DB products that
                           have an image, with a thumbnail (120px, via Pillow) embedded per row —
-                          a lightweight recreation of urun_listesi.xlsx's stok-kodu+photo layout
+                          a lightweight recreation of urun_listesi.xlsx's stok-kodu+photo layout.
+                          **Gitignored since 2026-07-31** — it is ~20 MB and fully regenerable,
+                          and every regeneration used to leave another 20 MB blob in history
+                          (that one file was 96% of the repo's git objects). Regenerate on demand;
+                          don't re-add it.
 
 ```
 
@@ -158,7 +162,7 @@ reports/excel/                           audit reports + DB export (veritabani_g
 scripts/{cleaning,normalization,maintenance,database,images}/  pipeline scripts, grouped by stage
 sql/01_schema.sql                        current DB schema (mounted by docker-compose)
 sql/migrations/                          numbered migrations + rollbacks, applied manually (not by docker-compose)
-init_db.sql                              legacy schema, not used by docker-compose
+sql/legacy/init_db.sql                   legacy schema, not used by docker-compose
 docs/INFO.md                             Turkish project doc: current state, roadmap (Faz 2–6), file descriptions
 docs/karisik_stok_kodu_kurali.md         the karışık-code decode rule, with validation evidence
 docs/aktif-urun-veri-sozlesmesi.md       active/passive product criteria, view/function contract for the UI
