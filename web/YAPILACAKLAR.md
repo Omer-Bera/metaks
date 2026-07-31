@@ -68,9 +68,14 @@ dokunulmadı.
 
 ## 2. Yönetim paneli (`/yonetim/`)
 
-Tek bir yönetim giriş noktası; içinde üç kart: **Kullanıcılar** (✅ yapıldı),
-**Ürünler** ve **Lokasyonlar** (ikisi "Yakında" olarak basılıyor). Diğer sayfalarla
-aynı tasarım dili. Sadece yetkili kullanıcıya görünür.
+Tek bir yönetim giriş noktası; içinde **iki** kart: Kullanıcılar ve Lokasyonlar.
+Sadece yetkili kullanıcıya görünür.
+
+Başlangıçta üçüncü bir "Ürünler / Yakında" kartı vardı; **2026-07-31'de kaldırıldı**.
+Ürün ekleme/düzenleme madde 3'te tamamlandı ama `@login_required` olarak, yani giriş
+yapan herkese açık — yönetim paneli ise `is_staff` kapısının arkasında. Ekran hazır
+olduğu hâlde "Yakında" yazması kullanıcıyı yanıltıyordu, ve zaten yönetici işi
+olmadığı için o panele ait değildi. Ürünün doğru yeri katalog sayfası.
 
 ### 2a. Kullanıcı yönetimi ✅ TAMAMLANDI (2026-07-31)
 
@@ -100,11 +105,11 @@ Yönetim paneline liste sayfalarının üst çubuğundan doğrudan bağlantı **
 ana ekrandaki kart. Sekme şeridine dördüncü bir öğe eklemek mobilde daraltıyordu,
 yönetim de günlük kullanımda sık gidilen bir yer değil.
 
-### 2b. Rol/yetki ayrımı (bu adımda değil, ama buradan doğacak)
+### 2b. Rol/yetki ayrımı → **listenin sonuna alındı** (2026-07-31, kullanıcı kararı)
 
 Şu an giriş yapan herkes her ürüne her işlem tipini uygulayabiliyor. İç ağda tek ekip
-için bugün yeterli; **fason/dış kullanıcı girdiği anda** gözden geçirilmeli. Kullanıcı
-ekranı yapılırken en azından "yönetici mi" ayrımının yeri hazırlansın.
+için bugün yeterli; **fason/dış kullanıcı girdiği anda** gözden geçirilmeli. O gün
+gelene kadar beklemesine karar verildi — madde 6'ya taşındı, sıradaki iş değil.
 
 ### 2c. Lokasyon yönetimi ✅ TAMAMLANDI (2026-07-31)
 
@@ -268,11 +273,25 @@ Kullanıcı onayıyla `stok_islem` ham `urunler`'e de bakacak şekilde genişlet
 "katalogda pasif, sebebi görselsizlik, stok işlemine engel değil" açıklaması +
 düzenleme bağlantısı basılıyor. Ayrıntı CLAUDE.md.
 
+### Aynı gün tek sayfaya çevrildi (kullanıcı geri bildirimi)
+
+İlk sürüm yalnızca bir yönlendiriciydi: kod alıp `stok_islem` sayfasına atıyordu.
+Kullanıcı "bu sayfayı depocunun kullanacağı şekilde düşünmüştüm — mal geldiğinde
+hemen işlesin" deyince tek sayfaya çevrildi. Bugün: kodu okut → ürün ve form aynı
+ekranda → kaydet → kutu temizlenip odaklanır → sıradaki ürün. Sayfa hiç değişmiyor.
+
+Form kopyalanmadı; `_stok_islem_govde.html` + `views._islem_baglami()` iki ekranda
+ortak. Yol boyunca gerçek bir yarış hatası yakalandı (iki HTMX tetikleyicisi aynı
+hedefe yazıyordu, Enter'ın getirdiği formu bayat öneri isteği eziyordu) —
+yalnızca gerçek tarayıcıda görülüyordu, ayrıntı ve çözüm CLAUDE.md'de.
+
 ### Doğrulama
 
-Python seviyesinde 28/28, gerçek tarayıcıda 21/21 — liste CLAUDE.md'de. Geçici test
-hesapları zaman damgalı ön ekle açılıp sonda silindi; `stok_hareketleri` 0 satırda
-kaldı, `urunler`/`urun_gorselleri`/`lokasyonlar` hiç değişmedi.
+Python 39/39, gerçek tarayıcı 27/27, yarış/artık senaryoları 7/7, odak döngüsü 4/4
+— listeler CLAUDE.md'de. Geçici test hesapları zaman damgalı ön ekle açılıp sonda
+silindi; `stok_hareketleri` 0 satırda kaldı, `urunler`/`urun_gorselleri`/
+`lokasyonlar` hiç değişmedi. Defter yazan yol bilinçli olarak uçtan uca
+ölçülmedi: `hareket_id` 1 ilk gerçek harekete saklı, test satırı onu tüketirdi.
 
 ### Yapılmayan (bilinçli)
 

@@ -512,20 +512,67 @@ Bu denemelerin bıraktığı satırlar 2026-07-31'de `veritabani` migration 006 
 temizlendi (defter uygulama üzerinden append-only; silmenin yolu numaralı migration).
 Defter bugün boş.
 
-## Hızlı stok işlemi girişi (2026-07-31)
+## Hızlı stok işlemi girişi — depo sahası ekranı (2026-07-31)
 
-`/stok/hizli/` — tek büyük, otomatik odaklanan kutu. Kod girilince o ürünün
-`stok_islem` formuna **yönlendiriyor**; yeni bir işlem formu yazılmadı. Kart
-ızgarasından ürünü gözle bulma yolu (stok sayfası → detay paneli → "Stok işlemi yap")
-**kalıyor** — bu onun yerine değil, yanına bir kısayol.
+`/stok/hizli/` — **tek sayfa**: kodu okut, ürün ve işlem formu aynı ekranda açılır,
+kaydet, kutu temizlenip odaklanır, sıradaki ürüne geç. Sayfa hiç değişmiyor.
 
-### Ana yol bilinçli olarak JS'siz
+İlk sürümü yalnızca bir **yönlendiriciydi** (kod alıp `stok_islem` sayfasına
+atıyordu). Kullanıcı geri bildirimiyle aynı gün tek sayfaya çevrildi; gerekçe:
+mal kabul/sevkiyat günde onlarca kez tekrarlanan bir iş ve her seferinde sayfa
+değiştirmek gereksiz sürtünme. Kart ızgarasından ürünü gözle bulma yolu (stok
+sayfası → detay paneli → "Stok işlemi yap") **kalıyor** — bu onun yerine değil,
+yanına bir kısayol.
 
-Kutu düz bir `<form method="get">` içinde. Sebep barkod okuyucular: USB/Bluetooth
-okuyucular klavye gibi davranır (kodu yazıp Enter'a basar), yani donanımla okutma
-**ek kod olmadan** çalışıyor. HTMX yalnızca kutunun altındaki öneri listesini
-tazeliyor (`hx-trigger="input changed delay:200ms"`), Enter'ı hiç ellemiyor —
-form gönderimi native kalıyor.
+### Form kopyalanmadı
+
+İki ekran da `_stok_islem_govde.html` parçasını ve `views._islem_baglami()`
+mantığını paylaşıyor; `hizli` bayrağı yalnızca formun nereye gönderileceğini
+değiştiriyor. İki kopya olsaydı zamanla ayrışırlardı — `stok_servisi`'nin
+`stok_hareketi_kaydet()` karşısındaki duruşunun aynısı.
+
+Varsayılan işlem tipi ekrana göre farklı ve bu bilinçli: `stok_islem` ürün detay
+panelinden gelinir, bugünkü senaryosu devam eden **sayım** → `SAYIM_DEVRI`; hızlı
+ekranın senaryosu **mal kabul/sevkiyat** → `GIRIS`.
+
+### Odak döngüsü — ekranın bütün meselesi
+
+Depocu klavyeden elini kaldırmadan çalışabilmeli. Durum istemcide tutulmuyor,
+sunucu yanıtındaki iki işaretten okunuyor (`_hizli_alan.html`):
+
+| İşaret | Anlamı | Odak |
+| --- | --- | --- |
+| `data-urun-yuklendi` | kod çözüldü, form geldi | miktar alanı |
+| `data-kayit-tamam` | hareket deftere düştü | kutu temizlenir, odak kutuya |
+
+Hata durumunda **hiçbir işaret basılmıyor**: kutu ve form olduğu gibi kalır ki
+kullanıcı düzeltip yeniden gönderebilsin.
+
+### İki HTMX tetikleyicisi, İKİ AYRI HEDEF (yaşanmış hata)
+
+Kutunun iki tetikleyicisi var: yazarken canlı öneri (`?ara=1`) ve Enter'da kod
+çözme. İlk sürümde **ikisi de `#islem-alani`'na yazıyordu ve yarışıyorlardı**:
+Enter formu getiriyor, son karakterin bekleyen 250 ms'lik isteği hemen ardından
+düşüp formu öneri listesiyle **eziyordu**. Django test istemcisi istekleri tek tek
+çağırdığı için bunu görmedi; yalnızca gerçek tarayıcıda ortaya çıktı.
+
+Yapısal çözüm ayrı hedefler: öneriler `#oneriler`, form `#islem-alani`. Kalan
+kozmetik artık (form yüklendikten sonra düşen bayat öneri satırı) için iki şey var:
+ürün geldiğinde `#oneriler`'i temizleyen **out-of-band** takas, ve `htmx:beforeRequest`
+içinde "ekranda ürün formu varken öneri isteğini iptal et" kuralı. **`hx-sync`
+denendi ve İŞE YARAMADI** — gecikmeli tetikleyici, istek sync kuyruğuna girmeden
+önce zamanlayıcısını tamamlıyor; yanlış şey iddia etmemek için kaldırıldı.
+
+Ayrıca kutuya yeniden yazılmaya başlandığı an `#islem-alani` temizleniyor: depocu
+sıradaki ürüne geçiyordur, eski formu bırakmak "hangi ürüne işlem yapıyorum?"
+belirsizliği yaratırdı.
+
+### Barkod okuyucu ve HTMX'siz yedek yol
+
+USB/Bluetooth okuyucular klavye gibi davranır (kodu yazıp Enter'a basar), yani
+donanımla okutma **ek kod gerektirmiyor**. Form `action=` ile de basılıyor: HTMX
+yüklenmezse düz GET gönderimi aynı sayfayı tam olarak basıyor (view `HX-Request`
+başlığına bakıyor), yani Enter yolu o durumda da çalışır.
 
 Telefon kamerasıyla QR okuma ayrı bir iş ve bugün **mümkün değil**: `getUserMedia`
 "secure context" (HTTPS) istiyor, site düz HTTP. Donanım okuyucu ihtiyacı
@@ -544,26 +591,37 @@ Eşleşme önce harf duyarlı, sonra `iexact`: `urunler`de yalnızca büyük/kü
 ayrışan iki kod **yok** (ölçüldü), yani `iexact` belirsizlik üretmiyor; 2.973 kodun
 306'sı harf içerdiği için (`1805012-YENI`) duyarlılık gerçek bir sorun.
 
-### Giriş noktaları ve kapı
+### Her sayfanın kendi eylemi
 
-Ana ekranda kart + stok sayfasında "Hızlı işlem" bağlantısı. **Katalog sayfasında
-bilerek yok**: orası ön büroda müşteriye ürün gösterme ekranı, iki sayfanın ayrılma
-sebebi bu. Sekme şeridine dördüncü öğe eklenmedi — mobilde daraltıyor (yönetim
-panelinde de aynı gerekçeyle eklenmemişti).
+**Katalog = ürün kaydının yeri, stok = stok işleminin yeri** (2026-07-31'de
+netleştirildi). "+ Ürün ekle" önce ikisinde birden çıkıyordu; stok tarafından
+kaldırıldı, yerine "Hızlı stok işlemi" kondu. Yol kapanmıyor: depocunun kataloğa
+girmemiş bir ürünle karşılaşması hızlı ekranın "bulunamadı → bu kodla ürün oluştur"
+dalıyla karşılanıyor.
 
-`@login_required` sayfanın kendisinde: tek çıktısı `stok_islem` ve orası zaten giriş
-istiyor; kapıyı buraya koymak kullanıcının kodu yazıp Enter'a bastıktan **sonra**
-giriş ekranıyla karşılaşmasını önlüyor.
+Ana ekranda ayrıca bir kart var (yalnızca giriş yapmışa). Sekme şeridine dördüncü
+öğe eklenmedi — mobilde daraltıyor (yönetim panelinde de aynı gerekçeyle
+eklenmemişti).
+
+`@login_required` sayfanın kendisinde: yazma ekranı ve
+`stok_hareketleri.yapan_kullanici` NOT NULL. Kapıyı buraya koymak kullanıcının kodu
+yazıp Enter'a bastıktan **sonra** giriş ekranıyla karşılaşmasını önlüyor.
 
 ### Doğrulama
 
-Python seviyesinde 28/28 (giriş kapısı, boş kutu, tam eşleşme, boşluk kırpma, harf
-duyarsızlığı, PASİF dalı, bulunamadı dalı, öneri sınırı, sorgu sayısı), gerçek
-tarayıcıda 21/21 (otomatik odak, HTMX canlı öneri, öneriye tıklama, Enter yolu,
-PASİF ürünün formu, kırık görsel yok, giriş noktalarının doğru sayfalarda olması,
-mobil, şablon sızıntısı, konsol). PASİF ürüne form üzerinden POST da denendi —
-satır bırakmayan senaryoyla (sayılan miktar mevcutla aynı → `atlandi`), yani
-`stok_hareketi_kaydet()` gerçekten çalıştı ve defter 0 satırda kaldı.
+Python seviyesinde **39/39** (tek sayfa akışı, `?ara=1` ayrımı, HTMX'siz tam sayfa
+yedeği, PASİF dalı, POST'un kayıt ve hata dalları, eski ekranın bozulmadığı, giriş
+noktalarının doğru sayfalarda olması), gerçek tarayıcıda **27/27** (otomatik odak,
+canlı öneri, Enter'da URL'in değişmemesi, odağın miktara geçmesi, takas sonrası
+işlem-tipi JS'inin çalışması, PASİF ürün, mobil, konsol) + yarış/artık senaryoları
+için ayrıca **7/7**.
+
+**Defter yazan yol uçtan uca ölçülmedi ve bu bilinçli**: bugün defter boş ve
+`hareket_id` 1 ilk gerçek harekete saklı (bkz. `veritabani` migration 006), test
+satırı onu tüketirdi. Yazma yolunun çalıştığı satır bırakmayan senaryoyla kanıtlandı
+(sayılan miktar mevcutla aynı → `atlandi`, fonksiyonun kendi mesajı ekrana düştü) ve
+kaydet-sonrası odak döngüsü, sunucunun başarılı kayıtta bastığı `data-kayit-tamam`
+işareti tarayıcıda birebir taklit edilerek doğrulandı (**4/4**).
 
 ## Ürün ekleme/düzenleme (2026-07-31)
 

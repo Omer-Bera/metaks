@@ -1,0 +1,47 @@
+{% comment %}
+/stok/hizli/'nin kod kutusunun ALTINDAKİ alan. HTMX bunu yerinde takas ediyor,
+sayfa hiç değişmiyor. Üç hâli var:
+
+1. urun varsa      -> ürün + stok dökümü + işlem formu (ortak _stok_islem_govde.html)
+2. bulunamadi ise  -> uyarı + "bu kodla ürün oluştur" + benzer kod önerileri
+3. ikisi de yoksa  -> yalnızca öneriler (kullanıcı henüz yazıyor) ya da boş
+
+İki `data-*` işareti odağın nereye gideceğini söylüyor (bkz. hizli_islem.html):
+`data-kayit-tamam` -> kutuyu boşalt, odağı ona ver (sıradaki ürün okutulacak),
+`data-urun-yuklendi` -> odağı miktar alanına ver (sıradaki iş miktarı yazmak).
+Sunucunun istemciye durum söyleme yolu bu; istemcide durum tutulmuyor.
+{% endcomment %}
+<div {% if sonuc and not sonuc.atlandi %}data-kayit-tamam="1"
+     {% elif urun %}data-urun-yuklendi="1"{% endif %}>
+
+    {% if urun %}
+    {% include "katalog/_stok_islem_govde.html" %}
+
+    {% elif bulunamadi %}
+    <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+        <p class="text-sm font-medium text-amber-900">
+            “{{ kod }}” koduyla bir ürün bulunamadı.</p>
+        <p class="mt-1.5 text-sm text-amber-800">
+            {% comment %}
+            Bağlantı, katalogdaki "boş arama sonucundan ekleme" akışının aynısı
+            (_govde.html) — iki kez tasarlanmadı, aynı ?stok_kodu= ön doldurması.
+            {% endcomment %}
+            <a href="{% url 'katalog:urun_ekle' %}?stok_kodu={{ kod|urlencode }}"
+               class="font-medium underline underline-offset-4 transition hover:text-amber-950">
+                Bu kodla yeni ürün oluştur</a>
+        </p>
+    </div>
+    {% endif %}
+
+    {% if oob %}
+    {% comment %}
+    Ürün yüklendiğinde kutunun altındaki eski öneri listesini temizle. Out-of-band
+    takas, çünkü #oneriler bu bloğun DIŞINDA duruyor — bilerek: yazma tetikleyicisi
+    ile Enter aynı hedefi paylaşırsa yarışıyorlar. Gerçek tarayıcıda ölçüldü:
+    Enter formu getiriyor, son karakterin bekleyen 200 ms'lik isteği hemen ardından
+    düşüp formu öneri listesiyle eziyordu. Ayrı hedefler bunu yapısal olarak
+    imkânsız kılıyor. (Kategori panelindeki oob deseninin aynısı.)
+    {% endcomment %}
+    <div id="oneriler" hx-swap-oob="true"></div>
+    {% endif %}
+</div>

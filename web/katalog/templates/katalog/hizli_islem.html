@@ -8,7 +8,7 @@
     flex-wrap emniyet kemeri: uzun e-posta dar ekranda taşmak yerine alt satıra insin
     (stok_islem.html ve hareketler.html'de de aynı tuzak, gerçek bir e-postayla ölçüldü).
     {% endcomment %}
-    <div class="max-w-2xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center gap-3">
+    <div class="max-w-3xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center gap-3">
         <a href="{% url 'katalog:stok_listesi' %}"
            class="flex items-center gap-1.5 text-sm text-slate-500 transition hover:text-slate-900">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2"
@@ -25,21 +25,35 @@
     </div>
 </header>
 
-<main class="max-w-2xl mx-auto px-4 sm:px-6 py-10 pb-16">
+<main class="max-w-3xl mx-auto px-4 sm:px-6 py-8 pb-16">
 
     <h1 class="text-2xl font-semibold tracking-tight text-slate-900">Hızlı stok işlemi</h1>
     <p class="mt-1.5 text-sm text-slate-500">
-        Stok kodunu yazın ya da barkodu okutun. Enter'a bastığınızda o ürünün işlem
-        formu açılır.
+        Kodu yazın ya da barkodu okutun, Enter'a basın. İşlem aynı ekranda yapılır;
+        kaydettikten sonra kutu sıradaki ürün için hazır olur.
     </p>
 
     {% comment %}
-    Düz <form method="get">: ana yol bilinçli olarak JS'siz. USB/Bluetooth barkod
-    okuyucular klavye gibi davranır (kodu yazıp Enter'a basar), yani bu form onlarla
-    ek kod olmadan çalışıyor. Aşağıdaki HTMX yalnızca öneri listesini tazeliyor;
-    Enter yine formu gönderiyor (hx-trigger yalnızca `input` olayında).
+    Kutu, takas edilen #islem-alani'nın DIŞINDA — üç sebeple: DOM'dan sökülmediği için
+    yazarken odak/imleç kaybolmuyor, kaydettikten sonra odağı ona geri vermek mümkün
+    oluyor, ve HTMX yanıtının kutunun kendisini yeniden basması gerekmiyor.
+    (Katalog sayfasındaki sticky arama kutusuyla aynı gerekçe.)
+
+    İki ayrı HTMX tetikleyicisi var ve BİLEREK farklı davranıyorlar:
+    * form submit (Enter / barkod okuyucu) -> kodu ÇÖZ: eşleşirse işlem formunu getir,
+      eşleşmezse "bulunamadı" uyarısını göster.
+    * input yazarken (?ara=1)              -> yalnızca ÖNERİ listesi. Yazarken her tuşta
+      "bulunamadı" basmak gürültü olurdu; uyarı ancak kullanıcı gönderdiğinde anlamlı.
+
+    action= de basılıyor: HTMX yüklenmezse düz GET gönderimi aynı sayfayı tam olarak
+    basıyor (view HX-Request başlığına bakıyor). Barkod okuyucunun Enter'ı bu yedek
+    yolda da çalışır.
     {% endcomment %}
-    <form method="get" action="{% url 'katalog:hizli_islem' %}" class="mt-6">
+    <form method="get" action="{% url 'katalog:hizli_islem' %}"
+          hx-get="{% url 'katalog:hizli_islem' %}"
+          hx-target="#islem-alani"
+          hx-swap="innerHTML"
+          class="mt-6">
         <label for="kod" class="sr-only">Stok kodu</label>
         <div class="relative">
             <svg class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400
@@ -63,32 +77,30 @@
                        placeholder:text-base placeholder:tracking-normal placeholder:text-slate-400
                        transition focus:border-slate-500 focus:outline-none
                        focus:ring-4 focus:ring-slate-900/5"
-                hx-get="{% url 'katalog:hizli_oneriler' %}"
+                hx-get="{% url 'katalog:hizli_islem' %}?ara=1"
                 hx-trigger="input changed delay:200ms"
                 hx-target="#oneriler"
                 hx-swap="innerHTML"
+                hx-sync="closest form:drop"
             >
         </div>
     </form>
 
-    {% if bulunamadi %}
-    <div class="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-        <p class="text-sm font-medium text-amber-900">
-            “{{ kod }}” koduyla bir ürün bulunamadı.</p>
-        <p class="mt-1.5 text-sm text-amber-800">
-            {% comment %}
-            Bağlantı, katalogdaki "boş arama sonucundan ekleme" akışının aynısı
-            (_govde.html) — iki kez tasarlanmadı, aynı ?stok_kodu= ön doldurması.
-            {% endcomment %}
-            <a href="{% url 'katalog:urun_ekle' %}?stok_kodu={{ kod|urlencode }}"
-               class="font-medium underline underline-offset-4 transition hover:text-amber-950">
-                Bu kodla yeni ürün oluştur</a>
-        </p>
-    </div>
-    {% endif %}
-
+    {% comment %}
+    İki AYRI hedef. Yazma tetikleyicisi #oneriler'i, Enter ise #islem-alani'nı
+    tazeliyor. İlk sürümde ikisi de #islem-alani'na yazıyordu ve yarışıyorlardı:
+    Enter formu getiriyor, son karakterin bekleyen 200 ms'lik isteği hemen ardından
+    düşüp formu öneri listesiyle EZİYORDU (gerçek tarayıcıda ölçüldü; Django test
+    istemcisi istekleri tek tek çağırdığı için görmemişti). Ayrı hedefler bunu
+    yapısal olarak imkânsız kılıyor; hx-sync ise Enter gönderimi sürerken yazma
+    isteğinin hiç çıkmamasını sağlıyor.
+    {% endcomment %}
     <div id="oneriler" class="mt-5">
-        {% include "katalog/_hizli_oneriler.html" %}
+        {% if not urun %}{% include "katalog/_hizli_oneriler.html" %}{% endif %}
+    </div>
+
+    <div id="islem-alani" class="mt-5">
+        {% include "katalog/_hizli_alan.html" %}
     </div>
 
     <p class="mt-8 text-xs leading-relaxed text-slate-400">
@@ -99,4 +111,50 @@
         yanına bir kısayol.
     </p>
 </main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Depo döngüsünün tamamı: okut -> miktarı yaz -> kaydet -> sıradakini okut.
+    // Odağı doğru yere vermek bu ekranın bütün meselesi; klavyeden elini kaldırmadan
+    // çalışabilmeli. Durum istemcide tutulmuyor, sunucu yanıtındaki iki işaretten
+    // okunuyor (bkz. _hizli_alan.html).
+    document.body.addEventListener('htmx:afterSwap', (olay) => {
+        if (olay.target.id !== 'islem-alani') return;
+        const kutu = document.getElementById('kod');
+
+        if (olay.target.querySelector('[data-kayit-tamam]')) {
+            // Kayıt düştü: kutuyu boşalt ve odağı geri ver, sıradaki ürün okutulabilsin.
+            kutu.value = '';
+            kutu.focus();
+        } else if (olay.target.querySelector('[data-urun-yuklendi]')) {
+            // Ürün geldi: sıradaki iş miktarı yazmak, odak oraya gitsin.
+            olay.target.querySelector('[name="miktar"]')?.focus();
+        }
+    });
+
+    // Kutuya yeniden yazılmaya başlandığı an ekrandaki ürün artık geçersiz: depocu
+    // sıradaki ürüne geçiyor. Formu bırakmak "hangi ürüne işlem yapıyorum?"
+    // belirsizliği yaratırdı — özellikle barkod okuyucu saniyeler içinde yeni bir
+    // kod bastığında.
+    document.getElementById('kod').addEventListener('input', () => {
+        document.getElementById('islem-alani').innerHTML = '';
+    });
+
+    // Bayat öneri isteğini iptal et. Kutunun `delay:250ms` tetikleyicisi, son
+    // karakterden sonra Enter'a basılsa bile zamanlayıcısını tamamlayıp isteğini
+    // gönderiyor; yanıt formdan SONRA düşüp kutunun altında bir bayat öneri satırı
+    // bırakıyordu (gerçek tarayıcıda ölçüldü). hx-sync bunu çözmüyor çünkü gecikme
+    // istek sync kuyruğuna girmeden önce işliyor — o yüzden kaldırıldı.
+    //
+    // Kural basit ve durum tutmuyor: ekranda bir ürün formu duruyorsa öneri
+    // isteğinin anlamı yok, iptal edilir. Yukarıdaki `input` dinleyicisi formu
+    // zaten temizlediği için kullanıcı yazmaya devam ettiğinde öneriler çalışır.
+    document.body.addEventListener('htmx:beforeRequest', (olay) => {
+        if (olay.detail.elt.id === 'kod'
+            && document.querySelector('#islem-alani [name="islem_tipi"]')) {
+            olay.preventDefault();
+        }
+    });
+</script>
 {% endblock %}

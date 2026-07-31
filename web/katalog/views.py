@@ -664,25 +664,22 @@ def _islem_urunu(stok_kodu):
     return urun
 
 
-@login_required
-def stok_islem(request, stok_kodu):
-    """Bir ürün için stok hareketi kaydı (GİRİŞ/ÇIKIŞ/TRANSFER/SAYIM/DÜZELTME).
+def _islem_baglami(request, urun, *, varsayilan_tip, hizli=False):
+    """Stok işlem formunun bağlamını üretir ve POST geldiyse hareketi kaydeder.
 
-    İş kuralları bilinçli olarak burada tekrarlanmıyor: bu view yalnızca tip dönüşümü
-    yapıp stok_hareketi_kaydet()'i çağırıyor, zorunluluk/yeterlilik denetimleri ve
-    kullanıcıya gösterilen Türkçe mesajlar veritabanı fonksiyonundan geliyor
-    (bkz. stok_servisi). Kuralların iki kopyası olsaydı zamanla ayrışırlardı.
+    `stok_islem` (tam sayfa) ile `hizli_islem` (tek sayfa depo ekranı) **aynı** formu
+    kullanıyor; form da iş kuralları da tek yerde kalsın diye ortak. İş kuralları yine
+    burada DEĞİL — `stok_hareketi_kaydet()` içinde; bu fonksiyon yalnızca tip dönüşümü
+    yapıp dönen Türkçe mesajı taşıyor (bkz. stok_servisi).
 
-    Giriş zorunlu çünkü stok_hareketleri.yapan_kullanici NOT NULL ve Postgres'e tek bir
-    paylaşılan `depo_admin` kullanıcısıyla bağlanıldığı için current_user'a güvenilemez —
-    "kim yaptı" bilgisi uygulamadan açıkça geçirilmek zorunda.
+    `varsayilan_tip` iki ekranda farklı, çünkü kullanım senaryoları farklı: ürün detay
+    panelinden gelen yol sayım içindir (devam eden depo sayımı), hızlı ekran ise mal
+    kabul/sevkiyat içindir — orada GİRİŞ daha sık.
     """
-    urun = _islem_urunu(stok_kodu)
     sonuc = None
     hata = None
-    # Gönderilen değerler: hata durumunda formu boşaltmamak için geri basılıyor.
     girilen = {
-        'islem_tipi': request.POST.get('islem_tipi', 'SAYIM_DEVRI'),
+        'islem_tipi': request.POST.get('islem_tipi', varsayilan_tip),
         'miktar': request.POST.get('miktar', ''),
         'kaynak_lokasyon_id': request.POST.get('kaynak_lokasyon_id', ''),
         'hedef_lokasyon_id': request.POST.get('hedef_lokasyon_id', ''),
@@ -722,27 +719,45 @@ def stok_islem(request, stok_kodu):
             }
             islem_kimligi = stok_servisi.yeni_islem_kimligi()
 
-    return render(
-        request,
-        'katalog/stok_islem.html',
-        {
-            'urun': urun,
-            'islem_tipleri': stok_servisi.ISLEM_TIPLERI,
-            # aktif_mi + yaprak_mi: dolaplar burada seçilebilir görünürse
-            # stok_hareketi_kaydet() onları reddeder (migration 004, "sadece yaprak
-            # lokasyona yazılabilir") — kullanıcı formu doldurup gönderdikten SONRA
-            # hatayı görürdü, bunun yerine seçilemez olsunlar.
-            'lokasyonlar': list(
-                LokasyonDetay.objects.using('metaks').filter(aktif_mi=True, yaprak_mi=True)
-            ),
-            'mevcut_stok': _lokasyon_stok(stok_kodu),
-            'girilen': girilen,
-            'istemci_kimligi': islem_kimligi,
-            'sonuc': sonuc,
-            'hata': hata,
-            'aktif_sekme': 'stok',
-        },
-    )
+    return {
+        'urun': urun,
+        'islem_tipleri': stok_servisi.ISLEM_TIPLERI,
+        # aktif_mi + yaprak_mi: dolaplar burada seçilebilir görünürse
+        # stok_hareketi_kaydet() onları reddeder (migration 004, "sadece yaprak
+        # lokasyona yazılabilir") — kullanıcı formu doldurup gönderdikten SONRA
+        # hatayı görürdü, bunun yerine seçilemez olsunlar.
+        'lokasyonlar': list(
+            LokasyonDetay.objects.using('metaks').filter(aktif_mi=True, yaprak_mi=True)
+        ),
+        'mevcut_stok': _lokasyon_stok(urun.stok_kodu),
+        'girilen': girilen,
+        'istemci_kimligi': islem_kimligi,
+        'sonuc': sonuc,
+        'hata': hata,
+        # Formun nereye gönderileceğini ve HTMX ile mi çalışacağını şablona söyler.
+        'hizli': hizli,
+        'aktif_sekme': 'stok',
+    }
+
+
+@login_required
+def stok_islem(request, stok_kodu):
+    """Bir ürün için stok hareketi kaydı (GİRİŞ/ÇIKIŞ/TRANSFER/SAYIM/DÜZELTME).
+
+    İş kuralları bilinçli olarak burada tekrarlanmıyor: bu view yalnızca tip dönüşümü
+    yapıp stok_hareketi_kaydet()'i çağırıyor, zorunluluk/yeterlilik denetimleri ve
+    kullanıcıya gösterilen Türkçe mesajlar veritabanı fonksiyonundan geliyor
+    (bkz. stok_servisi). Kuralların iki kopyası olsaydı zamanla ayrışırlardı.
+
+    Giriş zorunlu çünkü stok_hareketleri.yapan_kullanici NOT NULL ve Postgres'e tek bir
+    paylaşılan `depo_admin` kullanıcısıyla bağlanıldığı için current_user'a güvenilemez —
+    "kim yaptı" bilgisi uygulamadan açıkça geçirilmek zorunda.
+    """
+    urun = _islem_urunu(stok_kodu)
+    # Bu yol ürün detay panelinden geliyor ve bugünkü asıl kullanımı devam eden depo
+    # sayımı — varsayılan SAYIM. Hızlı ekranın varsayılanı GİRİŞ (bkz. hizli_islem).
+    baglam = _islem_baglami(request, urun, varsayilan_tip='SAYIM_DEVRI')
+    return render(request, 'katalog/stok_islem.html', baglam)
 
 
 # --------------------------------------------------------------------------------------
@@ -811,46 +826,84 @@ def _oneriler(kod, *, limit=ONERI_SAYISI):
     return urunler
 
 
+def _kodu_coz(kod):
+    """Yazılan/okutulan kodu **gösterime hazır** bir ürüne çevirir; bulunamazsa None.
+
+    Eşleştirme önce harf duyarlı, sonra `iexact`: `urunler`de yalnızca büyük/küçük
+    harfte ayrışan iki kod YOK (ölçüldü), yani `iexact` belirsizlik üretmiyor. 2.973
+    kodun 306'sı harf içerdiği için (`1805012-YENI`) duyarlılık gerçek bir sorun —
+    okuyucudan ya da klavyeden farklı büyüklükte gelebilir.
+
+    Bulunan satır ham bırakılmıyor, `_islem_urunu()`'ne veriliyor: `gorsel_url`,
+    `kategori_adi` ve `pasif` oradan geliyor ve şablon üçünü de bekliyor. Ham `Urun`
+    döndürüldüğü ilk sürümde AKTİF ürünlerin görseli hiç basılmıyor, PASİF ürünlerin
+    de "katalogda pasif" açıklaması çıkmıyordu — süsleme tek yerde kalsın.
+    """
+    if not kod:
+        return None
+    eslesen = (
+        Urun.objects.using('metaks').filter(stok_kodu=kod).first()
+        or Urun.objects.using('metaks').filter(stok_kodu__iexact=kod).first()
+    )
+    return _islem_urunu(eslesen.stok_kodu) if eslesen is not None else None
+
+
 @login_required
 def hizli_islem(request):
-    """Tek kutulu hızlı giriş: kod -> o ürünün stok işlem formu.
+    """Tek sayfalık depo ekranı: kodu okut, işlemi aynı ekranda kaydet, sıradakine geç.
 
-    Giriş zorunlu, çünkü bu sayfanın tek çıktısı `stok_islem` ve orası zaten
-    `@login_required`. Kapıyı buraya koymak, kullanıcının kodu yazıp Enter'a
-    bastıktan SONRA giriş ekranıyla karşılaşmasını önlüyor.
+    İlk sürümü (2026-07-31) yalnızca bir yönlendiriciydi — kod alıp `stok_islem`
+    sayfasına atıyordu. Kullanıcı geri bildirimi üzerine tek sayfaya çevrildi: mal
+    kabul/sevkiyat günde onlarca kez tekrarlanan bir iş, her seferinde sayfa
+    değiştirmek gereksiz sürtünme. Kaydedince kutu temizlenip yeniden odaklanıyor,
+    yani okut-kaydet-okut döngüsü hiç kesilmiyor.
+
+    Form KOPYALANMADI: `stok_islem` ile aynı `_stok_islem_govde.html` parçasını ve aynı
+    `_islem_baglami()` mantığını kullanıyor. İki kopya olsaydı zamanla ayrışırlardı —
+    `stok_servisi`'nin `stok_hareketi_kaydet()` karşısındaki duruşunun aynısı.
+
+    Giriş zorunlu: yazma ekranı ve `stok_hareketleri.yapan_kullanici` NOT NULL.
     """
+    if request.method == 'POST':
+        urun = _kodu_coz(request.POST.get('stok_kodu', '').strip())
+        if urun is None:
+            # Yalnızca kurcalanmış bir POST'ta olur; sessizce boş alana dönmek yerine
+            # kullanıcıya kodu yeniden okutturuyoruz.
+            return render(request, 'katalog/_hizli_alan.html', {'kod': '', 'bulunamadi': False})
+        baglam = _islem_baglami(request, urun, varsayilan_tip='GIRIS', hizli=True)
+        baglam['kod'] = urun.stok_kodu
+        baglam['oob'] = True  # kayıt/hata sonrası da eski öneriler ekranda kalmasın
+        return render(request, 'katalog/_hizli_alan.html', baglam)
+
     kod = request.GET.get('kod', '').strip()
-    urun = None
+    htmx = bool(request.headers.get('HX-Request'))
 
-    if kod:
-        # iexact güvenli: `urunler`de yalnızca büyük/küçük harfte ayrışan iki kod YOK
-        # (ölçüldü). 2.973 kodun 306'sı harf içeriyor ("1805012-YENI"), yani harf
-        # duyarlılığı gerçek bir sorun — okuyucudan ya da klavyeden farklı gelebilir.
-        urun = (
-            Urun.objects.using('metaks').filter(stok_kodu=kod).first()
-            or Urun.objects.using('metaks').filter(stok_kodu__iexact=kod).first()
-        )
-        if urun is not None:
-            return redirect('katalog:stok_islem', stok_kodu=urun.stok_kodu)
+    # ?ara=1 kullanıcı YAZARKEN geliyor: yalnızca öneri listesi, AYRI bir hedefe
+    # (#oneriler). Enter/gönderim ise onsuz gelir ve #islem-alani'nı tazeler.
+    # İki tetikleyicinin ayrı hedefleri olması şart — aynı hedefi paylaştıkları ilk
+    # sürümde yarışıyorlardı (gerçek tarayıcıda ölçüldü: Enter formu getiriyor, son
+    # karakterin bekleyen 200 ms'lik isteği hemen ardından düşüp formu eziyordu).
+    # Ayrıca her tuş vuruşunda "bulunamadı" basmak gürültü olurdu; o uyarı ancak
+    # kullanıcı gerçekten gönderdiğinde bir şey anlatıyor.
+    if request.GET.get('ara') == '1':
+        return render(request, 'katalog/_hizli_oneriler.html', {'oneriler': _oneriler(kod)})
 
-    return render(
-        request,
-        'katalog/hizli_islem.html',
-        {
-            'kod': kod,
-            # kod doluyken buraya düşülmüşse tam eşleşme bulunamamış demektir.
-            'bulunamadi': bool(kod),
-            'oneriler': _oneriler(kod),
-            'aktif_sekme': 'stok',
-        },
-    )
+    urun = _kodu_coz(kod)
+    baglam = {
+        'kod': kod,
+        'bulunamadi': bool(kod) and urun is None,
+        'oneriler': _oneriler(kod),
+        # Ürün geldiyse kutunun altındaki eski öneriler out-of-band temizlenir;
+        # tam sayfa basımında gerekmez (zaten sıfırdan basılıyor) ve orada
+        # mükerrer id üretirdi.
+        'oob': htmx and urun is not None,
+    }
+    if urun is not None:
+        # Varsayılan GİRİŞ: bu ekranın senaryosu mal kabul/sevkiyat (ürün detayından
+        # gelen yolun senaryosu ise sayım — bkz. stok_islem).
+        baglam = {**_islem_baglami(request, urun, varsayilan_tip='GIRIS', hizli=True), **baglam}
 
-
-@login_required
-def hizli_oneriler(request):
-    """Kutunun altındaki canlı öneri listesi (HTMX ile tazelenen parça)."""
-    return render(
-        request,
-        'katalog/_hizli_oneriler.html',
-        {'oneriler': _oneriler(request.GET.get('kod', '').strip())},
-    )
+    # HTMX yalnızca değişen alanı istiyor; HTMX yoksa (ya da sayfa doğrudan
+    # açıldıysa) aynı parçayı içeren tam sayfa basılıyor. Böylece düz <form>
+    # gönderimi de çalışmaya devam ediyor — barkod okuyucunun Enter'ı için önemli.
+    return render(request, 'katalog/_hizli_alan.html' if htmx else 'katalog/hizli_islem.html', baglam)

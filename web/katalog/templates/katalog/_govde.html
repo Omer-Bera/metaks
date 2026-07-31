@@ -60,26 +60,29 @@ sıralama) bunun dışında kalıyor ve durumu buradaki #filtre-durumu üzerinde
 
         <div class="flex items-center gap-4">
             {% comment %}
-            "+ Ürün ekle" sonuç sayısının yanında — yapılacaklar listesindeki
-            orijinal fikir buydu. Yalnızca giriş yapmış kullanıcıya: bu, katalog
-            sayfasında müşteriye gösterilecek bir buton değil.
+            İki sayfanın iki farklı eylemi (2026-07-31'de netleştirildi):
+            KATALOG = ürün kaydının yeri, STOK = stok işleminin yeri. Bu, iki sayfanın
+            en baştaki ayrılma sebebinin devamı; katalog ürünün kendisiyle, stok
+            deposuyla ilgileniyor.
+
+            "+ Ürün ekle" önce ikisinde birden çıkıyordu. Stok tarafından kaldırıldı:
+            depocunun kataloğa girmemiş bir ürünle karşılaşması zaten hızlı giriş
+            ekranının "bulunamadı → bu kodla ürün oluştur" dalıyla karşılanıyor, yani
+            yol kapanmıyor, yalnızca her sayfa kendi işini anlatıyor.
+
+            İkisi de yalnızca giriş yapmış kullanıcıya: katalog ön büroda müşteri
+            karşısında açılan bir ekran, orada bu butonların yeri yok.
             {% endcomment %}
             {% if user.is_authenticated %}
-            <a href="{% url 'katalog:urun_ekle' %}"
-               class="text-sm text-slate-500 underline underline-offset-4
-                      transition hover:text-slate-900">+ Ürün ekle</a>
-            {% endif %}
-
-            {% comment %}
-            Hızlı giriş bağlantısı yalnızca STOK sayfasında: katalog ön büroda müşteriye
-            ürün göstermek için ve orada stok işlemi diye bir kavram yok (iki sayfanın
-            ayrılma sebebi bu). Sekme şeridine dördüncü bir öğe eklenmedi — mobilde
-            daraltıyor (yönetim panelinde de aynı gerekçeyle eklenmemişti).
-            {% endcomment %}
-            {% if stok_goster and user.is_authenticated %}
-            <a href="{% url 'katalog:hizli_islem' %}"
-               class="text-sm text-slate-500 underline underline-offset-4
-                      transition hover:text-slate-900">Hızlı işlem</a>
+                {% if stok_goster %}
+                <a href="{% url 'katalog:hizli_islem' %}"
+                   class="text-sm text-slate-500 underline underline-offset-4
+                          transition hover:text-slate-900">Hızlı stok işlemi</a>
+                {% else %}
+                <a href="{% url 'katalog:urun_ekle' %}"
+                   class="text-sm text-slate-500 underline underline-offset-4
+                          transition hover:text-slate-900">+ Ürün ekle</a>
+                {% endif %}
             {% endif %}
 
             {% if stok_goster %}
