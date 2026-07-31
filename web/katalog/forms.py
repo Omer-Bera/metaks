@@ -92,7 +92,7 @@ class KullaniciDuzenlemeFormu(_EpostaTekilligi, forms.ModelForm):
     değiştirmek geçmiş kayıtları sahipsiz bırakırdı.
 
     Silme de yok, yalnızca pasife alma — aynı sebep. `lokasyonlar`'daki
-    `aktif_mi = false` deseninin ve `metaks_DB`'nin soft-delete disiplininin aynısı.
+    `aktif_mi = false` deseninin ve `veritabani`'nin soft-delete disiplininin aynısı.
     """
 
     email = forms.EmailField(label='E-posta', required=True)
@@ -137,7 +137,7 @@ class KullaniciDuzenlemeFormu(_EpostaTekilligi, forms.ModelForm):
         return veri
 
 
-# Kısıt: lokasyonlar_tip_check (metaks_DB migration 004). CHECK kısıtları Django'ya
+# Kısıt: lokasyonlar_tip_check (veritabani migration 004). CHECK kısıtları Django'ya
 # yansımıyor — tek otorite veritabanı, ama açılır listenin kendi seçenekleri gerekiyor;
 # ikisi ayrışırsa kullanıcı formda seçip gönderdikten SONRA veritabanı hatası görür.
 LOKASYON_TIPLERI = [
@@ -299,7 +299,7 @@ class UrunFormu(forms.Form):
         self.fields['kaplama'].queryset = Kaplama.objects.using('metaks').filter(aktif_mi=True)
         if stok_kodu_kilitli:
             # Düzenlemede stok_kodu değiştirilemez: urun_kaydet() GUNCELLE modunda
-            # onu kimlik olarak kullanıyor, değiştirmiyor (metaks_DB migration 005,
+            # onu kimlik olarak kullanıyor, değiştirmiyor (veritabani migration 005,
             # "KAPSAM DIŞI: stok_kodu değiştirme").
             self.fields['stok_kodu'].disabled = True
             self.fields['stok_kodu'].help_text = 'Düzenlemede değiştirilemez.'

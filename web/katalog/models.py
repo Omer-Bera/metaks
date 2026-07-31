@@ -6,11 +6,11 @@ from django.db.models import F, Func, Value
 
 
 class AktifUrun(models.Model):
-    """metaks_DB'deki v_aktif_urunler view'ının salt-okunur haritalaması.
+    """veritabani'deki v_aktif_urunler view'ının salt-okunur haritalaması.
 
-    Alan adları ve sözleşme: metaks_DB/docs/aktif-urun-veri-sozlesmesi.md.
+    Alan adları ve sözleşme: veritabani/docs/aktif-urun-veri-sozlesmesi.md.
     managed = False -> Django bu tablo/view için hiçbir migration üretmez veya
-    çalıştırmaz; şema tamamen metaks_DB/sql/01_schema.sql + sql/migrations/
+    çalıştırmaz; şema tamamen veritabani/sql/01_schema.sql + sql/migrations/
     tarafından yönetilir. 'metaks' veritabanı bağlantısı üzerinden okunur
     (bkz. config/settings.py DATABASES).
     """
@@ -54,7 +54,7 @@ class AktifUrun(models.Model):
 
     @property
     def gorsel_url(self):
-        # gorsel-sunucu (nginx, port 8083) -> metaks_DB/CLAUDE.md, Faz 5
+        # gorsel-sunucu (nginx, port 8083) -> veritabani/CLAUDE.md, Faz 5
         return settings.GORSEL_SUNUCU_BASE_URL + self.ana_gorsel_dosya_adi
 
 
@@ -87,7 +87,7 @@ class Lokasyon(models.Model):
     gerçekleri açıldı; pasif olanlar eski hareketlerde hâlâ görünüyor ama yeni işlemde
     seçilememeli.
 
-    `ust_lokasyon` ve `kod`: metaks_DB migration 004'ün dolap→raf hiyerarşisi.
+    `ust_lokasyon` ve `kod`: veritabani migration 004'ün dolap→raf hiyerarşisi.
     `ust_lokasyon` NULL ise bu satır bir kök (depo/dolap), doluysa bir raf.
 
     `kok_mu` / `ust_kok_mu` GENERATED ALWAYS kolonları BİLEREK modele eklenmedi:
@@ -132,7 +132,7 @@ class LokasyonDetay(models.Model):
     (stok hareketi yazılabilir mi) buradan geliyor, ham `lokasyonlar`'dan değil.
 
     `yaprak_mi`'nin tanımı `stok_hareketi_kaydet()`'in içindeki kontrolle BİREBİR
-    aynı olmalı (metaks_DB migration 004) — aksi hâlde arayüzde seçilebilen ama
+    aynı olmalı (veritabani migration 004) — aksi hâlde arayüzde seçilebilen ama
     fonksiyonun reddettiği bir lokasyon oluşur.
     """
 

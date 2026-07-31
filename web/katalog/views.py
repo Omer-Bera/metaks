@@ -181,7 +181,7 @@ class ListeFiltresi:
         """Serbest metin aramasını v_aktif_urunler.arama_metni üzerinde uygular.
 
         arama_metni, stok_kodu + kategori/hammadde/kaplama adı + açıklamanın küçük harfe
-        çevrilmiş birleşimi (bkz. metaks_DB/docs/aktif-urun-veri-sozlesmesi.md) — tek bir
+        çevrilmiş birleşimi (bkz. veritabani/docs/aktif-urun-veri-sozlesmesi.md) — tek bir
         ILIKE ile hepsinde arama yapılabiliyor. .lower(), sözleşmedeki örnek sorgunun
         (`ILIKE '%' || lower(...) || '%'`) aynısı.
         """

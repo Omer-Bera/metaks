@@ -1,3 +1,12 @@
+# Proje adı BİLEREK sabitlenmiş. Compose, verilmezse projeyi bulunduğu dizinin
+# adından türetir; adlandırılmış volume'ler de o önekle yaratılır
+# (metaks_db_pg_data, metaks_db_appsmith_data). Bu dosya 2026-07-31'de
+# metaks_DB/ altından metaks/veritabani/ altına taşındığında önek "veritabani"
+# olacak, yani compose var olan veritabanını görmeyip BOŞ yeni bir volume
+# açacaktı. Sabit ad bu bağı dizin adından kopartıyor: klasör nereye taşınırsa
+# taşınsın aynı veriye bağlanılıyor.
+name: metaks_db
+
 services:
   veritabani:
     image: postgres:16-alpine

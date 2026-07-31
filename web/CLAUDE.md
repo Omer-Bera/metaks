@@ -1,20 +1,26 @@
 # CLAUDE.md
 
-Bu dosya, bu repo (`depo-web-arayuz`) üzerinde çalışırken Claude Code için rehberdir.
+Bu dosya, deponun **`web/`** dizini (Django arayüzü) üzerinde çalışırken Claude Code
+için rehberdir. Deponun tamamına dair giriş noktası kökteki `CLAUDE.md`'dir.
 
 ## Proje ve bağlam
 
 METAKS'ın uzun vadeli (ERP niteliğinde) web arayüzü — Django + HTMX ile, 2026-07-30'da
-başlatıldı. Bu repo, iki kardeş repoyla birlikte METAKS'ın toplam sisteminin üçüncü
-parçasıdır (üçü de `~/` altında ayrı, kardeş dizinler, birbirine karıştırılmamalı):
+başlatıldı. METAKS'ın toplam sistemi bugün tek bir depoda, iki dizinde:
 
-- **`metaks_DB`** — veri temizleme/normalizasyon pipeline'ı + PostgreSQL şeması
+- **`veritabani/`** — veri temizleme/normalizasyon pipeline'ı + PostgreSQL şeması
   (`sql/01_schema.sql`, `sql/migrations/`). Gerçek veri kaynağı ve şema otoritesi burada.
-- **`depo-appsmith-arayuz`** — Appsmith üzerinde kurulu düşük-kod arayüz (StokIslemi,
-  UrunlerKatalog, LokasyonYonetimi, StokOzet, YonetimAnaSayfasi sayfaları).
-  **2026-07-31 itibarıyla emekliye ayrılıyor** — aşağıya bakın.
-- **`depo-web-arayuz`** (bu repo) — geleceğin arayüzü. Strangler-fig yaklaşımıyla
-  başladı, artık Appsmith'in kapsamını geçti.
+- **`web/`** (bu dizin) — arayüz. Strangler-fig yaklaşımıyla başladı, artık
+  Appsmith'in kapsamını geçti.
+
+**2026-07-31'e kadar bunlar iki ayrı repoydu** (`metaks_DB` ve `depo-web-arayuz`,
+`~/` altında kardeş dizinler) ve o gün tek repoya alındı — gerekçe ve birleştirmenin
+ayrıntıları kökteki `CLAUDE.md`'de. Bu dosyada bundan önce yazılmış "kardeş repo"
+ifadeleri artık "kardeş dizin" olarak okunmalı. Üçüncü bir repo daha vardı —
+**`depo-appsmith-arayuz`**, Appsmith üzerinde kurulu düşük-kod arayüz (StokIslemi,
+UrunlerKatalog, LokasyonYonetimi, StokOzet, YonetimAnaSayfasi sayfaları).
+**2026-07-31 itibarıyla emekliye ayrıldı** (aşağıya bakın) ve bilerek birleştirmeye
+dahil edilmedi.
 
 ### Appsmith emekliye ayrıldı (karar 2026-07-31, durduruldu 2026-07-31)
 
@@ -24,7 +30,7 @@ Kullanıcı kararı: Appsmith atıl durumda, Django arayüzü onun yapması gere
 anlamını değiştirirken ya da migration sırası kurarken Appsmith'in sorgularını korumak
 gibi bir kısıt yok.
 
-**Konteyner durduruldu** (`~/metaks_DB && docker compose stop appsmith`), silinmedi —
+**Konteyner durduruldu** (`~/metaks/veritabani && docker compose stop appsmith`), silinmedi —
 geri dönüş `docker compose start appsmith` ile anında. Ön koşul olan Django lokasyon
 ekranı (madde 2c) önce tamamlandı, sonra kullanıcı sayımla ilgili hiçbir girişin artık
 Appsmith'ten yapılmadığını doğruladı. Durdurma sonrası ölçüldü: Django'nun beş sayfası
@@ -35,7 +41,7 @@ gerçek veri/görsel kaynağı olarak çalışmaya devam ediyor.
 
 Kapsam karşılaştırması ve düşen kısıtların tam listesi **`YAPILACAKLAR.md` madde
 0**'da; burada tekrarlanmıyor. **Kalan adım** (henüz atılmadı, bilerek bir süre
-bekleniyor): `metaks_DB/docker-compose.yml`'den `appsmith` servisini ve
+bekleniyor): `veritabani/docker-compose.yml`'den `appsmith` servisini ve
 `appsmith_data` volume'ünü kaldırmak, `depo-appsmith-arayuz` reposunu GitHub'da
 arşivlemek (silmeden). Appsmith stateless olduğu için veri kaybı riski yok; tüm iş
 verisi Postgres'te.
@@ -63,12 +69,12 @@ sökülmüyor** — kademeli geçiş planı:
 
 - **`default`** (SQLite, `db.sqlite3`, gitignored) — sadece Django'nun kendi çerçeve
   tabloları (auth, session, admin log). `python manage.py migrate` sadece buraya yazar.
-- **`metaks`** (Postgres, `metaks_DB`'deki **aynı** paylaşımlı `depo_sistemi` veritabanı,
+- **`metaks`** (Postgres, `veritabani`'deki **aynı** paylaşımlı `depo_sistemi` veritabanı,
   `.env`'den okunan kimlik bilgileriyle) — gerçek METAKS verisi. Buraya **asla**
-  `migrate` çalıştırılmaz; şema tamamen `metaks_DB/sql/01_schema.sql` +
+  `migrate` çalıştırılmaz; şema tamamen `veritabani/sql/01_schema.sql` +
   `sql/migrations/`'ın otoritesinde kalır.
 
-Bu ayrımın bilinçli sebebi: `metaks_DB`'nin titizlikle sürdürdüğü ham-SQL migration
+Bu ayrımın bilinçli sebebi: `veritabani`'nin titizlikle sürdürdüğü ham-SQL migration
 disiplinini (numaralı dosyalar, `BEGIN/COMMIT`, önce-test-sonra-uygula) Django'nun kendi
 ORM-migration mekanizmasıyla aynı veritabanında çakıştırmamak. İki ayrı şema-evrim
 mekanizması aynı fiziksel DB'de yaşamıyor.
@@ -81,13 +87,13 @@ soyutlaması eklenmedi (tek app, tek bağlantı; ihtiyaç gerçek hâle gelmeden
 ### Veri sözleşmesi
 
 `v_aktif_urunler`, `v_lokasyon_stok_ozet`, `v_toplam_stok`, `stok_hareketi_kaydet()` —
-tam alan listesi ve semantiği için **`metaks_DB/docs/aktif-urun-veri-sozlesmesi.md`**
+tam alan listesi ve semantiği için **`veritabani/docs/aktif-urun-veri-sozlesmesi.md`**
 otoritedir, burada tekrar edilmiyor. Appsmith de aynı sözleşmeyi okuyor; bu iki arayüz
 aynı view/fonksiyon katmanını paylaşıyor, veri asla iki kez modellenmiyor.
 
 Yazma işlemleri (stok hareketi) ileride buraya eklendiğinde de kural aynı kalacak:
 doğrudan `stok_hareketleri`'ne INSERT yok, sadece `stok_hareketi_kaydet()` çağrısı
-(Appsmith'in zaten uyduğu kural, bkz. `metaks_DB/CLAUDE.md`).
+(Appsmith'in zaten uyduğu kural, bkz. `veritabani/CLAUDE.md`).
 
 ### Frontend
 
@@ -109,7 +115,7 @@ hatasında yedek yer tutucu.
 
 Kart görsel kutusu `aspect-[4/3]` (kare değil) ve detay panelinde görsel genişliği
 420px'de sınırlı. İkisi de kaynak görsel korpusunun ölçülmesinden çıktı
-(`metaks_DB/images/final/products`, 1.799 dosya): dosyaların **%79'u yatay**
+(`veritabani/images/final/products`, 1.799 dosya): dosyaların **%79'u yatay**
 (medyan ~3:2) ve **%55'i 200px'den dar**. Kare kutu yatay fotoğrafların altında/üstünde
 büyük boşluk bırakıyordu; panelde tüm sütunu doldurmak ise yarıdan fazla görseli
 3-4 katına büyütüp bulanıklaştırıyordu. Görseller `object-contain` ile gösteriliyor,
@@ -118,15 +124,15 @@ oysa ekranın tek işi ürünü görselden tanıtmak.
 
 ### Görsel sunucu
 
-Ürün görselleri `metaks_DB`'nin kurduğu nginx `gorsel-sunucu` servisinden (port 8083)
+Ürün görselleri `veritabani`'nin kurduğu nginx `gorsel-sunucu` servisinden (port 8083)
 okunuyor — burada görsel dosyası yönetimi/kopyası yok, tek kaynak orası
 (`GORSEL_SUNUCU_BASE_URL` ayarı, `.env`).
 
 ## Geliştirme ortamı
 
 ```bash
-cd ~/depo-web-arayuz
-source venv/bin/activate        # bu repoya özel venv, metaks_DB/venv ile karıştırılmamalı
+cd ~/metaks/web
+source venv/bin/activate        # bu dizine özel venv, veritabani/venv ile karıştırılmamalı
 python manage.py runserver 0.0.0.0:8000
 ```
 
@@ -155,25 +161,23 @@ proxy arkasına geçildiğinde bu yeniden değerlendirilmeli.
 
 macOS uygulama güvenlik duvarı açık ama tailnet erişimini engellemiyor (ölçüldü).
 
-`metaks_DB`'deki Postgres/nginx servislerinin ayakta olması gerekir
-(`cd ~/metaks_DB && docker compose up -d`). `.env` gitignored — gerçek kimlik bilgileri
-`metaks_DB/CLAUDE.md`'de belgelenen local bağlantı bilgileriyle aynı
+`veritabani/`deki Postgres/nginx servislerinin ayakta olması gerekir
+(`cd ~/metaks/veritabani && docker compose up -d`). `.env` gitignored — gerçek kimlik
+bilgileri `veritabani/CLAUDE.md`'de belgelenen local bağlantı bilgileriyle aynı
 (host=localhost port=5433 dbname=depo_sistemi user=depo_admin).
 
 ## Git
 
-`metaks_DB` ve `depo-appsmith-arayuz` ile aynı desen: repo-scoped `user.name`/`user.email`
-(global değil), commit signing global 1Password SSH agent config'inden miras alınıyor.
+Git ayarları artık **depo geneli** — `web/`in ayrı bir reposu yok. Remote, branch
+modeli (`master`/`dev`/`review`) ve imzalama için kökteki `CLAUDE.md`'ye bakın.
 
-Remote **2026-07-30'da eklendi**: `Omer-Bera/depo-web-arayuz`, **private** (kardeş iki
-repo da private; bu iç iş yazılımı, şema ayrıntıları ve iş mantığı içeriyor).
+Tarihçe: bu dizin 2026-07-30'da `Omer-Bera/depo-web-arayuz` adlı ayrı bir private
+repoydu ve tek branch'i (`master`) vardı; üç-branch modeline geçmek tutarlılık için
+mantıklı görünüyordu ama karar verilmemişti. 2026-07-31'deki birleştirme bu soruyu
+kendiliğinden kapattı — depo `veritabani/`nin üçlü modelini kullanıyor.
 
-Şu an tek branch (`master`) var. Kardeş repolarda `master`/`dev`/`review` üç-branch
-modeli kullanılıyor; buraya da uygulamak tutarlılık için mantıklı olur ama **henüz
-karar verilmedi**, o yüzden bilerek oluşturulmadı.
-
-`.gitignore` kapsamı: `.env`, `db.sqlite3` (uygulama kullanıcıları burada), `venv/`.
-Yani hiçbir kimlik bilgisi ve parola hash'i repoya girmiyor.
+`web/.gitignore` kapsamı: `.env`, `db.sqlite3` (uygulama kullanıcıları burada),
+`venv/`. Yani hiçbir kimlik bilgisi ve parola hash'i depoya girmiyor.
 
 ## Sayfa yapısı
 
@@ -385,7 +389,7 @@ Bu ayrım devam eden depo sayımında anlamlı: "daha neye bakmadık?" sorusunun
 
 **2026-07-31 itibarıyla defter tamamen boş.** Daha önce buradaki 30 kaydın tamamı
 test girişiydi (29 Temmuz Appsmith denemeleri + 30 Temmuz Django doğrulamaları);
-`metaks_DB` migration 006 hepsini sildi ve sequence'i 1'e aldı. Yani `v_toplam_stok`
+`veritabani` migration 006 hepsini sildi ve sequence'i 1'e aldı. Yani `v_toplam_stok`
 sıfır satır, her ürün "Sayılmadı" durumunda ve "sadece stokta olanlar" boş sonuç
 veriyor. Sayfa sayım ilerledikçe kendiliğinden dolacak, kodda değişiklik gerekmiyor.
 (Devam eden sayımın verisi hâlâ Excel'de tutuluyor, veritabanında değil.)
@@ -465,7 +469,7 @@ gördüğü lokasyonu aşağıdaki seçim kutusunda bulamayınca kafası karış
 
 Paylaşımlı `depo_sistemi`'ne **hiçbir kalıcı satır yazılmadan**:
 
-- `stok_servisi` entegrasyonu `BEGIN`/`ROLLBACK` içinde (metaks_DB'nin kendi
+- `stok_servisi` entegrasyonu `BEGIN`/`ROLLBACK` içinde (veritabani'nin kendi
   "önce-test-sonra-uygula" disiplininin aynısı): GİRİŞ, TRANSFER, mükerrer gönderim,
   yetersiz stok, eksik lokasyon, kullanıcısız işlem, SAYIM'ın fark hesabı.
   Hata bekleyen senaryolar iç `atomic()` (SAVEPOINT) içinde — `RAISE EXCEPTION` dış
@@ -483,7 +487,7 @@ GİRİŞ 500 → Metaks, TRANSFER 200 → Depo 1, SAYIM 250. Sayım kaydı ledge
 sonuç Metaks 250 / Depo 1 200. Mükerrer gönderim de canlı doğrulandı: aynı
 `istemci_islem_kimligi` ile iki POST → veritabanında tek satır.
 
-Bu denemelerin bıraktığı satırlar 2026-07-31'de `metaks_DB` migration 006 ile
+Bu denemelerin bıraktığı satırlar 2026-07-31'de `veritabani` migration 006 ile
 temizlendi (defter uygulama üzerinden append-only; silmenin yolu numaralı migration).
 Defter bugün boş.
 
@@ -498,7 +502,7 @@ bilinçli olarak ayrışıyor.
 
 ### GUNCELLE modu KISMİ değil — tasarımın en riskli noktası
 
-`urun_kaydet()` (metaks_DB migration 005) her çağrıda `urunler`'in **tüm alanlarını**
+`urun_kaydet()` (veritabani migration 005) her çağrıda `urunler`'in **tüm alanlarını**
 yeniden yazıyor; boş bırakılan alan NULL'a döner (tek istisna görsel — verilmezse
 mevcut ana görsel ve AKTİF/PASİF durumu dokunulmadan kalır). Bu, "kısmi güncelleme"
 alışkanlığıyla yazılırsa **veri kaybına** yol açar. Çözüm: düzenleme view'ı formu HER
@@ -551,7 +555,7 @@ gereği. Kabul edilen uzantılar jpg/jpeg/png (kaynak korpusun tamamı bu üçü
 gerçek bir resim olmayan dosya kabul edilmiyor.
 
 Yazma yolu `settings.URUN_GORSEL_DIZINI` (varsayılan: sibling-repo düzeni,
-`metaks_DB/images/final/products`) — `GORSEL_SUNUCU_BASE_URL`'in **yazma tarafı**
+`veritabani/images/final/products`) — `GORSEL_SUNUCU_BASE_URL`'in **yazma tarafı**
 karşılığı; nginx aynı dizini `:ro` sunuyor, yazan taraf host (bu Django süreci).
 Görseli değiştirmek eskisini silmiyor: `urun_kaydet()` eski ana görseli
 `ana_gorsel_mi=FALSE` yaparak ikincil bir görsele düşürüyor, dosya diskte kalıyor —
@@ -612,7 +616,7 @@ davranış kendiliğinden değişir, kodda düzeltme gerekmez:
   gerçek bir ekleme zamanı **yok**: `urunler.created_at` tüm satırlarda toplu yüklemenin
   tek timestamp'i (`2026-07-28 21:31:10`) ve `v_aktif_urunler`'da hiç görünmüyor. Sipariş
   verisi de henüz yok. Azalan stok kodu, yöneticinin "yeni modelleri gözden geçirme"
-  ihtiyacının bugünkü tek yaklaşımı — gerçek çözüm için `metaks_DB` tarafında satır
+  ihtiyacının bugünkü tek yaklaşımı — gerçek çözüm için `veritabani` tarafında satır
   bazlı bir tarih (ve/veya sipariş verisi) gerekiyor.
 - **Ana ürün bağlantısı koşullu.** `parent_stok_kodu` katalogda olmayan bir ürünü
   gösterebiliyor: ana ürün geçerli ana görseli yoksa PASİF kalıyor. 2026-07-30 verisinde
@@ -656,7 +660,7 @@ tamamlandı). Burada sadece o listeyi okurken bilinmesi gereken kalıcı kısıt
   ekleme/düzenleme" bölümü. Tek yazma kapısı `urun_kaydet()` (`stok_hareketi_kaydet()`
   ile aynı desen); Django artık ona bir çağrı katmanı (`urun_servisi.py`) yazdı.
 - **Test hareketleri temizlendi ✅ (2026-07-31)**: kararlaştırılan yol izlendi —
-  `metaks_DB/sql/migrations/006_test_hareketlerini_temizle.sql` (şema/veri otoritesi
+  `veritabani/sql/migrations/006_test_hareketlerini_temizle.sql` (şema/veri otoritesi
   orası) defterdeki 30 test kaydının tamamını sildi. Tetikleyen ihtiyaç lokasyon
   silme oldu: `ON DELETE RESTRICT` yüzünden o kayıtlar gerçekte var olmayan dört
   lokasyonu yerinde tutuyordu. Rollback dosyası 30 satırı `hareket_id` ve

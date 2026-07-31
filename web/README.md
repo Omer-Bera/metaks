@@ -1,7 +1,8 @@
-# depo-web-arayuz
+# web — METAKS arayüzü
 
-METAKS'ın Django + HTMX ile geliştirilen web arayüzü. Ayrıntılı mimari bağlam ve
-kararlar için `CLAUDE.md`'ye bakın.
+METAKS'ın Django + HTMX ile geliştirilen web arayüzü; `metaks` deposunun iki
+dizininden biri (diğeri `veritabani/`). Ayrıntılı mimari bağlam ve kararlar için
+buradaki `CLAUDE.md`'ye, deponun tamamı için kökteki `CLAUDE.md`'ye bakın.
 
 ## Kurulum
 
@@ -14,8 +15,8 @@ python manage.py migrate
 python manage.py runserver
 ```
 
-`metaks_DB` reposundaki Postgres ve görsel sunucu servislerinin ayakta olması gerekir:
+`veritabani/` dizinindeki Postgres ve görsel sunucu servislerinin ayakta olması gerekir:
 
 ```bash
-cd ../metaks_DB && docker compose up -d
+cd ../veritabani && docker compose up -d
 ```

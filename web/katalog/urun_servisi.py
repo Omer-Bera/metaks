@@ -1,7 +1,7 @@
 """Ürün ekleme/düzenleme yazma katmanı.
 
 Tek kural `stok_servisi.py` ile aynı: `urunler`'e **asla doğrudan INSERT/UPDATE
-yok**, sadece `urun_kaydet()` çağrısı (metaks_DB migration 005). İş kuralları
+yok**, sadece `urun_kaydet()` çağrısı (veritabani migration 005). İş kuralları
 (mod/mevcut durum tutarlılığı, kategori/hammadde/kaplama/üst ürün referans
 doğrulaması, ALT_PARCA/VARYANT'ın üst ürüne bağlanma zorunluluğu, AKTİF/PASİF
 geçişi) bu modülde tekrarlanmıyor — sadece parametre geçiriyor ve dönen Türkçe
@@ -9,7 +9,7 @@ mesajı taşıyor.
 
 Görsel dosyası ayrı bir kaygı: `urun_kaydet()` yalnızca dosya ADINI (metadata)
 `urun_gorselleri`'ne yazıyor, dosyanın kendisini diske yazmıyor. O iş burada —
-nginx `gorsel-sunucu`'nun `:ro` bağladığı, `metaks_DB`'nin sahip olduğu
+nginx `gorsel-sunucu`'nun `:ro` bağladığı, `veritabani`'nin sahip olduğu
 `images/final/products/` dizinine. Sıra ÖNCE dosya SONRA veritabanı: fonksiyon
 hata verirse (ör. geçersiz kategori) az önce yazılan dosya silinir; ters sırada
 çökme olsaydı var olmayan bir dosyayı gösteren kırık ürün kalırdı.
@@ -32,7 +32,7 @@ URUN_TIPLERI = [
 ]
 
 # gorsel-sunucu (nginx, urun_gorselleri.dosya_adi bunu olduğu gibi saklıyor) sadece
-# bu üçünü sunuyor bugün (metaks_DB/images/final/products üzerinde ölçüldü: 1.799
+# bu üçünü sunuyor bugün (veritabani/images/final/products üzerinde ölçüldü: 1.799
 # dosyanın tamamı jpg/jpeg/png). Kapsamı genişletmek burada + Pillow'un desteklediği
 # formatlar arasında ayrı bir karar.
 GECERLI_UZANTILAR = {'.jpg', '.jpeg', '.png'}

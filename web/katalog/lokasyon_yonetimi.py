@@ -2,7 +2,7 @@
 
 Appsmith'in `LokasyonYonetimi` sayfasının Django karşılığı (bkz. YAPILACAKLAR.md
 madde 0 ve 2c). O sayfanın `LokasyonEkle` sorgusu yalnızca `(lokasyon_adi, tip)`
-yazıyordu — metaks_DB migration 004'ten (dolap→raf hiyerarşisi) sonra oradan artık
+yazıyordu — veritabani migration 004'ten (dolap→raf hiyerarşisi) sonra oradan artık
 ne bir numune lokasyonu ne de bir raf açılabiliyor. Bu modül onun yerini alıyor.
 
 `stok_hareketleri`/`urunler`'in aksine **yeni bir veritabanı fonksiyonu yok**:

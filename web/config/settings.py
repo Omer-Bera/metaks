@@ -83,12 +83,12 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 #
 # 'default' (SQLite) sadece Django'nun kendi çerçeve tablolarını (auth,
-# session, admin log) tutar. Bilinçli bir tercih: metaks_DB'nin
+# session, admin log) tutar. Bilinçli bir tercih: veritabani'nin
 # sql/01_schema.sql + sql/migrations/ ile yönettiği paylaşımlı depo_sistemi
 # şemasına Django'nun kendi migration mekanizmasını hiç karıştırmıyoruz —
 # iki ayrı şema-evrim mekanizması aynı veritabanında çakışmasın diye.
 #
-# 'metaks' ise gerçek, paylaşımlı METAKS Postgres'idir (metaks_DB reposundaki
+# 'metaks' ise gerçek, paylaşımlı METAKS Postgres'idir (veritabani/ dizinindeki
 # aynı depo_sistemi). Bu bağlantı üzerinden sadece salt-okunur, unmanaged
 # modellerle (managed = False) v_aktif_urunler gibi zaten var olan view'lar
 # okunur; buraya asla `python manage.py migrate` çalıştırılmaz.
@@ -147,7 +147,7 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# metaks_DB'nin gorsel-sunucu servisi (nginx, port 8083) -> CLAUDE.md, Faz 5.
+# veritabani/'nin gorsel-sunucu servisi (nginx, port 8083) -> CLAUDE.md, Faz 5.
 # Local geliştirmede localhost, üretimde Headscale/Tailscale adresine çekilir.
 GORSEL_SUNUCU_BASE_URL = os.environ.get(
     'GORSEL_SUNUCU_BASE_URL', 'http://localhost:8083/urun-gorselleri/'
@@ -155,11 +155,12 @@ GORSEL_SUNUCU_BASE_URL = os.environ.get(
 
 # Yukarıdakinin OKUMA (HTTP, tarayıcı) tarafı; bu ise YAZMA (dosya sistemi, Django
 # süreci) tarafı — aynı dizinin iki farklı erişim yolu. nginx bu dizini `:ro`
-# bağlıyor (metaks_DB/docker-compose.yml), yazan taraf host — yani bu Django süreci.
-# Varsayılan, sibling-repo düzenini varsayıyor (CLAUDE.md: metaks_DB ~/ altında kardeş
-# dizin); .env ile farklı bir yerleşim için ezilebilir.
+# bağlıyor (veritabani/docker-compose.yml), yazan taraf host — yani bu Django süreci.
+# Varsayılan artık repo-içi bir yol: BASE_DIR = <repo>/web olduğu için .parent
+# repo kökü, oradan veritabani/ kardeş dizinine iniliyor. (2026-07-31 öncesi bu
+# ayrı bir repoydu ve varsayılan `../metaks_DB/...` idi.) .env ile ezilebilir.
 URUN_GORSEL_DIZINI = os.environ.get(
-    'URUN_GORSEL_DIZINI', str(BASE_DIR.parent / 'metaks_DB' / 'images' / 'final' / 'products')
+    'URUN_GORSEL_DIZINI', str(BASE_DIR.parent / 'veritabani' / 'images' / 'final' / 'products')
 )
 
 # Kimlik doğrulama. Kullanıcılar Django'nun kendi auth tablolarında, yani SQLite

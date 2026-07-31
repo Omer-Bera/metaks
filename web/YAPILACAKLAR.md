@@ -6,7 +6,7 @@ burası "sırada ne var" sorusunun cevabı.
 Sıra kullanıcıyla kararlaştırıldı (2026-07-30):
 **giriş akışı → yönetim paneli/kullanıcılar → ürün ekleme → numune takibi → CSV.**
 
-4 ve 5 numaralı işler `metaks_DB` tarafında şema hazırlığı bekliyor; o iş paralel
+4 ve 5 numaralı işler `veritabani` tarafında şema hazırlığı bekliyor; o iş paralel
 yürüyebilir, 1 ve 2 hiçbir şeye bağlı değil.
 
 ---
@@ -59,7 +59,7 @@ Yeri: madde **2c** (yönetim panelinin üçüncü kartı) — orada anlatıldı.
 2. ✅ **Önce kontrol:** sayıma ait bir giriş hâlâ Appsmith'ten yapılıyor mu?
    Kullanıcı doğruladı (2026-07-31): **hayır, kimse kullanmıyor.**
 3. ✅ `docker compose stop appsmith` — **silme, durdur.** Uygulandı (2026-07-31,
-   `~/metaks_DB`'den). Geri dönüş `docker compose start appsmith` ile anında.
+   `~/metaks/veritabani`'den). Geri dönüş `docker compose start appsmith` ile anında.
    Kazanç ölçüldü: **1,31 GiB RAM**, yani makinedeki 3,9 GiB'ın üçte biri
    (`depo-postgres` 27 MiB, `depo-gorsel-sunucu` 8 MiB — Appsmith tek başına
    ikisinin ~40 katı). Durdurma sonrası doğrulandı: Django'nun beş sayfası da
@@ -67,7 +67,7 @@ Yeri: madde **2c** (yönetim panelinin üçüncü kartı) — orada anlatıldı.
    (8083) sorunsuz; 8082 artık yanıt vermiyor (beklenen). Üç tarayıcı test takımı
    (80 kontrol) Appsmith kapalıyken de yeşil — Django tarafının ona hiç bağımlı
    olmadığı doğrulandı.
-4. **Bekleniyor** — bir süre sorunsuz geçerse: `metaks_DB/docker-compose.yml`'den
+4. **Bekleniyor** — bir süre sorunsuz geçerse: `veritabani/docker-compose.yml`'den
    `appsmith` servisi ve `appsmith_data` volume'ü kaldırılır, `depo-appsmith-arayuz`
    reposu GitHub'da **arşivlenir** (silinmez — sorgu geçmişi ve alınan kararların
    kaydı orada). Bu adım henüz atılmadı: 3. adım her an geri alınabilirken bu adım
@@ -83,12 +83,12 @@ ve Appsmith'e özel kullanıcı hesaplarını tutuyor; uygulama tanımı da zate
 
 - `depo-appsmith-arayuz`'da bekleyen iş (`StokIslemi/LokasyonlariGetir` ve
   `LokasyonYonetimi/LokasyonlarListele`'ye yaprak filtresi) → **iptal**.
-- `metaks_DB` migration'larındaki "önce iki arayüzü düzelt, sonra veri gir" adımı
+- `veritabani` migration'larındaki "önce iki arayüzü düzelt, sonra veri gir" adımı
   **tek arayüze** iner.
 - View'ların anlamını değiştirirken dört Appsmith tüketicisini koruma zorunluluğu kalkar.
   (`v_toplam_stok`'un "satılabilir stok" olması kendi başına da doğru karardı, geri
   almaya gerek yok — fiziksel toplam için `v_fiziksel_stok` var.)
-- `metaks_DB/CLAUDE.md`'deki "rol ayrımı gerekirse ayrı Appsmith uygulamalarıyla
+- `veritabani/CLAUDE.md`'deki "rol ayrımı gerekirse ayrı Appsmith uygulamalarıyla
   çözülür" planı düşer; rol ayrımı Django'da yapılacak (madde 2b).
 
 ---
@@ -400,7 +400,7 @@ Bağımsız iş. Küçük.
 
 ---
 
-## metaks_DB tarafı — ✅ TAMAMLANDI (2026-07-30)
+## veritabani tarafı — ✅ TAMAMLANDI (2026-07-30)
 
 Devir metni `docs/metaks-db-istekleri.md`'de. Migration 004 (numune lokasyonları) ve
 005 (`urun_kaydet()`) canlı `depo_sistemi`'ne uygulandı ve doğrulandı; öncesi/sonrası
@@ -441,7 +441,7 @@ tamamlandı.
 - **Otomatik test yok** (`katalog/tests.py` boş). Django test runner'ı `metaks` bağlantısı
   için test veritabanı oluşturmaya çalışır — paylaşımlı `depo_sistemi`'ne karşı istenmeyen
   davranış. Muhtemel yol: `SimpleTestCase` / `databases = {'default'}` + fixture katmanı.
-- **Test hareketleri temizlendi ✅ (2026-07-31)** — `metaks_DB` migration 006 defterdeki
+- **Test hareketleri temizlendi ✅ (2026-07-31)** — `veritabani` migration 006 defterdeki
   30 test kaydının tamamını sildi, sequence 1'e alındı. Rollback dosyası uygulanmadan
   önce ölçüldü (uygula → geri al → checksum birebir aynı). Defter bugün boş; ilk gerçek
   sayım hareketi 1 numarayı alacak.
@@ -457,5 +457,5 @@ tamamlandı.
   kod, SQL, dosya yolları) gösteriyor. İkisi de "sadece kendi cihazlarım" varsayımına
   dayanıyor; ofis ağında başkaları varsa **`100.64.0.6:8000`'e bağlanmak** (yalnız
   tailnet arayüzü) tek kelimelik düzeltme.
-- **Branch modeli** — kardeş repolardaki `master`/`dev`/`review` düzeni buraya
-  uygulanmadı, karar bekliyor.
+- ~~**Branch modeli**~~ — ✅ 2026-07-31: iki repo tek `metaks` deposunda birleşti,
+  `master`/`dev`/`review` düzeni artık depo geneli geçerli (kök `CLAUDE.md`).
