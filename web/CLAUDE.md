@@ -166,7 +166,8 @@ bilgileri `veritabani/CLAUDE.md`'de belgelenen local bağlantı bilgileriyle ayn
 ## Git
 
 Git ayarları artık **depo geneli** — `web/`in ayrı bir reposu yok. Remote, branch
-modeli (`master`/`dev`/`review`) ve imzalama için kökteki `CLAUDE.md`'ye bakın.
+modeli (`master`/`dev` — `review` 2026-07-31'de silindi) ve imzalama için kökteki
+`CLAUDE.md`'ye bakın.
 
 Tarihçe: bu dizin 2026-07-30'da `Omer-Bera/depo-web-arayuz` adlı ayrı bir private
 repoydu ve tek branch'i (`master`) vardı; üç-branch modeline geçmek tutarlılık için

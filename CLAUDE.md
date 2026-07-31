@@ -53,14 +53,20 @@ kurarken korunması gereken ikinci bir tüketici yok.
 
 ## Branch modeli
 
-`veritabani/`nin belgelenmiş üçlü modeli tüm depo için geçerli:
+**2026-07-31'de ikiye indi:**
 
 - `master` — onaylanmış/stabil. **Yalnızca kullanıcının açık onayıyla** ileri sarılır.
 - `dev` — çalışılan uç. Commit buraya.
-- `review` — bilerek bir kontrol noktası geride; kullanıcının baktığı branch.
-  Yeni bir iş birimine başlanırken `dev`'in bir önceki durağına yükseltilir.
 
-Üçü ileri sarılabilir bir zincir: `master` → `review` → `dev`.
+`review` branch'i **silindi** (yerel ve uzak). Sebebi: "kullanıcının baktığı, bir
+kontrol noktası geride duran branch" fikri tek kişilik çalışmada işe yarıyordu; proje
+Ömer + kardeşi (Furkan) olarak iki makineye yayılınca üçüncü bir branch'i elle
+yükseltmek fayda değil bakım yükü oldu. Silindiğinde içinde `dev`'de olmayan tek bir
+commit bile yoktu (doğrulandı), yani hiçbir şey kaybolmadı.
+
+**Bugünkü iş bölümü:** Furkan `dev`'den devam ediyor; Ömer gerektiğinde `master`'dan
+yeni bir branch açıp ilerliyor. Yani `dev`'e iki makineden aynı anda commit atılması
+beklenmiyor — atılacaksa önce `git pull --rebase` alışkanlığı şart.
 
 ## İki tarafı birden ilgilendiren kalıcı kurallar
 

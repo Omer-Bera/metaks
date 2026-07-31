@@ -426,4 +426,5 @@ tamamlandı.
   dayanıyor; ofis ağında başkaları varsa **`100.64.0.6:8000`'e bağlanmak** (yalnız
   tailnet arayüzü) tek kelimelik düzeltme.
 - ~~**Branch modeli**~~ — ✅ 2026-07-31: iki repo tek `metaks` deposunda birleşti,
-  `master`/`dev`/`review` düzeni artık depo geneli geçerli (kök `CLAUDE.md`).
+  düzen artık depo geneli geçerli. 2026-07-31'de `review` silindi, model `master` +
+  `dev`'e indi: Furkan ikinci bir Mac'ten `dev`'e devam ediyor (kök `CLAUDE.md`).
