@@ -1,9 +1,9 @@
-"""Lokasyon yönetimi (`/yonetim/lokasyonlar/`) — Appsmith'i kapatmanın ön koşulu.
+"""Lokasyon yönetimi (`/yonetim/lokasyonlar/`) — hiyerarşik liste, ekleme, pasife
+alma, hiç kullanılmamışsa silme.
 
-Appsmith'in `LokasyonYonetimi` sayfasının Django karşılığı (bkz. YAPILACAKLAR.md
-madde 0 ve 2c). O sayfanın `LokasyonEkle` sorgusu yalnızca `(lokasyon_adi, tip)`
-yazıyordu — veritabani migration 004'ten (dolap→raf hiyerarşisi) sonra oradan artık
-ne bir numune lokasyonu ne de bir raf açılabiliyor. Bu modül onun yerini alıyor.
+Ekleme formu `(lokasyon_adi, tip)`'in ötesine geçmek zorunda: veritabani migration
+004 dolap→raf hiyerarşisini getirdi, yani yalnızca ad+tip yazan bir ekleme yoluyla
+ne bir numune lokasyonu ne de bir raf açılabiliyor.
 
 `stok_hareketleri`/`urunler`'in aksine **yeni bir veritabanı fonksiyonu yok**:
 migration 004 lokasyon kurallarının tamamını bildirimsel yazdı (`tip` CHECK'i,

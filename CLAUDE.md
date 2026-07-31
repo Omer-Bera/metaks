@@ -25,8 +25,13 @@ zaten "iki repo yan yana klonlanmış" varsayımıyla çalışıyordu.
 için yeniden yazılmış ağaç hash'i eski repodaki kök ağaç hash'iyle birebir aynı
 doğrulandı. Eski iki repo GitHub'da **arşivlendi, silinmedi**.
 
-Üçüncü bir repo daha vardı — `depo-appsmith-arayuz` (Appsmith low-code arayüzü).
-O **emekliye ayrıldı** (bkz. `web/CLAUDE.md`) ve bilerek buraya alınmadı.
+Bir üçüncü repo daha vardı: `depo-web-arayuz`'un yanında bir süre çalışan düşük-kod
+arayüz (Appsmith). O **2026-07-31'de projeden tamamen çıkarıldı** — konteyneri
+durduruldu, compose'dan silindi, docker volume'ü kaldırıldı, GitHub reposu
+arşivlendi. Tam yedeği bu deponun **dışında**, `~/arsiv-appsmith/` altında
+(volume tarball'ı + repo bundle'ı + geri getirme adımları). Geri dönüş
+planlanmıyor; yeni bir view'ın anlamını değiştirirken ya da migration sırası
+kurarken korunması gereken ikinci bir tüketici yok.
 
 ## Branch modeli
 

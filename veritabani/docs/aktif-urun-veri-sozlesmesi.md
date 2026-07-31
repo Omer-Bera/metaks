@@ -1,7 +1,7 @@
 # Aktif Ürün Veri Sözleşmesi
 
-**İki arayüz** bu sözleşmeyi okuyor: Appsmith (`depo-appsmith-arayuz`) ve Django+HTMX
-(`depo-web-arayuz`). Buradaki view/fonksiyon imzaları ikisi için de bağlayıcıdır.
+Arayüz (`web/`, Django + HTMX) veriyi **yalnızca** buradaki view'lardan okur ve
+**yalnızca** buradaki fonksiyonlardan yazar. Aşağıdaki imzalar bağlayıcıdır.
 
 **001, 002 ve 003 migration'larının tamamı ortak veritabanına uygulandı** (bkz.
 "Migration sırası") — `v_aktif_urunler`, `v_lokasyon_stok_ozet`, `v_toplam_stok` ve
@@ -48,7 +48,7 @@ için (küçük dosyalar genelde gerçekten küçük/basit ürün fotoğrafları
 |---|---|---|
 | `urunler.katalog_durumu` | yeni kolon | `'AKTIF' \| 'PASIF' \| 'INCELEME_BEKLIYOR'` |
 | `urunler.aktif_mi` | mevcut kolon | değişmedi; `katalog_durumu='AKTIF'` ile her zaman tutarlı (CHECK constraint) |
-| `v_aktif_urunler` | yeni view | Appsmith'in **tek** okuma kaynağı — sadece aktif ürünler, kategori/hammadde/kaplama/ana görsel join'li |
+| `v_aktif_urunler` | yeni view | Katalog/arama ekranlarının **tek** okuma kaynağı — sadece aktif ürünler, kategori/hammadde/kaplama/ana görsel join'li |
 | `v_lokasyon_stok_ozet` | view (002, 004'te genişledi) | ürün × lokasyon bazında net miktar |
 | `v_toplam_stok` | view (002, **004'te anlamı değişti**) | ürün başına **satılabilir** toplam (004 sonrası NUMUNE hariç) |
 | `v_lokasyonlar_detay` | yeni view (004) | lokasyon açılır listelerinin **tek** kaynağı — hiyerarşi, `tam_ad`, `yaprak_mi` |
@@ -62,7 +62,7 @@ için (küçük dosyalar genelde gerçekten küçük/basit ürün fotoğrafları
 değişiklik yok, sadece `katalog_durumu` kolonu eklendi. `stok_hareketleri`/`lokasyonlar`
 şemasında hiç değişiklik yok — sadece üzerlerine view eklendi.
 
-## Appsmith sorgularında kullanılacak alan adları
+## View alan adları
 
 `v_aktif_urunler`: `stok_kodu`, `urun_tipi`, `parent_stok_kodu`, `varyant_adi`,
 `olcu_mm`, `boy_ligne`, `boya_mine`, `gramaj_gr`, `montaj_durumu`, `aciklama`,
@@ -84,7 +84,7 @@ etkilenmez.
 
 - `hammadde_id`/`kaplama_id` → `NULL` (bu tablolar şu an **tamamen boş**, 0 satır;
   hiçbir üründe hammadde/kaplama ataması yapılmamış). `v_aktif_urunler.hammadde_adi`/
-  `kaplama_adi` bu yüzden şu an **her satırda NULL** dönecek. Appsmith arayüzünde bu
+  `kaplama_adi` bu yüzden şu an **her satırda NULL** dönecek. Arayüzde bu
   filtreler şimdilik boş görünecek — kod hatası değil, veri henüz girilmemiş.
 - `ana_gorsel_dosya_adi` → tanım gereği `v_aktif_urunler`'da hiçbir zaman NULL olamaz
   (view zaten aktif görseli olan satırları filtreliyor).
@@ -114,8 +114,7 @@ teyit edilmeli.
 
 ## Örnek parametreli sorgular
 
-Stok kodu/kategori/açıklama arayan canlı arama (Appsmith Input1'e bağlı, "Run query
-automatically" açık):
+Stok kodu/kategori/açıklama arayan canlı arama (arama kutusuna bağlı):
 
 ```sql
 SELECT stok_kodu, kategori_adi, hammadde_adi, kaplama_adi, olcu_mm,
@@ -205,26 +204,26 @@ zedeler) hem de elle çıkarma hata payı ekler. `stok_hareketi_kaydet()` fonksi
 toplamı `v_lokasyon_stok_ozet`'teki mevcut miktarla karşılaştırıp gerçek ledger farkını
 kendisi hesaplar ve `stok_hareketleri`'ne öyle yazar (fark sıfırsa hiçbir satır eklenmez).
 
-Appsmith'in `KaydetButton`'ı **doğrudan `stok_hareketleri`'ne INSERT atmamalı**, sadece
+Kaydet akışı **doğrudan `stok_hareketleri`'ne INSERT atmamalı**, sadece
 `stok_hareketi_kaydet(...)` fonksiyonunu çağırmalı:
 
 ```sql
 SELECT * FROM stok_hareketi_kaydet(
-    {{ crypto.randomUUID() }},                          -- istemci_islem_kimligi (mükerrer gönderim koruması)
-    {{ UrunSonuclariTable.selectedRow.stok_kodu }},
-    {{ IslemTipiSelect.selectedOptionValue }},
-    {{ MiktarInput.text }}::INTEGER,
-    NULL,                                   -- kaynak_lokasyon_id (GIRIS/SAYIM_DEVRI'de NULL, CIKIS'te zorunlu)
-    {{ LokasyonSelect.selectedOptionValue }}::INTEGER,
-    {{ AciklamaInput.text }},
-    {{ appsmith.user.email }}               -- yapan_kullanici, zorunlu
+    %s,   -- istemci_islem_kimligi (UUID, mükerrer gönderim koruması)
+    %s,   -- stok_kodu
+    %s,   -- islem_tipi
+    %s,   -- miktar (INTEGER)
+    %s,   -- kaynak_lokasyon_id (GIRIS/SAYIM_DEVRI'de NULL, CIKIS'te zorunlu)
+    %s,   -- hedef_lokasyon_id
+    %s,   -- aciklama
+    %s    -- yapan_kullanici, zorunlu
 );
 ```
 
 Dönüş: `hareket_id`, `uygulanan_miktar`, `atlandi` (bool — mükerrer gönderim ya da sıfır
 farklı sayım nedeniyle kayıt oluşmadıysa `TRUE`), `mesaj` (kullanıcıya gösterilecek
-Türkçe açıklama). Appsmith `KaydetButton`'ın `onClick`'inde bu sorguyu çalıştırıp
-`mesaj`'ı bir Toast/Text widget'ında göstermesi yeterli.
+Türkçe açıklama). Arayüzün yapması gereken tek şey bu sorguyu çalıştırıp `mesaj`'ı
+kullanıcıya göstermek — kuralları ikinci kez doğrulamak değil.
 
 **2026-07-29 revizyonu — üç ek kontrol** (ChatGPT'nin "master plan" prompt'unun Prompt 3
 gereksinimleri gözden geçirilirken ortaya çıktı, canlı şemaya karşı `BEGIN...ROLLBACK`
@@ -236,18 +235,17 @@ ile test edildi, hiçbir kalıcı iz bırakmadan):
   SAYIM_DEVRİ'nin kendi azaltma ucu matematiksel olarak bu kontrolü hep geçer (mevcuttan
   sayılana giden fark, tanım gereği mevcudu aşamaz).
 - **`yapan_kullanici` zorunlu** (yeni kolon, `stok_hareketleri.yapan_kullanici VARCHAR(255) NOT NULL`) —
-  Appsmith'in Postgres'e bağlantısı tek bir paylaşılan `depo_admin` kullanıcısıyla
-  olduğu için Postgres'in kendi `current_user`'ına güvenilemez; değer açıkça
-  `{{ appsmith.user.email }}`'den parametre olarak geçirilmeli.
+  Postgres'e tek bir paylaşılan `depo_admin` kullanıcısıyla bağlanıldığı için
+  Postgres'in kendi `current_user`'ına güvenilemez; değer uygulamadan açıkça
+  parametre olarak geçirilmeli (Django: `request.user.email or username`).
 - **İşlem tipine göre lokasyon zorunluluğu**: GİRİŞ→hedef zorunlu, ÇIKIŞ→kaynak zorunlu,
   TRANSFER→ikisi de zorunlu (bu zaten tablonun kendi CHECK'i ile de korunuyordu),
   DÜZELTME→en az biri zorunlu. Daha önce hiçbiri şema seviyesinde garanti değildi.
 
-**Mükerrer gönderim koruması**: `{{ crypto.randomUUID() }}` her buton tıklamasında Appsmith'in
-JS ortamında yeni bir UUID üretir. Çift tıklama ya da ağ tekrar denemesi aynı UUID'yi
-tekrar gönderirse fonksiyon yeni satır eklemez, `atlandi=TRUE` döner. Ayrıca
-`KaydetButton`'ın kendi `isDisabled`/loading durumu da (sorgu çalışırken buton pasif)
-ek bir önlem olarak önerilir ama tek başına yeterli değildir (ağ tekrar denemesi
+**Mükerrer gönderim koruması**: arayüz her form basımında yeni bir UUID gömer. Çift
+tıklama ya da ağ tekrar denemesi aynı UUID'yi tekrar gönderirse fonksiyon yeni satır
+eklemez, `atlandi=TRUE` döner. Butonun kendi pasifleştirme/loading durumu ek bir önlem
+olarak önerilir ama tek başına yeterli değildir (ağ tekrar denemesi
 istemci tarafı devre dışı bırakmayı atlayabilir) — asıl güvence veritabanı seviyesindeki
 UNIQUE kısıt.
 
@@ -292,7 +290,7 @@ ORDER BY (tip = 'NUMUNE'), tam_ad;   -- depo lokasyonları önce
 > **Numune rafları tipe göre DIŞLANMAMALIDIR.** Numune dolabını açıp 3 adet bulan kişi
 > bunu ancak numune rafını seçebilirse yazabilir; dışlamak çözülmek istenen problemi
 > ortadan kaldırır. Doğru filtre `yaprak_mi` (dolaplar çıkar, raflar kalır). Liste
-> şişmesi sıralama + arama (Appsmith Select'te "Allow searching") ile çözülür.
+> şişmesi sıralama + arama ile çözülür.
 
 ### Sadece yaprak lokasyona hareket yazılabilir
 
@@ -330,20 +328,15 @@ Sadece `mevcut_miktar > 0` olan NUMUNE satırlarını döner.
 Migration'ın kendisi **bilerek etkisizdir** — hiçbir NUMUNE lokasyonu oluşturmaz, sadece
 oluşturulabilmesinin önünü açar. Tehlikeli adım veri girişidir, DDL değil:
 
-1. **Migration 004** — etkisiz, güvenli. Açılır listeler hâlâ 5 satır döner.
-2. **Arayüzlerin lokasyon sorguları düzeltilir** (`v_lokasyonlar_detay` + `yaprak_mi`):
-   + Appsmith: `pages/StokIslemi/queries/LokasyonlariGetir`,
-     `pages/LokasyonYonetimi/queries/LokasyonlarListele`
-   + Django: `katalog/views.py:651` (stok işlem formu),
-     `katalog/views.py:431` (hareket geçmişi filtresi — bugün hiç filtre yok)
-3. **Ancak o zaman** numune dolap/raf satırları girilir.
+1. ✅ **Migration 004** — etkisiz, güvenli. Açılır listeler değişmedi.
+2. ✅ **Arayüzün lokasyon sorguları düzeltildi** (2026-07-31): stok işlem formu, hareket
+   geçmişi filtresi ve ana ekran KPI'ı artık `v_lokasyonlar_detay` + `yaprak_mi`
+   okuyor; `/yonetim/lokasyonlar/yeni/` formu `NUMUNE` tipini ve üst lokasyon
+   seçimini sunuyor, yani numune dolabı/rafı artık arayüzden açılabiliyor.
+3. **Sıradaki adım:** gerçek numune dolap/raf satırlarının girilmesi. Henüz girilmedi.
 
-Adım 3 önce yapılırsa devam eden sayımın yapıldığı ekranın lokasyon kutusu onlarca
-satırla dolar ve kullanılamaz hâle gelir.
-
-Ayrıca `pages/LokasyonYonetimi/widgets/YeniLokasyonTipiSelect.json` tip listesini sabit
-gömüyor (`Dahili`/`Fason`) — kırılma değil, eksiklik: Appsmith'ten numune lokasyonu
-eklenemez. Numune lokasyonları şimdilik SQL ile giriliyor.
+Adım 3 önce yapılsaydı devam eden sayımın yapıldığı ekranın lokasyon kutusu onlarca
+satırla dolar ve kullanılamaz hâle gelirdi — sıranın sebebi buydu.
 
 ## `urun_kaydet()` (migration 005 — yazıldı, test edildi, UYGULANMADI)
 

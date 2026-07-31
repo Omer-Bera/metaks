@@ -11,87 +11,25 @@ yürüyebilir, 1 ve 2 hiçbir şeye bağlı değil.
 
 ---
 
-## 0. Appsmith'in emekliye ayrılması (2026-07-31 kararı)
+## 0. Eski düşük-kod arayüz ✅ KAPANDI (2026-07-31)
 
-Kullanıcı kararı: Appsmith artık atıl; Django arayüzü onun kapsamını geçti, görsel
-kalite ve kullanılabilirlikte de gerisinde kaldı. Bundan sonra **hem veritabanı hem
-arayüz geliştirmeleri Appsmith düşünülmeden** yürüyecek.
+Bu arayüz bir düşük-kod arayüzün (Appsmith) yanında strangler-fig yaklaşımıyla
+büyümüştü. 2026-07-31'de o arayüz **projeden tamamen çıkarıldı** — konteyner
+durduruldu, compose'dan silindi, docker volume'ü kaldırıldı, GitHub reposu
+arşivlendi. Yedeği `~/arsiv-appsmith/` altında duruyor (volume tarball'ı + repo
+bundle'ı + geri getirme adımları); depoda hiçbir izi kalmadı ve geri dönüş
+planlanmıyor.
 
-Bu ayrı bir "proje" değil — aşağıdaki maddelerin içine dağılıyor. Buradaki tek amacı
-neyin gerçekten gerektiğini ve neyin kendiliğinden düştüğünü tek yerde tutmak.
+Kapanışın tek teknik ön koşulu Django'da lokasyon yönetimi ekranıydı (madde 2c) —
+o da 2026-07-31'de tamamlandı. Kazanç ölçüldü: **1,31 GiB RAM**, makinedeki 3,9
+GiB'ın üçte biri (kalan iki konteyner toplam 35 MiB). Veri kaybı riski yoktu ve
+olmadı: tüm iş verisi Postgres'te, o arayüzün kendi volume'ünde yalnızca ekran
+tanımları vardı.
 
-### Kapsam karşılaştırması (ölçüldü)
-
-| Appsmith sayfası | Django karşılığı | Durum |
-| --- | --- | --- |
-| `YonetimAnaSayfasi` | `/` (Panel) | ✅ karşılanıyor |
-| `UrunlerKatalog` | `/katalog/` | ✅ karşılanıyor |
-| `StokOzet` | `/stok/` | ✅ karşılanıyor |
-| `StokIslemi` | `/stok/islem/<stok_kodu>/` | ✅ karşılanıyor |
-| `Page1` | — | iskelet artığı (`Query1` ve `Query2` birebir aynı SQL), karşılığı gereksiz |
-| `LokasyonYonetimi` | **yok** | ❗ **tek gerçek boşluk** |
-
-### Tek gerçek boşluk: lokasyon yönetimi
-
-Lokasyon ekleme/pasife alma bugün **yalnızca** Appsmith'ten yapılabiliyor; Django'da
-hiç karşılığı yok. Bu, Appsmith'i kapatmanın tek teknik ön koşulu.
-
-Ama bu iş zaten yapılacaktı ve Appsmith'te **zaten yapılamıyordu.** `LokasyonEkle`
-sorgusunun tamamı şu:
-
-```sql
-INSERT INTO lokasyonlar (lokasyon_adi, tip)
-VALUES ({{ YeniLokasyonAdiInput.text }}, {{ YeniLokasyonTipiSelect.selectedOptionValue }});
-```
-
-`ust_lokasyon_id` ve `kod` yok — yani migration 004'ten sonra bu ekranla **bir numune
-dolabı da rafı da açılamıyor**; üstelik tip açılır listesi `Dahili`/`Fason`'u sabit
-gömüyor, `NUMUNE` orada hiç görünmüyor. Yani madde 4 (numuneler) için lokasyon ekranı
-nasılsa sıfırdan yazılacaktı. **Appsmith'i bırakmak yeni iş çıkarmıyor, var olan işin
-yerini değiştiriyor.**
-
-Yeri: madde **2c** (yönetim panelinin üçüncü kartı) — orada anlatıldı.
-
-### Kapatma sırası (her adımı geri alınabilir)
-
-1. ✅ **Django lokasyon yönetimi** (madde 2c) + üç lokasyon sorgusunun
-   `v_lokasyonlar_detay` / `yaprak_mi`'ye taşınması — tamamlandı (2026-07-31).
-2. ✅ **Önce kontrol:** sayıma ait bir giriş hâlâ Appsmith'ten yapılıyor mu?
-   Kullanıcı doğruladı (2026-07-31): **hayır, kimse kullanmıyor.**
-3. ✅ `docker compose stop appsmith` — **silme, durdur.** Uygulandı (2026-07-31,
-   `~/metaks/veritabani`'den). Geri dönüş `docker compose up -d appsmith` ile anında
-   (`start` değil: repo birleştirmesinde compose bir kez `down` edildi, konteyner
-   yok ama `metaks_db_appsmith_data` volume'ü duruyor).
-   Kazanç ölçüldü: **1,31 GiB RAM**, yani makinedeki 3,9 GiB'ın üçte biri
-   (`depo-postgres` 27 MiB, `depo-gorsel-sunucu` 8 MiB — Appsmith tek başına
-   ikisinin ~40 katı). Durdurma sonrası doğrulandı: Django'nun beş sayfası da
-   (`/`, `/katalog/`, `/stok/`, `/stok/hareketler/`, `/giris/`) ve görsel sunucu
-   (8083) sorunsuz; 8082 artık yanıt vermiyor (beklenen). Üç tarayıcı test takımı
-   (80 kontrol) Appsmith kapalıyken de yeşil — Django tarafının ona hiç bağımlı
-   olmadığı doğrulandı.
-4. **Bekleniyor** — bir süre sorunsuz geçerse: `veritabani/docker-compose.yml`'den
-   `appsmith` servisi ve `appsmith_data` volume'ü kaldırılır, `depo-appsmith-arayuz`
-   reposu GitHub'da **arşivlenir** (silinmez — sorgu geçmişi ve alınan kararların
-   kaydı orada). Bu adım henüz atılmadı: 3. adım her an geri alınabilirken bu adım
-   (compose dosyasından servis kaldırma) daha kalıcı, biraz zaman bırakmak makul.
-
-### Ne kaybetmiyoruz
-
-Appsmith stateless: tüm iş verisi Postgres'te. Kendi volume'ü sadece uygulama tanımını
-ve Appsmith'e özel kullanıcı hesaplarını tutuyor; uygulama tanımı da zaten
-`depo-appsmith-arayuz` reposunda. Kapatmak veri kaybettirmiyor.
-
-### Kendiliğinden düşen kısıtlar
-
-- `depo-appsmith-arayuz`'da bekleyen iş (`StokIslemi/LokasyonlariGetir` ve
-  `LokasyonYonetimi/LokasyonlarListele`'ye yaprak filtresi) → **iptal**.
-- `veritabani` migration'larındaki "önce iki arayüzü düzelt, sonra veri gir" adımı
-  **tek arayüze** iner.
-- View'ların anlamını değiştirirken dört Appsmith tüketicisini koruma zorunluluğu kalkar.
-  (`v_toplam_stok`'un "satılabilir stok" olması kendi başına da doğru karardı, geri
-  almaya gerek yok — fiziksel toplam için `v_fiziksel_stok` var.)
-- `veritabani/CLAUDE.md`'deki "rol ayrımı gerekirse ayrı Appsmith uygulamalarıyla
-  çözülür" planı düşer; rol ayrımı Django'da yapılacak (madde 2b).
+**Bunun düşürdüğü kısıtlar** (aşağıdaki maddeleri okurken geçerli): view'ların
+anlamını değiştirirken ya da migration sırası kurarken korunması gereken ikinci bir
+tüketici yok, migration'lardaki "önce iki arayüzü düzelt" adımı tek arayüze indi ve
+rol ayrımı (madde 2b) tamamen Django'da çözülecek.
 
 ---
 
@@ -165,7 +103,7 @@ yönetim de günlük kullanımda sık gidilen bir yer değil.
 için bugün yeterli; **fason/dış kullanıcı girdiği anda** gözden geçirilmeli. Kullanıcı
 ekranı yapılırken en azından "yönetici mi" ayrımının yeri hazırlansın.
 
-### 2c. Lokasyon yönetimi ✅ TAMAMLANDI (2026-07-31) — Appsmith'i kapatmanın ön koşulu
+### 2c. Lokasyon yönetimi ✅ TAMAMLANDI (2026-07-31)
 
 `/yonetim/lokasyonlar/` (hiyerarşik liste + pasife alma) ve
 `/yonetim/lokasyonlar/yeni/` (ekleme). Kod `katalog/lokasyon_yonetimi.py` +
@@ -174,10 +112,10 @@ ekranı yapılırken en azından "yönetici mi" ayrımının yeri hazırlansın.
 Yapılanlar: liste `v_lokasyonlar_detay`'dan okuyor (ham `lokasyonlar` değil) — kök
 altında rafları girintili gösteriyor. Ekleme formu ad, tip (`DAHILI`/`FASON`/
 `NUMUNE`), isteğe bağlı **üst lokasyon** (yalnızca aktif kökler) ve isteğe bağlı
-`kod` alıyor. Silme yok, yalnızca pasife alma (`aktif_mi = false`) — Appsmith'in
-`LokasyonSil`'iyle aynı davranış. Yeni bir veritabanı fonksiyonu **yok**: migration
-004 kuralların tamamını bildirimsel yazmıştı (CHECK, üretilmiş kolonlarla bileşik
-FK, iki tekillik kısıtı), Django doğrudan INSERT/UPDATE yapıyor.
+`kod` alıyor. İlk hâlinde silme yoktu, yalnızca pasife alma (`aktif_mi = false`);
+silme aynı gün ayrıca eklendi (aşağıya bakın). Yeni bir veritabanı fonksiyonu
+**yok**: migration 004 kuralların tamamını bildirimsel yazmıştı (CHECK, üretilmiş
+kolonlarla bileşik FK, iki tekillik kısıtı), Django doğrudan INSERT/UPDATE yapıyor.
 
 Ayrıca üç tuzak noktası düzeltildi (bkz. aşağıdaki "Kalan tuzak" bölümünün eski
 hâli): `views.py:81` (ana ekran KPI), `:453` (hareket geçmişi filtresi), `:675`
@@ -218,9 +156,6 @@ Türkçe mesajla reddi, raf silinince dolabın silinebilir hâle gelmesi, beş
 lokasyonun tek tek silinmesi, kalan listenin tam olarak üç isim olması, beş
 sayfanın ayakta kalması ve stok işlem formunun yalnızca o üç lokasyonu
 sunması.
-
-Appsmith 2026-07-31'de durduruldu (bkz. madde 0, "Kapatma sırası", 3. adım) —
-kullanıcı kimsenin kullanmadığını doğruladıktan sonra `docker compose stop`.
 
 ---
 
@@ -428,10 +363,6 @@ Django'daki üç yer `v_lokasyonlar_detay` + `yaprak_mi` filtresine taşındı:
 `views.py:81` (ana ekran KPI), hareket geçmişi filtresi ve stok işlem formu
 (bkz. madde 2c). **Tipe göre dışlanmadı** — numune dolabını açıp 3 adet bulan
 kişi o rafı seçebiliyor, çözülmek istenen problem buydu.
-
-Appsmith'teki iki yer (`StokIslemi/LokasyonlariGetir`,
-`LokasyonYonetimi/LokasyonlarListele`) **düzeltilmedi ve düzeltilmeyecek** —
-madde 0, Appsmith emekliye ayrılıyor.
 
 Artık gerçek NUMUNE dolap/raf satırları girilebilir; ön koşul (Django tarafı)
 tamamlandı.

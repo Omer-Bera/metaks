@@ -10,60 +10,29 @@ başlatıldı. METAKS'ın toplam sistemi bugün tek bir depoda, iki dizinde:
 
 - **`veritabani/`** — veri temizleme/normalizasyon pipeline'ı + PostgreSQL şeması
   (`sql/01_schema.sql`, `sql/migrations/`). Gerçek veri kaynağı ve şema otoritesi burada.
-- **`web/`** (bu dizin) — arayüz. Strangler-fig yaklaşımıyla başladı, artık
-  Appsmith'in kapsamını geçti.
+- **`web/`** (bu dizin) — arayüzün tamamı. Depo sayımı, stok takibi, katalog,
+  ürün/lokasyon/kullanıcı yönetimi: hepsi burada.
 
 **2026-07-31'e kadar bunlar iki ayrı repoydu** (`metaks_DB` ve `depo-web-arayuz`,
 `~/` altında kardeş dizinler) ve o gün tek repoya alındı — gerekçe ve birleştirmenin
 ayrıntıları kökteki `CLAUDE.md`'de. Bu dosyada bundan önce yazılmış "kardeş repo"
-ifadeleri artık "kardeş dizin" olarak okunmalı. Üçüncü bir repo daha vardı —
-**`depo-appsmith-arayuz`**, Appsmith üzerinde kurulu düşük-kod arayüz (StokIslemi,
-UrunlerKatalog, LokasyonYonetimi, StokOzet, YonetimAnaSayfasi sayfaları).
-**2026-07-31 itibarıyla emekliye ayrıldı** (aşağıya bakın) ve bilerek birleştirmeye
-dahil edilmedi.
+ifadeleri artık "kardeş dizin" olarak okunmalı.
 
-### Appsmith emekliye ayrıldı (karar 2026-07-31, durduruldu 2026-07-31)
+### Neden Django + HTMX
 
-Kullanıcı kararı: Appsmith atıl durumda, Django arayüzü onun yapması gereken işlerin
-ötesine geçti, görsel kalite ve kullanılabilirlikte de gerisinde. Bundan sonra **hem
-şema hem arayüz geliştirmeleri Appsmith düşünülmeden** yürüyor — yani yeni bir view'ın
-anlamını değiştirirken ya da migration sırası kurarken Appsmith'in sorgularını korumak
-gibi bir kısıt yok.
+2026-07-30'da yapılan mimari değerlendirmenin sonucu: bu ekranların ihtiyaç duyduğu
+şeyler (görsel kart ızgarası galerisi, ileride kanban/timeline/barkod akışları)
+düşük-kod widget modellerinde her seferinde özel widget yazmayı gerektiriyor — yani
+low-code'un hız avantajı tam ihtiyaç anında tersine dönüyor. Django hem kullanıcının
+mevcut Python bilgisine hem AI-destekli geliştirmeye (çok daha geniş training-data
+temsili) daha iyi oturuyor.
 
-**Konteyner durduruldu** (`docker compose stop appsmith`), silinmedi. 2026-07-31'deki
-repo birleştirmesinde compose bir kez `down` edildiği için konteynerin kendisi artık
-yok, ama **`metaks_db_appsmith_data` volume'ü duruyor** — yani geri dönüş hâlâ tek
-komut, sadece `start` değil `up`: `cd ~/metaks/veritabani && docker compose up -d appsmith`. Ön koşul olan Django lokasyon
-ekranı (madde 2c) önce tamamlandı, sonra kullanıcı sayımla ilgili hiçbir girişin artık
-Appsmith'ten yapılmadığını doğruladı. Durdurma sonrası ölçüldü: Django'nun beş sayfası
-ve görsel sunucu (8083) sorunsuz, üç tarayıcı test takımı (80 kontrol) yeşil — Django
-tarafının Appsmith'e hiç bağımlı olmadığı doğrulandı. `depo-postgres` ve
-`depo-gorsel-sunucu` konteynerlerine dokunulmadı, ikisi de METAKS'ın (ve Django'nun)
-gerçek veri/görsel kaynağı olarak çalışmaya devam ediyor.
-
-Kapsam karşılaştırması ve düşen kısıtların tam listesi **`YAPILACAKLAR.md` madde
-0**'da; burada tekrarlanmıyor. **Kalan adım** (henüz atılmadı, bilerek bir süre
-bekleniyor): `veritabani/docker-compose.yml`'den `appsmith` servisini ve
-`appsmith_data` volume'ünü kaldırmak, `depo-appsmith-arayuz` reposunu GitHub'da
-arşivlemek (silmeden). Appsmith stateless olduğu için veri kaybı riski yok; tüm iş
-verisi Postgres'te.
-
-### Neden Django + HTMX, neden Appsmith'i hemen bırakmıyoruz
-
-2026-07-30'da kullanıcıyla yapılan mimari değerlendirmenin sonucu (ayrıntılar o
-konuşmada, burada özet): Appsmith'in widget modeli tekrarlayan/özel UI ihtiyaçlarında
-(görsel kart ızgarası galerisi, ileride kanban/timeline/barkod akışları) her seferinde
-Custom Widget yazmayı gerektiriyor — bu, low-code'un hız avantajını tam ihtiyaç anında
-tersine çeviriyor. Django hem kullanıcının mevcut Python bilgisine hem AI-destekli
-geliştirmeye (çok daha geniş training-data temsili) daha iyi oturuyor. Ama devam eden
-depo sayımı gerçek bir aciliyet olduğu için Appsmith'teki `StokIslemi` akışı **bilerek
-sökülmüyor** — kademeli geçiş planı:
-
-1. Depo sayımı + günlük stok takibi → Appsmith'te devam eder.
-2. Yeni geliştirilen her şey → burada (Django) başlar. İlk modül: salt-okunur ürün
-   kataloğu/galerisi (en düşük riskli, en yüksek UX-etkili başlangıç).
-3. Zamanla stok giriş/çıkış/sayım formları, sipariş, üretim, numune gibi modüller
-   buraya taşınır/eklenir; Appsmith'in payı sıfıra iner.
+Bu arayüz başlangıçta bir düşük-kod arayüzün (Appsmith) yanında, strangler-fig
+yaklaşımıyla büyüdü. 2026-07-31'de o arayüz **projeden tamamen çıkarıldı**: yedeği
+`~/arsiv-appsmith/` altında (volume tarball'ı + repo bundle'ı + geri getirme notu),
+GitHub'daki reposu arşivlendi. Depoda ondan hiçbir iz kalmadı ve geri dönüş
+planlanmıyor — yeni bir view'ın anlamını değiştirirken ya da migration sırası
+kurarken artık korunması gereken ikinci bir tüketici yok.
 
 ## Mimari kararlar
 
@@ -90,12 +59,11 @@ soyutlaması eklenmedi (tek app, tek bağlantı; ihtiyaç gerçek hâle gelmeden
 
 `v_aktif_urunler`, `v_lokasyon_stok_ozet`, `v_toplam_stok`, `stok_hareketi_kaydet()` —
 tam alan listesi ve semantiği için **`veritabani/docs/aktif-urun-veri-sozlesmesi.md`**
-otoritedir, burada tekrar edilmiyor. Appsmith de aynı sözleşmeyi okuyor; bu iki arayüz
-aynı view/fonksiyon katmanını paylaşıyor, veri asla iki kez modellenmiyor.
+otoritedir, burada tekrar edilmiyor. Arayüz veriyi asla ikinci kez modellemiyor:
+okuma bu view'lardan, yazma bu fonksiyonlardan geçiyor.
 
-Yazma işlemleri (stok hareketi) ileride buraya eklendiğinde de kural aynı kalacak:
-doğrudan `stok_hareketleri`'ne INSERT yok, sadece `stok_hareketi_kaydet()` çağrısı
-(Appsmith'in zaten uyduğu kural, bkz. `veritabani/CLAUDE.md`).
+Yazma işlemlerinde kural mutlak: doğrudan `stok_hareketleri`'ne INSERT yok, sadece
+`stok_hareketi_kaydet()` çağrısı (bkz. `veritabani/CLAUDE.md`).
 
 ### Frontend
 
@@ -142,8 +110,8 @@ python manage.py runserver 0.0.0.0:8000
 
 `runserver`'ı **argümansız** çalıştırmak `127.0.0.1:8000`'e bağlar, yani sadece Mac'in
 kendisinden erişilir; Tailscale'deki telefon/masaüstünden "site açılmıyor" demektir.
-Docker servisleri (`8082`, `8083`, `5433`) tüm arayüzlere bağlandığı için Appsmith
-uzaktan açılıyor da Django açılmıyordu — fark tam olarak bu.
+Docker servisleri (`8083`, `5433`) tüm arayüzlere bağlanıyor, yani onlar uzaktan
+açılıyordu da Django açılmıyordu — fark tam olarak bu.
 
 Uzaktan erişim için üç ayarın **üçü birden** gerekiyor:
 
@@ -240,9 +208,10 @@ sorgu değil). Hesabı kapatmadan önce "bu kimdi, bir şey yapmış mı" sorusu
 
 Kod `katalog/lokasyon_yonetimi.py` + `katalog/forms.py::LokasyonEklemeFormu`.
 Kullanıcı yönetiminden farklı: bu, **`metaks` Postgres'e yazan** tek yönetim
-ekranı — Appsmith'in artık işlevsiz `LokasyonEkle`/`LokasyonSil` sorgularının
-(yalnızca ad+tip yazıyordu, migration 004'ten sonra dolap/raf hiyerarşisini hiç
-açamıyordu) yerini alıyor. Yeni bir veritabanı fonksiyonu yok — migration 004
+ekranı. Ekleme formu `(lokasyon_adi, tip)`'in ötesine geçmek zorunda: migration
+004'ün dolap/raf hiyerarşisi ancak `ust_lokasyon` + `kod` ile açılıyor, yalnızca
+ad+tip yazan bir yol ne raf ne numune lokasyonu yaratabiliyor. Yeni bir veritabanı
+fonksiyonu yok — migration 004
 lokasyon kurallarının tamamını bildirimsel yazmıştı (`tip` CHECK'i, `kok_mu`/
 `ust_kok_mu` üretilmiş kolonlarla bileşik FK, iki tekillik kısıtı); kapı zaten
 kısıtların kendisi, Django doğrudan INSERT/UPDATE yapıyor.
@@ -390,7 +359,7 @@ Bu ayrım devam eden depo sayımında anlamlı: "daha neye bakmadık?" sorusunun
 (`toplam_miktar > 0` alt sorgusu).
 
 **2026-07-31 itibarıyla defter tamamen boş.** Daha önce buradaki 30 kaydın tamamı
-test girişiydi (29 Temmuz Appsmith denemeleri + 30 Temmuz Django doğrulamaları);
+test girişiydi (29 Temmuz düşük-kod arayüz denemeleri + 30 Temmuz Django doğrulamaları);
 `veritabani` migration 006 hepsini sildi ve sequence'i 1'e aldı. Yani `v_toplam_stok`
 sıfır satır, her ürün "Sayılmadı" durumunda ve "sadece stokta olanlar" boş sonuç
 veriyor. Sayfa sayım ilerledikçe kendiliğinden dolacak, kodda değişiklik gerekmiyor.

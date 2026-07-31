@@ -1,7 +1,7 @@
 """Stok hareketi yazma katmanı.
 
 Tek kural: `stok_hareketleri`'ne **asla doğrudan INSERT yok**, sadece
-`stok_hareketi_kaydet()` çağrısı (veritabani/CLAUDE.md; Appsmith de aynı kurala uyuyor).
+`stok_hareketi_kaydet()` çağrısı (bkz. veritabani/CLAUDE.md).
 Bunun sebebi iş kurallarının tek bir yerde, veritabanında yaşaması: yeterli stok
 kontrolü, işlem tipine göre lokasyon zorunlulukları, SAYIM_DEVRI'nin fark hesabı ve
 mükerrer gönderim koruması hep o fonksiyonun içinde.

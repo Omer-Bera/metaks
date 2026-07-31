@@ -24,6 +24,6 @@ python manage.py runserver 0.0.0.0:8000    # adres argümanı Tailscale erişimi
 ## Tarihçe
 
 2026-07-31'e kadar bu iki dizin ayrı repolardı (`metaks_DB` ve `depo-web-arayuz`);
-her ikisinin geçmişi de korunarak tek depoda birleştirildi. Bir üçüncü repo daha
-vardı — `depo-appsmith-arayuz`, Appsmith üzerinde kurulu düşük-kod arayüz. O
-2026-07-31'de emekliye ayrıldı ve buraya alınmadı.
+her ikisinin geçmişi de korunarak tek depoda birleştirildi. Aynı gün, bir süre
+`web/`in yanında çalışan düşük-kod arayüz projeden tamamen çıkarıldı; yedeği
+`~/arsiv-appsmith/` altında.

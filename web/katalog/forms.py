@@ -158,9 +158,6 @@ class _UstLokasyonAlani(forms.ModelChoiceField):
 class LokasyonEklemeFormu(forms.ModelForm):
     """Yeni lokasyon: depo/dolap kökü ya da bir kökün altında raf.
 
-    Appsmith'in `LokasyonEkle` sorgusunun (yalnızca ad+tip yazan) yerini alıyor —
-    bkz. YAPILACAKLAR.md madde 0 ve 2c.
-
     ⚠️ `ust_lokasyon` bir FOREIGN KEY ve modelin varsayılan yöneticisi
     (`Lokasyon.objects`) `using('metaks')` OLMADAN 'default' (SQLite) bağlantısına
     gider — proje henüz `DATABASE_ROUTERS` eklemedi. Django'nun ModelForm'u FK
