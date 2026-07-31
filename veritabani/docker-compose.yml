@@ -50,6 +50,20 @@ services:
     depends_on:
       - veritabani
 
+  # Ürün görsellerini HTTP üzerinden sunan statik dosya sunucusu — Appsmith'in
+  # (ve ileride başka arayüzlerin) urun_gorselleri.dosya_adi'ndan gelen dosya
+  # adını doğrudan URL'e çevirebilmesi için. images/final/products/ salt-okunur
+  # bağlanıyor; DB'ye/dosyalara hiçbir yazma yapmıyor.
+  gorsel-sunucu:
+    image: nginx:alpine
+    container_name: depo-gorsel-sunucu
+    restart: unless-stopped
+    ports:
+      - "8083:80"
+    volumes:
+      - ./images/final/products:/usr/share/nginx/html/urun-gorselleri:ro
+      - ./docker/nginx/gorseller.conf:/etc/nginx/conf.d/default.conf:ro
+
 volumes:
   pg_data:
   nc_data:

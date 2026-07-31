@@ -1,8 +1,10 @@
 # Aktif Ürün Veri Sözleşmesi
 
 Appsmith Ürünler/Katalog sayfasının kullanacağı veri sözleşmesi. Bu belge inceleme +
-migration hazırlığı aşamasının çıktısıdır — **migration'lar henüz ortak veritabanına
-uygulanmadı**, kullanıcı onayı bekliyor (bkz. "Migration sırası").
+migration hazırlığı aşamasının çıktısıdır. **001, 002 ve 003 migration'larının tamamı
+ortak veritabanına uygulandı** (bkz. "Migration sırası") — `v_aktif_urunler`,
+`v_lokasyon_stok_ozet`, `v_toplam_stok` ve `stok_hareketi_kaydet()` artık canlıda
+kullanılabilir.
 
 ## Aktif ürün kriterleri
 
@@ -145,13 +147,14 @@ eklenmedi.
    için canlıya hiçbir şey yazılmadan geri alındı. Sıra düzeltildi (constraint artık
    backfill'den SONRA ekleniyor), ikinci denemede sorunsuz uygulandı: `UPDATE 1780`,
    `UPDATE 1193`, sonuç dry-run tahminiyle birebir eşleşti.
-2. **Onay bekleniyor** — `sql/migrations/002_lokasyon_stok_view.sql` (sadece view,
-   mevcut tabloları değiştirmez). Sayım işaret kuralı artık netleşti (aşağıya bakın),
-   bu view'ın tasarımını değiştirmiyor, sadece varsayımını doğruluyor.
-3. **Onay bekleniyor** — `sql/migrations/003_stok_hareketi_fonksiyonu.sql` (mükerrer
-   gönderim koruması + `stok_hareketi_kaydet()` fonksiyonu). Sözdizimi/mantık canlı
-   şemaya karşı test edildi (`BEGIN` ... `ROLLBACK`, hiçbir kalıcı iz bırakmadan) —
-   hatasız çalıştı, henüz kalıcı olarak uygulanmadı.
+2. **✅ UYGULANDI (2026-07-29)** — `sql/migrations/002_lokasyon_stok_view.sql` (sadece
+   view, mevcut tabloları değiştirmez). `v_lokasyon_stok_ozet`/`v_toplam_stok` canlıda
+   sorgulandı, beklendiği gibi 0 satır döndü (`stok_hareketleri` hâlâ boş).
+3. **✅ UYGULANDI (2026-07-29)** — `sql/migrations/003_stok_hareketi_fonksiyonu.sql`
+   (mükerrer gönderim koruması + `stok_hareketi_kaydet()` fonksiyonu). Sözdizimi/mantık
+   daha önce canlı şemaya karşı test edilmişti (`BEGIN` ... `ROLLBACK`, hiçbir kalıcı iz
+   bırakmadan); kalıcı uygulama sonrası `\d stok_hareketleri` ve `\df stok_hareketi_kaydet`
+   ile kolonların/fonksiyonun canlıda gerçekten oluştuğu doğrulandı.
 
 Her biri `BEGIN`/`COMMIT` içinde, tek transaction, hata olursa otomatik geri alınır.
 Her biri için ayrı bir `_rollback.sql` dosyası var. 002 ve 003, 001'e bağımlı değil
@@ -173,7 +176,7 @@ Appsmith'in `KaydetButton`'ı **doğrudan `stok_hareketleri`'ne INSERT atmamalı
 
 ```sql
 SELECT * FROM stok_hareketi_kaydet(
-    {{ uuid() }},                          -- istemci_islem_kimligi (mükerrer gönderim koruması)
+    {{ crypto.randomUUID() }},                          -- istemci_islem_kimligi (mükerrer gönderim koruması)
     {{ UrunSonuclariTable.selectedRow.stok_kodu }},
     {{ IslemTipiSelect.selectedOptionValue }},
     {{ MiktarInput.text }}::INTEGER,
@@ -206,7 +209,7 @@ ile test edildi, hiçbir kalıcı iz bırakmadan):
   TRANSFER→ikisi de zorunlu (bu zaten tablonun kendi CHECK'i ile de korunuyordu),
   DÜZELTME→en az biri zorunlu. Daha önce hiçbiri şema seviyesinde garanti değildi.
 
-**Mükerrer gönderim koruması**: `{{ uuid() }}` her buton tıklamasında Appsmith'in
+**Mükerrer gönderim koruması**: `{{ crypto.randomUUID() }}` her buton tıklamasında Appsmith'in
 JS ortamında yeni bir UUID üretir. Çift tıklama ya da ağ tekrar denemesi aynı UUID'yi
 tekrar gönderirse fonksiyon yeni satır eklemez, `atlandi=TRUE` döner. Ayrıca
 `KaydetButton`'ın kendi `isDisabled`/loading durumu da (sorgu çalışırken buton pasif)

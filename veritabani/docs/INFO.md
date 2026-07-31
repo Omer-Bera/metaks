@@ -470,28 +470,115 @@ Sonuç: 1.780 üründe tam olarak bir ana görsel var, 19 üründe birden fazla 
 - ürün-kalıp ilişkilerinin kurulması
 - kalıp bakım ve durum kayıtlarının eklenmesi
 
-### Faz 4: Depo yönetimi
+### Faz 4: Depo yönetimi ✅ BÜYÜK ÖLÇÜDE TAMAMLANDI (2026-07-29)
 
-- depo ve raf lokasyonları
-- giriş-çıkış hareketleri
-- mevcut stok hesaplama
-- sayım ve düzeltme hareketleri
+Bu fazın ayrıntılı planı, kullanıcının ChatGPT'den alıp değerlendirmemizi istediği bir
+"master plan" prompt setinden geldi (Prompt 3: "Depocu stok giriş-çıkış ekranı") —
+prompt'un kendisinde bazı hatalar vardı (örn. `urunler`'de olmayan bir `urun_id` varsayımı,
+yanlış ürün/görsel sayıları) ama gereksinimleri gerçek eksikleri ortaya çıkardı.
 
-### Faz 5: Web ERP arayüzü
+- ~~depo ve raf lokasyonları~~ 🔶 kısmi — `lokasyonlar` tablosuna 3 test/placeholder satırı
+  girildi (Ana Depo, Sevkiyat Alanı — DAHILI; Fason Atölye 1 — FASON). **Gerçek işletme
+  lokasyonlarıyla değiştirilmeli**, sadece Appsmith'i test edebilmek için.
+- ~~mevcut stok hesaplama~~ ✅ **canlıya uygulandı** — `v_lokasyon_stok_ozet`/
+  `v_toplam_stok` view'ları (`sql/migrations/002_lokasyon_stok_view.sql`), kullanıcı
+  onayıyla ortak DB'ye işlendi.
+- ~~giriş-çıkış hareketleri~~ ✅ **canlıya uygulandı** — tek giriş noktası
+  `stok_hareketi_kaydet()` fonksiyonu (`sql/migrations/003_stok_hareketi_fonksiyonu.sql`):
+  atomik, mükerrer-gönderim korumalı (istemci kimliği ile), yeterli-stok kontrollü, işlemi
+  yapan kullanıcı zorunlu, işlem tipine göre lokasyon zorunluluğu var.
+- ~~sayım ve düzeltme hareketleri~~ ✅ kural netleşti ve canlıda test edildi — SAYIM_DEVRİ
+  girişi personelin saydığı **toplam bakiyedir** (fark değil); fonksiyon gerçek ledger
+  farkını kendisi hesaplayıp yazıyor. Gerekçe ve tam sözleşme: `docs/aktif-urun-veri-sozlesmesi.md`.
+- ~~Appsmith `StokIslemi` sayfası~~ ✅ **tam bağlandı ve canlıda test edildi (2026-07-29)**:
+  GİRİŞ/ÇIKIŞ/SAYIM DEVRİ/TRANSFER/DÜZELTME'nin beşi de çalışıyor (TRANSFER için ayrı
+  "Hedef Lokasyon", DÜZELTME için "Yön" (Artış/Azalış) widget'ları eklendi). Kullanıcı
+  gerçek `KaydetButton`'a tıklayarak `stok_hareketleri`'ne satır yazdırdı, `yapan_kullanici`
+  ve lokasyon ataması doğru geldi. Detaylar ve karşılaşılan Appsmith şema tuhaflıkları
+  (`SELECT_WIDGET` `options`→`sourceData` geçişi, `crypto.randomUUID()`'nin HTTP'de
+  çalışmaması, `TABLE_WIDGET_V2` `computedValue` gerekliliği) `depo-appsmith-arayuz/CLAUDE.md`'de.
+- Kalan: `lokasyonlar` tablosundaki 3 satır hâlâ test verisi, gerçek işletme lokasyonlarıyla
+  değiştirilmeli; `stok_hareketleri`'nde bugünkü testlerden kalan birkaç kayıt var
+  (kullanıcı bilerek "en son temizleriz" dedi, henüz silinmedi).
 
-- ürün arama
-- ürün kartı
-- görsel gösterimi
-- stok hareketleri
-- lokasyon yönetimi
-- kullanıcı yetkilendirmesi
+### Faz 5: Web ERP arayüzü ✅ BÜYÜK ÖLÇÜDE TAMAMLANDI (2026-07-29)
+
+ChatGPT'nin planındaki Prompt 4 ("Ürün arama ve katalog ekranı") ve Prompt 7 ("Yönetim
+ana sayfası") buraya karşılık geliyor — ikisi de mantıken "Web ERP arayüzü"nün parçası.
+
+- ~~ürün arama~~ ✅ hem `v_aktif_urunler` view'ı hem de Appsmith tarafı hazır — **yeni
+  `UrunlerKatalog` sayfası** kuruldu (arama + kategori filtresi + sonuç tablosu + görsel +
+  detay paneli), canlıda test edildi (1.780 aktif ürün, kategori dağılımı doğrulandı:
+  TOKA 526, ALTTAN DİKME DÜĞME 503, RİVET 191 ... KİLİT/BRİT/STOPER gibi 1'er ürünlü nadir
+  kategoriler dahil, 31 üründe kategori boş).
+- ~~görsel gösterimi~~ ✅ **statik dosya sunucusu kuruldu** — `docker-compose.yml`'e
+  `gorsel-sunucu` servisi (nginx, port 8083) eklendi, `images/final/products/`'ı
+  `http://<host>:8083/urun-gorselleri/<dosya_adi>` altında yayınlıyor (path traversal/dizin
+  listeleme engellendiği test edildi). Hem `StokIslemi.UrunGorseli` hem
+  `UrunlerKatalog.KatalogUrunGorseli` buna bağlı.
+- ~~stok hareketleri~~ → Faz 4'e taşındı, bkz. yukarı.
+- lokasyon yönetimi — henüz gerçek bir CRUD arayüzü yok, sadece test verisi var.
+- kullanıcı yetkilendirmesi — Appsmith'in kendi kullanıcı sistemi kısmen kullanılıyor
+  (self-hosted Community Edition, Developer/Viewer rolleri) ama uygulama içi "kim ne
+  görebilir" ayrımı (örn. depo personeli vs. yönetici) henüz tasarlanmadı.
+- **Yönetim ana sayfası** (ChatGPT'nin Prompt 7'si): toplam/kullanılabilir stok, kritik
+  stoklu ürünler, son hareketler gibi özet kartları — henüz başlanmadı; kartların çoğu
+  (açık sipariş, üretimdeki iş emri) Faz 6/7 olmadan anlamsız kalır, o yüzden bu iki fazın
+  arkasına bırakıldı.
+- **`UrunlerKatalog` arama limiti bilinçli olarak 200 satırda sınırlı** (tam 1780 ürünü
+  gezinme değil, arama/filtre ile daraltma senaryosu için); `StokIslemi.UrunAra` da aynı
+  şekilde 50'de — kullanıcı onayıyla şimdilik böyle bırakıldı, gerekirse yükseltilebilir.
+
+### 📋 Sıradaki iş kalemleri (öncelik sırası, 2026-07-29'da planlandı) — ✅ 6/6 TAMAMLANDI (2026-07-30)
+
+Kullanıcıyla web arayüzünün nihai ekran/tool setini gözden geçirdiğimiz konuşmadan çıkan,
+üzerinde anlaşılan sıra. Hepsi `depo-appsmith-arayuz` reposunda uygulandı, canlı DB'ye
+karşı test edildi ve `dev`'e pushlandı (detaylar o reponun `CLAUDE.md`'sinde):
+
+1. **✅ Çoklu kategori seçimi** — `KategoriFilterSelect`, `SELECT_WIDGET` → `MULTI_SELECT_WIDGET_V2`'ye
+   çevrildi, `KatalogUrunleriGetir` artık `kategori_adi = ANY(selectedOptionValues)` kullanıyor.
+2. **✅ Gerçek lokasyon verisi + Lokasyon Yönetimi sayfası** — yeni `LokasyonYonetimi` sayfası
+   (ekle/listele/pasifleştir) kuruldu. **Gerçek işletme lokasyonlarını girmek hâlâ kullanıcıya
+   ait** — Claude lokasyon isimlerini bilmediği/uyduramayacağı için 3 test satırı
+   (Ana Depo/Sevkiyat Alanı/Fason Atölye 1) henüz değiştirilmedi, sadece bunu değiştirecek araç
+   hazır.
+3. **✅ "Sadece stokta olanları listele" filtresi** — `SadeceStoktaOlanlarSwitch` +
+   `v_toplam_stok` LEFT JOIN. Gerçek lokasyon/sayım verisi girilene kadar ~0 sonuç verecek,
+   öngörüldüğü gibi.
+4. **🔶 Galeri görünümü — iskelet tamam, List widget kullanıcıyı bekliyor**: anahtar/buton/
+   büyüyen LIMIT/paylaşılan detay paneli hazır; asıl kart ızgarasını oluşturan Appsmith
+   List (V2) widget'ı bilinçli olarak git üzerinden yazılmadı (bu repoda hiç örneği yok,
+   yanlış yazılırsa sayfanın tamamını bozma riski var) — kullanıcı tarafından canlı Editor'de
+   eklenmesi bekleniyor, tam talimat `depo-appsmith-arayuz/CLAUDE.md`'de.
+5. **✅ Stok Özet / Envanter sayfası** — yeni `StokOzet` sayfası, şemada var olan ama hiç
+   kullanılmayan `urunler.kritik_stok_esigi` kolonu ilk kez kullanıldı (kritik durumu işaretleme).
+6. **✅ Yönetim Ana Sayfası (dashboard)** — kullanıcının onayıyla asıl plandaki sıranın önüne
+   alınıp şimdiden kuruldu (özgün planda madde 5'in verisi olgunlaşana kadar bekletilecekti).
+   Kartların çoğu gerçek lokasyon/sayım verisi girilene kadar 0/az gösterecek, beklenen.
 
 ### Faz 6: Barkod ve sipariş entegrasyonu
 
-- barkod üretme ve okutma
-- ürün kabul
-- sevkiyat
-- sipariş ve rezervasyon akışı
+ChatGPT'nin Prompt 5'i ("Sipariş yönetimi") bu fazın sipariş kısmını detaylandırıyor,
+henüz hiçbir parçası kurulmadı:
+
+- sipariş ve rezervasyon akışı — önerilen varlıklar: `musteriler`, `siparisler`,
+  `siparis_kalemleri`, `siparis_durum_gecmisi`, `stok_rezervasyonlari`. Kurallar arasında
+  termin/kalan gün hesaplama, fiziksel/rezerve/kullanılabilir stok ayrımı, kısmi
+  hazırlama-sevkiyat, siparişin silinmeyip iptal edilmesi var — detay için ChatGPT
+  prompt'unun orijinali bu konuşmanın geçmişinde mevcut.
+- barkod üretme ve okutma, ürün kabul, sevkiyat — henüz başlanmadı.
+
+### Faz 7: Üretim takibi (yeni, 2026-07-29 — ChatGPT'nin Prompt 6'sından)
+
+- Sipariş kalemlerinden iş emri oluşturma; iş emri + üretim kaydı (aşama, makine, kalıp,
+  operatör, giren/sağlam/fire miktarı) ayrı varlıklar olarak öneriliyor.
+- Aşamalar: BEKLİYOR → ZAMAKHANE → TEMİZLEME → KAPLAMA → FASON → MONTAJ →
+  KALİTE_KONTROL → HAZIR → TAMAMLANDI → İPTAL.
+- `data/reference/kalip_bilgileri_yedek.xlsx`'i kullanacak ama **Faz 3 (Kalıp modülü)**
+  tamamlanmadan bu faz da tam anlamıyla başlayamaz — ikisi bağlantılı, ikisi de bilinçli
+  olarak şimdilik ertelendi.
+- İlk sürümde kapasite planlama/otomatik çizelgeleme yapılmayacak (kullanıcının kendi
+  kısıtı) — sade bir pano/tablo yeterli.
 
 ---
 
@@ -507,10 +594,29 @@ images/arsiv/products/                        (934 görsel dosyası)
 scripts/maintenance/eski_urunleri_arsivle.py   (bu arşivlemeyi üreten script)
 ```
 
-Bir sonraki teknik adım — Faz 3 (Kalıp Modülü) veya Faz 5'e (Web ERP arayüzü) hazırlık:
+**2026-07-29 güncellemesi:** `urunler.katalog_durumu` canlıya uygulandı — 1.780 ürün
+`AKTIF` (doğrulanmış ana görseli var), 1.193 ürün `PASIF`. `v_aktif_urunler` view'ı
+Appsmith'in tek okuma kaynağı olarak hazır. Appsmith arayüz katmanı ayrı bir git reposunda
+(`depo-appsmith-arayuz`) geliştiriliyor — Faz 5'in gerçek UI çalışması orada; bu repoda
+sadece veri/şema tarafı var. Detaylı mimari, branch modeli (`master`/`dev`/`review`, her
+iki repoda aynı) ve tam sözleşme için `CLAUDE.md` ve `docs/aktif-urun-veri-sozlesmesi.md`'ye
+bakın — güncel sayılar/durum artık orada takip ediliyor, bu bölüm sadece genel roadmap.
 
-```text
-1.194 görselsiz ürünün (Gorselsiz_Urunler raporu) ayrıca ele alınıp alınmayacağına karar verilmesi
-→ kaliplar tablosunun oluşturulması (kalip_bilgileri_yedek.xlsx'teki 1.875 kayıt için)
-→ ürün kartlarında görsellerin kullanılmaya başlanması (Faz 5 ön çalışması)
-```
+**2026-07-29 ikinci güncelleme — Faz 4 ve Faz 5'in çekirdeği tamamlandı:** migration 002
+(`v_lokasyon_stok_ozet`/`v_toplam_stok`) ve 003 (`stok_hareketi_kaydet()`) kullanıcı
+onayıyla ortak DB'ye uygulandı; Appsmith `StokIslemi` sayfası tüm 5 işlem tipiyle
+(GİRİŞ/ÇIKIŞ/SAYIM DEVRİ/TRANSFER/DÜZELTME) canlıda test edildi; `images/final/products/`'ı
+yayınlayan bir nginx statik dosya sunucusu (`docker-compose.yml`, port 8083) kuruldu; yeni
+bir `UrunlerKatalog` sayfası (arama + kategori filtresi + görsel + detay) sıfırdan
+oluşturulup test edildi. Süreçte birkaç Appsmith widget-şema sürprizi bulunup düzeltildi
+(bkz. `depo-appsmith-arayuz/CLAUDE.md`) — hepsi git dosyalarına doğrudan yazılan
+widget/sorgu tanımlarının, canlı Appsmith sürümünün gerçekte beklediği şemadan farklı
+çıkması yüzündendi (`SELECT_WIDGET` `options`→`sourceData`/`optionLabel`/`optionValue`,
+`crypto.randomUUID()`'nin düz HTTP'de çalışmaması, `TABLE_WIDGET_V2` kolonlarının açık
+`computedValue` istemesi).
+
+Kalan açık uçlar: `lokasyonlar`'daki 3 satır hâlâ test verisi (gerçek işletme
+lokasyonlarıyla değiştirilmeli); bugünkü test sırasında `stok_hareketleri`'ne düşen birkaç
+kayıt kullanıcının isteğiyle şimdilik siliniyor değil ("en son temizleriz"); Appsmith
+"Yönetim ana sayfası" (Faz 5'in son parçası) henüz başlanmadı. Faz 3 (Kalıp Modülü) ve
+Faz 7 (Üretim takibi) kullanıcı tarafından bilinçli olarak ertelendi.
