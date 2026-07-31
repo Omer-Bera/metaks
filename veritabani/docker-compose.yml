@@ -13,27 +13,8 @@ services:
       - pg_data:/var/lib/postgresql/data
       - ./sql/01_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
 
-  # Deneme amaçlı: mevcut Postgres'e doğrudan bağlanan, düşük-kod
-  # arayüz aracı. Veri taşımaz, sadece depo_sistemi'ni görselleştirir.
-  # Kaldırmak icin: docker compose rm -sf nocodb
-  nocodb:
-    image: nocodb/nocodb:latest
-    container_name: depo-nocodb
-    restart: unless-stopped
-    environment:
-      # NocoDB varsayılan olarak Docker/iç ağ adreslerine bağlanmayı SSRF
-      # korumasıyla engelliyor. Kendi self-hosted kurulumumuzda bu güvenli
-      # ve gerekli, o yüzden izin veriyoruz.
-      NC_ALLOW_LOCAL_HOSTS: "true"
-    ports:
-      - "8080:8080"
-    volumes:
-      - nc_data:/usr/app/data
-    depends_on:
-      - veritabani
-
-  # Faz 5 arayüz katmanı için aktif seçim (NocoDB'nin SSRF kısıtlaması
-  # aşılamadığı için terk edildi, bkz. yukarıdaki not).
+  # Faz 5 arayüz katmanı için aktif seçim (NocoDB değerlendirildi ve terk
+  # edildi — SSRF kısıtlaması aşılamadı, bkz. CLAUDE.md "UI / arayüz katmanı").
   appsmith:
     image: appsmith/appsmith-ce
     container_name: depo-appsmith
@@ -66,5 +47,4 @@ services:
 
 volumes:
   pg_data:
-  nc_data:
   appsmith_data:

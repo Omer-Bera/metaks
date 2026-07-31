@@ -477,9 +477,10 @@ Bu fazın ayrıntılı planı, kullanıcının ChatGPT'den alıp değerlendirmem
 prompt'un kendisinde bazı hatalar vardı (örn. `urunler`'de olmayan bir `urun_id` varsayımı,
 yanlış ürün/görsel sayıları) ama gereksinimleri gerçek eksikleri ortaya çıkardı.
 
-- ~~depo ve raf lokasyonları~~ 🔶 kısmi — `lokasyonlar` tablosuna 3 test/placeholder satırı
-  girildi (Ana Depo, Sevkiyat Alanı — DAHILI; Fason Atölye 1 — FASON). **Gerçek işletme
-  lokasyonlarıyla değiştirilmeli**, sadece Appsmith'i test edebilmek için.
+- ~~depo ve raf lokasyonları~~ ✅ **gerçek işletme lokasyonları girildi (2026-07-30)** —
+  `Metaks`/`Depo 1`/`Fabrika` (DAHILI), `Kaplama`/`Skor` (FASON). Eski 3 test/placeholder
+  satırı (Ana Depo/Sevkiyat Alanı/Fason Atölye 1) soft-deactivate edildi (`aktif_mi = false`,
+  hard-delete değil — `stok_hareketleri`'ndeki 21 test kaydı bunlara FK ile bağlı).
 - ~~mevcut stok hesaplama~~ ✅ **canlıya uygulandı** — `v_lokasyon_stok_ozet`/
   `v_toplam_stok` view'ları (`sql/migrations/002_lokasyon_stok_view.sql`), kullanıcı
   onayıyla ortak DB'ye işlendi.
@@ -538,10 +539,9 @@ karşı test edildi ve `dev`'e pushlandı (detaylar o reponun `CLAUDE.md`'sinde)
 1. **✅ Çoklu kategori seçimi** — `KategoriFilterSelect`, `SELECT_WIDGET` → `MULTI_SELECT_WIDGET_V2`'ye
    çevrildi, `KatalogUrunleriGetir` artık `kategori_adi = ANY(selectedOptionValues)` kullanıyor.
 2. **✅ Gerçek lokasyon verisi + Lokasyon Yönetimi sayfası** — yeni `LokasyonYonetimi` sayfası
-   (ekle/listele/pasifleştir) kuruldu. **Gerçek işletme lokasyonlarını girmek hâlâ kullanıcıya
-   ait** — Claude lokasyon isimlerini bilmediği/uyduramayacağı için 3 test satırı
-   (Ana Depo/Sevkiyat Alanı/Fason Atölye 1) henüz değiştirilmedi, sadece bunu değiştirecek araç
-   hazır.
+   (ekle/listele/pasifleştir) kuruldu. **Gerçek işletme lokasyonları 2026-07-30'da kullanıcı
+   tarafından bildirildi ve girildi**: `Metaks`/`Depo 1`/`Fabrika` (DAHILI), `Kaplama`/`Skor`
+   (FASON). Eski 3 test satırı (Ana Depo/Sevkiyat Alanı/Fason Atölye 1) pasifleştirildi.
 3. **✅ "Sadece stokta olanları listele" filtresi** — `SadeceStoktaOlanlarSwitch` +
    `v_toplam_stok` LEFT JOIN. Gerçek lokasyon/sayım verisi girilene kadar ~0 sonuç verecek,
    öngörüldüğü gibi.
@@ -559,7 +559,9 @@ karşı test edildi ve `dev`'e pushlandı (detaylar o reponun `CLAUDE.md`'sinde)
 ### Faz 6: Barkod ve sipariş entegrasyonu
 
 ChatGPT'nin Prompt 5'i ("Sipariş yönetimi") bu fazın sipariş kısmını detaylandırıyor,
-henüz hiçbir parçası kurulmadı:
+henüz hiçbir parçası kurulmadı. **2026-07-30'da kullanıcı onayı**: barkod tarafı zor
+değil, ama depo/ürün sistemi (Faz 4/5) tamamen bitmeden ele alınmayacak — bilinçli olarak
+sona bırakıldı.
 
 - sipariş ve rezervasyon akışı — önerilen varlıklar: `musteriler`, `siparisler`,
   `siparis_kalemleri`, `siparis_durum_gecmisi`, `stok_rezervasyonlari`. Kurallar arasında
@@ -579,6 +581,30 @@ henüz hiçbir parçası kurulmadı:
   olarak şimdilik ertelendi.
 - İlk sürümde kapasite planlama/otomatik çizelgeleme yapılmayacak (kullanıcının kendi
   kısıtı) — sade bir pano/tablo yeterli.
+
+### Faz 8: Numune takibi (şema tarafı ✅ tamamlandı 2026-07-30)
+
+Hangi numunenin hangi dolapta/rafta olduğunu "kütüphanede kitap bulur gibi" bulmak
+("Numune Dolabı 1 · Raf 3"). Sayım devam ederken aciliyet kazandı: numune dolabını açıp
+3 adet bulan kişinin bunu yazacağı dürüst bir yer yoktu.
+
+**Bu notun önceki hâli ayrı bir varlık gerektireceğini söylüyordu — o değerlendirme
+düzeltildi.** Gerekçe (numune, `urunler`'in "sadece değişmeyen fiziksel öznitelikler"
+ilkesine uymaz) doğru, ama yalnızca numune yerinin `urunler` üzerinde bir **kolon**
+olmasını eler; ayrı bir varlık gerektiğini kanıtlamaz. Numune fiziksel olarak ürünün bir
+adedinin bir yerde durmasıdır ve "depodan numune dolabına taşındı" tam olarak bir
+TRANSFER'dir — yani var olan `lokasyonlar` + `stok_hareketleri` mekanizmasına oturur.
+Bu sayede numune ödünç alınıp geri konduğunda hareket kaydı bedavaya gelir.
+
+`sql/migrations/004_numune_lokasyonlari.sql` canlıya uygulandı: `lokasyonlar.tip`'e
+`NUMUNE`, iki seviyeli dolap→raf hiyerarşisi (`ust_lokasyon_id`, `kod`), yeni
+`v_lokasyonlar_detay` / `v_fiziksel_stok` / `v_numune_konumlari` view'ları,
+`stok_hareketi_kaydet()`'e yaprak kontrolü. `v_toplam_stok` artık **satılabilir** stok
+(numune hariç). Ayrıntı: `docs/aktif-urun-veri-sozlesmesi.md`.
+
+**Sırada ne var:** (1) iki arayüzün lokasyon açılır listeleri `v_lokasyonlar_detay` +
+`yaprak_mi`'ye taşınmalı, (2) ancak ondan sonra gerçek dolap/raf satırları girilmeli.
+Kaç dolap/raf olacağı henüz kullanıcıdan alınmadı.
 
 ---
 
