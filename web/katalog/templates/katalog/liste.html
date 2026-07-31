@@ -1,0 +1,188 @@
+{% extends "katalog/base.html" %}
+{% load humanize %}
+
+{% block title %}METAKS · {{ sayfa_basligi }}{% endblock %}
+
+{% block content %}
+{% comment %}
+Sticky başlık takas edilen bloğun DIŞINDA. İçindekilerin her biri bilinçli olarak burada:
+
+* arama kutusu — DOM'dan sökülmediği için kullanıcı yazarken odak/imleç kaybolmuyor.
+* kategori paneli — çoklu seçimde her tıklamada kapanmaması gerekiyor; içindeki liste
+  ve buton sayacı HTMX'in out-of-band takasıyla güncelleniyor (bkz. _govde_yanit.html).
+* sıralama seçimi — `sirala` değerinin tek kaynağı burası, bayatlaması mümkün değil.
+
+Diğer filtreler (#filtre-durumu içindeki hidden input'lar) gövdenin içinde; bu üç
+kontrol onları hx-include ile canlı DOM'dan okuyor, dolayısıyla hiçbiri eskimiyor.
+{% endcomment %}
+<header class="sticky top-0 z-40 bg-white/85 backdrop-blur-md border-b border-slate-200">
+    <div class="max-w-[1600px] mx-auto px-4 sm:px-6 py-3
+                flex flex-wrap items-center gap-x-4 gap-y-3">
+
+        {# Logo ana ekrana döner. #}
+        <a href="{% url 'katalog:ana_ekran' %}" class="flex items-center gap-2.5 shrink-0"
+           title="Ana ekran">
+            <span class="grid place-items-center w-9 h-9 rounded-xl bg-slate-900
+                         text-amber-400 font-bold text-sm tracking-tight">MK</span>
+            <span class="hidden lg:block text-[11px] text-slate-500 leading-tight">METAKS</span>
+        </a>
+
+        <nav class="flex items-center gap-1 shrink-0 rounded-full bg-slate-100 p-1">
+            <a href="{% url 'katalog:urun_listesi' %}"
+               class="rounded-full px-3.5 py-1.5 text-sm font-medium transition
+                      {% if aktif_sekme == 'katalog' %}bg-white text-slate-900 shadow-sm
+                      {% else %}text-slate-500 hover:text-slate-900{% endif %}">Katalog</a>
+            <a href="{% url 'katalog:stok_listesi' %}"
+               class="rounded-full px-3.5 py-1.5 text-sm font-medium transition
+                      {% if aktif_sekme == 'stok' %}bg-white text-slate-900 shadow-sm
+                      {% else %}text-slate-500 hover:text-slate-900{% endif %}">Stok</a>
+            <a href="{% url 'katalog:hareket_gecmisi' %}"
+               class="rounded-full px-3.5 py-1.5 text-sm font-medium transition
+                      {% if aktif_sekme == 'hareketler' %}bg-white text-slate-900 shadow-sm
+                      {% else %}text-slate-500 hover:text-slate-900{% endif %}">Hareketler</a>
+        </nav>
+
+        <div class="relative flex-1 min-w-[220px] order-last lg:order-none w-full lg:w-auto">
+            <svg class="absolute left-3.5 top-1/2 -translate-y-1/2 w-[18px] h-[18px] text-slate-400
+                        pointer-events-none" fill="none" stroke="currentColor" stroke-width="2"
+                 viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
+            </svg>
+
+            <input
+                type="search"
+                name="q"
+                value="{{ filtre.arama }}"
+                autocomplete="off"
+                placeholder="Stok kodu, kategori veya açıklama ara…"
+                aria-label="Ürün ara"
+                class="w-full rounded-full border border-slate-300 bg-slate-50/80 pl-11 pr-11 py-2.5
+                       text-[15px] placeholder:text-slate-400 transition
+                       hover:bg-white focus:bg-white focus:border-slate-400
+                       focus:outline-none focus:ring-4 focus:ring-slate-900/5"
+                hx-get="{{ filtre.yol }}"
+                hx-trigger="input changed delay:250ms, search"
+                hx-include="#filtre-durumu input, [name='sirala']"
+                hx-target="#katalog-govde"
+                hx-swap="outerHTML"
+                hx-push-url="true"
+                hx-indicator="#arama-bekliyor"
+            >
+
+            <span id="arama-bekliyor" class="htmx-indicator absolute right-4 top-1/2 -translate-y-1/2">
+                <svg class="animate-spin w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity=".2"/>
+                    <path d="M22 12a10 10 0 0 0-10-10" stroke="currentColor" stroke-width="3"
+                          stroke-linecap="round"/>
+                </svg>
+            </span>
+        </div>
+
+        <div class="relative shrink-0" id="kategori-sarmal">
+            <button type="button" onclick="kategoriPaneliAcKapa()"
+                    aria-haspopup="true" aria-expanded="false" id="kategori-butonu"
+                    class="flex items-center gap-2 rounded-lg border border-slate-300 bg-white
+                           py-2 px-3.5 text-sm text-slate-700 transition hover:border-slate-400
+                           focus:outline-none focus:ring-4 focus:ring-slate-900/5">
+                Kategori
+                <span id="kategori-sayaci">{% include "katalog/_kategori_sayaci.html" %}</span>
+                <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor"
+                     stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+
+            <div id="kategori-panel"
+                 class="hidden absolute right-0 mt-2 w-[290px] rounded-xl border border-slate-200
+                        bg-white shadow-xl shadow-slate-300/40 overflow-hidden z-50">
+                <div class="p-2 border-b border-slate-100">
+                    <input type="search" id="kategori-ara" autocomplete="off"
+                           placeholder="Kategori ara…" oninput="kategoriSuz()"
+                           class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5
+                                  text-sm placeholder:text-slate-400 focus:outline-none
+                                  focus:bg-white focus:border-slate-400">
+                </div>
+                <div id="kategori-listesi" class="max-h-[340px] overflow-y-auto p-1">
+                    {% include "katalog/_kategori_listesi.html" %}
+                </div>
+            </div>
+        </div>
+
+        <label class="flex items-center gap-2 shrink-0 text-sm text-slate-500">
+            <span class="sr-only">Sıralama</span>
+            <select
+                name="sirala"
+                aria-label="Sıralama"
+                class="rounded-lg border border-slate-300 bg-white py-2 pl-3 pr-8 text-sm text-slate-700
+                       cursor-pointer transition hover:border-slate-400
+                       focus:outline-none focus:ring-4 focus:ring-slate-900/5"
+                hx-get="{{ filtre.yol }}"
+                hx-trigger="change"
+                hx-include="[name='q'], #filtre-durumu input"
+                hx-target="#katalog-govde"
+                hx-swap="outerHTML"
+                hx-push-url="true"
+            >
+                {% for deger, etiket in siralamalar %}
+                <option value="{{ deger }}" {% if deger == filtre.sirala %}selected{% endif %}>{{ etiket }}</option>
+                {% endfor %}
+            </select>
+        </label>
+
+        {% if user.is_authenticated %}
+        <form method="post" action="{% url 'katalog:cikis' %}" class="shrink-0">
+            {% csrf_token %}
+            <button type="submit" title="{{ user.email|default:user.username }}"
+                    class="text-sm text-slate-500 transition hover:text-slate-900">Çıkış</button>
+        </form>
+        {% else %}
+        {# Misafir olarak gezenler için girişin kalıcı yolu. #}
+        <a href="{% url 'katalog:giris' %}"
+           class="shrink-0 text-sm text-slate-500 transition hover:text-slate-900">Giriş yap</a>
+        {% endif %}
+    </div>
+</header>
+
+<main class="max-w-[1600px] mx-auto px-4 sm:px-6 py-6">
+    {% include "katalog/_govde.html" %}
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Kategori paneli: açma/kapama ve panel içi arama tamamen istemci tarafında.
+    // 35 kategoriyi süzmek için sunucuya gitmek gereksiz gecikme olurdu; seçimin
+    // kendisi ise (kutucuklar) sunucuya gidiyor, durum orada tutuluyor.
+    const kategoriSarmal = document.getElementById('kategori-sarmal');
+    const kategoriPanel = document.getElementById('kategori-panel');
+    const kategoriButonu = document.getElementById('kategori-butonu');
+    const kategoriAra = document.getElementById('kategori-ara');
+
+    function kategoriPaneliAcKapa(zorla) {
+        const acik = zorla ?? kategoriPanel.classList.contains('hidden');
+        kategoriPanel.classList.toggle('hidden', !acik);
+        kategoriButonu.setAttribute('aria-expanded', String(acik));
+        if (acik) kategoriAra.focus();
+    }
+
+    function kategoriSuz() {
+        const arama = kategoriAra.value.trim().toLocaleLowerCase('tr');
+        for (const satir of document.querySelectorAll('#kategori-listesi [data-ad]')) {
+            satir.classList.toggle('hidden', !satir.dataset.ad.includes(arama));
+        }
+    }
+
+    // Panel dışına tıklayınca kapansın.
+    document.addEventListener('click', (olay) => {
+        if (!kategoriSarmal.contains(olay.target)) kategoriPaneliAcKapa(false);
+    });
+
+    document.addEventListener('keydown', (olay) => {
+        if (olay.key === 'Escape') kategoriPaneliAcKapa(false);
+    });
+
+    // Kategori seçildikten sonra liste out-of-band tazeleniyor; panel içi arama kutusunda
+    // yazı kalmışsa süzme yeniden uygulanmalı, yoksa gizlenen satırlar geri geliverir.
+    document.body.addEventListener('htmx:afterSwap', (olay) => {
+        if (olay.target.id === 'kategori-listesi' && kategoriAra.value.trim()) kategoriSuz();
+    });
+</script>
+{% endblock %}

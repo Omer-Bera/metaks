@@ -1,0 +1,222 @@
+{% extends "katalog/base.html" %}
+{% load humanize l10n %}
+
+{% block title %}METAKS Depo{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 sm:px-6 py-10 sm:py-16">
+
+    <header class="flex items-start justify-between gap-4 mb-10">
+        <div class="flex items-center gap-3">
+            <span class="grid place-items-center w-12 h-12 rounded-2xl bg-slate-900
+                         text-amber-400 font-bold tracking-tight">MK</span>
+            <div>
+                <h1 class="text-xl font-semibold text-slate-900 leading-tight">METAKS Depo</h1>
+                <p class="text-sm text-slate-500">Ürün kataloğu ve stok yönetimi</p>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3 shrink-0">
+            {% if user.is_authenticated %}
+            <span class="hidden sm:block text-sm text-slate-500">
+                {{ user.email|default:user.username }}</span>
+            <form method="post" action="{% url 'katalog:cikis' %}">
+                {% csrf_token %}
+                <button type="submit" class="rounded-lg border border-slate-300 bg-white px-3 py-1.5
+                        text-sm text-slate-600 transition hover:border-slate-400 hover:text-slate-900
+                        focus:outline-none focus:ring-4 focus:ring-slate-900/5">Çıkış</button>
+            </form>
+            {% else %}
+            {# Misafir olarak gezen kullanıcının girişe dönebileceği kalıcı yol. #}
+            <a href="{% url 'katalog:giris' %}"
+               class="rounded-lg bg-slate-900 px-3.5 py-1.5 text-sm font-medium text-white
+                      transition hover:bg-slate-700
+                      focus:outline-none focus:ring-4 focus:ring-slate-900/10">Giriş yap</a>
+            {% endif %}
+        </div>
+    </header>
+
+    {% comment %}
+    KPI satırı. Hepsi tek anlık değer olduğu için doğru biçim stat tile — tek çubuklu
+    grafik değil. Değerler proportional figure ile basılıyor (tabular-nums yalnızca
+    hizalanması gereken sütunlar için); etiketler cümle düzeninde, iki nokta yok.
+    {% endcomment %}
+    <section class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4">
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+            <p class="text-sm text-slate-500">Aktif ürün</p>
+            <p class="mt-1 text-3xl font-semibold text-slate-900">{{ aktif_urun|intcomma }}</p>
+        </div>
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+            <p class="text-sm text-slate-500">Kategori</p>
+            <p class="mt-1 text-3xl font-semibold text-slate-900">{{ kategori_sayisi }}</p>
+        </div>
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+            <p class="text-sm text-slate-500">Aktif lokasyon</p>
+            <p class="mt-1 text-3xl font-semibold text-slate-900">{{ aktif_lokasyon }}</p>
+        </div>
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+            <p class="text-sm text-slate-500">Stoğu olan ürün</p>
+            <p class="mt-1 text-3xl font-semibold text-slate-900">{{ stogu_olan|intcomma }}</p>
+        </div>
+    </section>
+
+    {% comment %}
+    Sayım ilerlemesi bir orana karşı tek değer -> meter. Dolgu ve boş yolak aynı
+    rampanın iki adımı (emerald-600 / emerald-100), böylece durum çubuğun tamamında
+    okunuyor. Sayı ayrıca metin olarak da yazılı: durum yalnızca renge bırakılmıyor.
+    {% endcomment %}
+    <section class="rounded-xl border border-slate-200 bg-white p-4 mb-10">
+        <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 mb-2.5">
+            <p class="text-sm text-slate-500">Sayım ilerlemesi</p>
+            <p class="text-sm text-slate-600">
+                <span class="font-medium text-slate-900">{{ hareketli_urun|intcomma }}</span>
+                / {{ aktif_urun|intcomma }} ürünün stok kaydı var
+                <span class="text-slate-400">· %{{ sayim_yuzdesi }}</span>
+            </p>
+        </div>
+        {% comment %}
+        unlocalize şart: LANGUAGE_CODE='tr' olduğu için 0.4 varsayılan olarak "0,4"
+        basılıyor ve "width: 0,4%" geçersiz CSS oluyor — tarayıcı bunu yok sayıp
+        genişliği auto'ya düşürdüğü için çubuk %0,4 yerine TAM DOLU görünüyordu.
+        Aynı sebeple aria-valuenow da sayı olarak verilmeli. Yüzdenin metin hâlinde
+        (aşağıda) virgüllü görünmesi ise doğru, orada dokunulmuyor.
+        {% endcomment %}
+        <div class="h-2 w-full rounded-full bg-emerald-100 overflow-hidden"
+             role="progressbar" aria-valuenow="{{ sayim_yuzdesi|unlocalize }}" aria-valuemin="0"
+             aria-valuemax="100" aria-label="Sayım ilerlemesi">
+            {# Görünür kalması için en az 2px: %0,4'lük dolgu aksi hâlde hiç çizilmiyor. #}
+            <div class="h-full rounded-full bg-emerald-600 min-w-[2px]"
+                 style="width: {{ sayim_yuzdesi|unlocalize }}%"></div>
+        </div>
+    </section>
+
+    {% if son_hareketler %}
+    <section class="rounded-xl border border-slate-200 bg-white overflow-hidden mb-10">
+        <div class="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-slate-200">
+            <h2 class="text-sm font-medium text-slate-700">Son hareketler</h2>
+            <a href="{% url 'katalog:hareket_gecmisi' %}"
+               class="text-sm text-slate-500 underline underline-offset-4
+                      transition hover:text-slate-900">Tümü</a>
+        </div>
+        <ul class="divide-y divide-slate-100">
+            {% for hareket in son_hareketler %}
+            {# hareket.tarih: naive UTC kolonu aware'e çevrilmiş hâli (bkz. models.py). #}
+            <li class="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm">
+                <span class="text-xs text-slate-400 w-28 shrink-0">{{ hareket.tarih|date:"j M H:i" }}</span>
+                <span class="font-mono text-[13px] text-slate-900">{{ hareket.stok_kodu }}</span>
+                <span class="rounded px-1.5 py-0.5 text-xs font-medium
+                    {% if hareket.islem_tipi == 'GIRIS' %}bg-emerald-100 text-emerald-800
+                    {% elif hareket.islem_tipi == 'CIKIS' %}bg-rose-100 text-rose-800
+                    {% elif hareket.islem_tipi == 'TRANSFER' %}bg-sky-100 text-sky-800
+                    {% elif hareket.islem_tipi == 'SAYIM_DEVRI' %}bg-amber-100 text-amber-800
+                    {% else %}bg-slate-100 text-slate-700{% endif %}"
+                >{{ hareket.islem_etiketi }}</span>
+                <span class="text-slate-600">{{ hareket.miktar|intcomma }}</span>
+                <span class="text-xs text-slate-400">
+                    {{ hareket.kaynak_lokasyon.lokasyon_adi|default:"—" }}
+                    → {{ hareket.hedef_lokasyon.lokasyon_adi|default:"—" }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+    </section>
+    {% endif %}
+
+    <section class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-10">
+        <a href="{% url 'katalog:urun_listesi' %}"
+           class="group rounded-2xl border border-slate-200 bg-white p-6 transition
+                  hover:border-slate-300 hover:shadow-lg hover:shadow-slate-200/60
+                  focus:outline-none focus:ring-4 focus:ring-slate-900/10">
+            <span class="grid place-items-center w-11 h-11 rounded-xl bg-slate-900 text-white">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.75"
+                     viewBox="0 0 24 24" aria-hidden="true">
+                    <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+                    <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+                    <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+                    <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+                </svg>
+            </span>
+            <h2 class="mt-4 font-semibold text-slate-900">Ürün Kataloğu</h2>
+            <p class="mt-1 text-sm text-slate-500">
+                Görsellerden ürün bulma. Kategori ve arama ile filtreleme.
+                Stok bilgisi göstermez — müşteriye gösterime uygun.
+            </p>
+            <span class="mt-3 inline-flex items-center gap-1 text-sm font-medium text-slate-900">
+                Aç <span class="transition group-hover:translate-x-0.5">→</span></span>
+        </a>
+
+        <a href="{% url 'katalog:stok_listesi' %}"
+           class="group rounded-2xl border border-slate-200 bg-white p-6 transition
+                  hover:border-slate-300 hover:shadow-lg hover:shadow-slate-200/60
+                  focus:outline-none focus:ring-4 focus:ring-slate-900/10">
+            <span class="grid place-items-center w-11 h-11 rounded-xl bg-emerald-600 text-white">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.75"
+                     viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M3 7l9-4 9 4v10l-9 4-9-4V7z"/><path d="M3 7l9 4 9-4M12 11v10"/>
+                </svg>
+            </span>
+            <h2 class="mt-4 font-semibold text-slate-900">Stok Durumu</h2>
+            <p class="mt-1 text-sm text-slate-500">
+                Aynı galeri, üzerinde stok miktarı. Buradan ürün seçip giriş, çıkış,
+                transfer ve sayım işlemi yapılır.
+            </p>
+            <span class="mt-3 inline-flex items-center gap-1 text-sm font-medium text-slate-900">
+                Aç <span class="transition group-hover:translate-x-0.5">→</span></span>
+        </a>
+
+        <a href="{% url 'katalog:hareket_gecmisi' %}"
+           class="group rounded-2xl border border-slate-200 bg-white p-6 transition
+                  hover:border-slate-300 hover:shadow-lg hover:shadow-slate-200/60
+                  focus:outline-none focus:ring-4 focus:ring-slate-900/10">
+            <span class="grid place-items-center w-11 h-11 rounded-xl bg-sky-600 text-white">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.75"
+                     viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>
+                </svg>
+            </span>
+            <h2 class="mt-4 font-semibold text-slate-900">Hareket Geçmişi</h2>
+            <p class="mt-1 text-sm text-slate-500">
+                Kim, ne zaman, hangi üründe, nereden nereye. Ürüne, lokasyona, işlem
+                tipine ve tarihe göre filtrelenir.
+            </p>
+            <span class="mt-3 inline-flex items-center gap-1 text-sm font-medium text-slate-900">
+                Aç <span class="transition group-hover:translate-x-0.5">→</span></span>
+        </a>
+
+        {% comment %}
+        Yönetim kartı yalnızca yöneticiye. Gizlemek bir güvenlik önlemi DEĞİL (asıl
+        kapı yonetim.py'deki is_staff kontrolü) — amaç yetkisi olmayan kullanıcıya
+        tıklayınca 403 verecek bir kart göstermemek.
+        {% endcomment %}
+        {% if user.is_staff %}
+        <a href="{% url 'katalog:yonetim' %}"
+           class="group rounded-2xl border border-slate-200 bg-white p-6 transition
+                  hover:border-slate-300 hover:shadow-lg hover:shadow-slate-200/60
+                  focus:outline-none focus:ring-4 focus:ring-slate-900/10">
+            <span class="grid place-items-center w-11 h-11 rounded-xl bg-violet-600 text-white">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.75"
+                     viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M12 2.5l1.6 2.4 2.8-.6.6 2.8 2.4 1.6-1.4 2.5 1.4 2.5-2.4 1.6-.6 2.8
+                             -2.8-.6L12 21.5l-1.6-2.4-2.8.6-.6-2.8-2.4-1.6L6 12.7 4.6 10.2l2.4-1.6
+                             .6-2.8 2.8.6L12 2.5z"/>
+                </svg>
+            </span>
+            <h2 class="mt-4 font-semibold text-slate-900">Yönetim</h2>
+            <p class="mt-1 text-sm text-slate-500">
+                Kullanıcı hesapları, ürün kaydı ve depo lokasyonları.
+                Yalnızca yöneticilere açık.
+            </p>
+            <span class="mt-3 inline-flex items-center gap-1 text-sm font-medium text-slate-900">
+                Aç <span class="transition group-hover:translate-x-0.5">→</span></span>
+        </a>
+        {% endif %}
+    </section>
+
+    {% comment %}
+    Giriş kutusu buradan kaldırıldı: modül kartlarının da altında kaldığı için
+    sayfayı kaydırmadan görünmüyordu. Artık kendi ekranı var (/giris/) ve kök URL
+    giriş yapılmamışken oraya yönlendiriyor; üst çubuktaki "Giriş yap" da misafir
+    olarak gezenler için kalıcı yolu sağlıyor.
+    {% endcomment %}
+</div>
+{% endblock %}

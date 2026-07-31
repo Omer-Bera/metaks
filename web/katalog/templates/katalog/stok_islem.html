@@ -1,0 +1,195 @@
+{% extends "katalog/base.html" %}
+{% load humanize %}
+
+{% block title %}METAKS · {{ urun.stok_kodu }} stok işlemi{% endblock %}
+
+{% block content %}
+<header class="sticky top-0 z-40 bg-white/85 backdrop-blur-md border-b border-slate-200">
+    {% comment %}
+    flex-wrap emniyet kemeri: uzun e-posta dar ekranda taşmak yerine alt satıra
+    insin (bkz. hareketler.html, aynı tuzak burada da var — gerçek bir e-postayla
+    ölçüldü).
+    {% endcomment %}
+    <div class="max-w-3xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center gap-3">
+        <a href="{% url 'katalog:stok_listesi' %}"
+           class="flex items-center gap-1.5 text-sm text-slate-500 transition hover:text-slate-900">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2"
+                 viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+            Stok
+        </a>
+        <span class="hidden sm:block flex-1"></span>
+        <span class="text-sm text-slate-500">{{ request.user.email|default:request.user.username }}</span>
+        <form method="post" action="{% url 'katalog:cikis' %}">
+            {% csrf_token %}
+            <button type="submit" class="text-sm text-slate-500 underline underline-offset-4
+                    transition hover:text-slate-900">Çıkış</button>
+        </form>
+    </div>
+</header>
+
+<main class="max-w-3xl mx-auto px-4 sm:px-6 py-6 pb-16">
+
+    <div class="flex items-center gap-4 mb-6">
+        <img src="{{ urun.gorsel_url }}" alt="{{ urun.stok_kodu }}" onerror="gorselHata(this)"
+             class="w-20 h-20 rounded-xl border border-slate-200 bg-white object-contain p-1.5">
+        <div class="hidden w-20 h-20 rounded-xl border border-slate-200 bg-slate-50"></div>
+        <div>
+            <h1 class="font-mono text-2xl font-semibold tracking-tight text-slate-900">{{ urun.stok_kodu }}</h1>
+            <p class="text-sm text-slate-500">{{ urun.kategori_adi|default:"Kategorisiz" }}</p>
+        </div>
+    </div>
+
+    {% if sonuc and not sonuc.atlandi %}
+    <div class="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+        <p class="text-sm font-medium text-emerald-900">{{ sonuc.mesaj }}</p>
+        <p class="mt-0.5 text-xs text-emerald-700">
+            Hareket no: {{ sonuc.hareket_id }} · Uygulanan: {{ sonuc.uygulanan_miktar|intcomma }}
+        </p>
+    </div>
+    {% elif sonuc and sonuc.atlandi %}
+    {% comment %}
+    atlandi=True hata değil: ya aynı istemci kimliği daha önce kaydedilmiş (çift tıklama /
+    ağ tekrarı) ya da sayılan miktar sistemdekiyle aynı, yani yazılacak fark yok.
+    {% endcomment %}
+    <div class="mb-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+        <p class="text-sm text-slate-700">{{ sonuc.mesaj }}</p>
+    </div>
+    {% elif hata %}
+    <div class="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+        <p class="text-sm font-medium text-red-900">{{ hata }}</p>
+    </div>
+    {% endif %}
+
+    <section class="mb-6 rounded-xl border border-slate-200 overflow-hidden">
+        <h2 class="px-4 py-2.5 border-b border-slate-200 bg-slate-50 text-sm font-medium
+                   text-slate-700">Sistemdeki mevcut stok</h2>
+        {% if mevcut_stok %}
+        <dl class="divide-y divide-slate-100">
+            {% for satir in mevcut_stok %}
+            <div class="flex items-center justify-between gap-4 px-4 py-2">
+                <dt class="text-sm text-slate-600">{{ satir.lokasyon_adi }}
+                    <span class="ml-1 text-[11px] text-slate-400">{{ satir.lokasyon_tipi }}</span>
+                    {% if satir.pasif %}
+                    <span class="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500"
+                          title="Bu lokasyon kapatıldı, yeni işlemde seçilemez">pasif</span>
+                    {% endif %}</dt>
+                <dd class="text-sm font-medium text-slate-900">{{ satir.mevcut_miktar|intcomma }}</dd>
+            </div>
+            {% endfor %}
+        </dl>
+        {% else %}
+        <p class="px-4 py-3 text-sm text-slate-500">Bu ürün için hiç stok hareketi kaydedilmemiş.</p>
+        {% endif %}
+    </section>
+
+    <form method="post" class="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
+        {% csrf_token %}
+        {% comment %}
+        Mükerrer gönderim koruması: bu kimlik form her basıldığında yeni üretiliyor.
+        Çift tıklama ya da ağ tekrarı aynı kimliği gönderirse veritabanı ikinci satırı
+        yazmıyor (bkz. stok_servisi.yeni_islem_kimligi).
+        {% endcomment %}
+        <input type="hidden" name="istemci_kimligi" value="{{ istemci_kimligi }}">
+
+        <fieldset class="mb-5">
+            <legend class="mb-2 text-sm font-medium text-slate-700">İşlem tipi</legend>
+            <div class="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                {% for tip in islem_tipleri %}
+                <label class="islem-tipi cursor-pointer">
+                    <input type="radio" name="islem_tipi" value="{{ tip.deger }}"
+                           class="peer sr-only" onchange="islemTipiDegisti()"
+                           data-kaynak="{{ tip.kaynak|yesno:'1,0' }}"
+                           data-hedef="{{ tip.hedef|yesno:'1,0' }}"
+                           data-aciklama="{{ tip.aciklama }}"
+                           data-miktar-etiketi="{{ tip.miktar_etiketi }}"
+                           data-kaynak-etiketi="{{ tip.kaynak_etiketi|default:'Kaynak lokasyon' }}"
+                           data-hedef-etiketi="{{ tip.hedef_etiketi|default:'Hedef lokasyon' }}"
+                           {% if girilen.islem_tipi == tip.deger %}checked{% endif %}>
+                    <span class="block rounded-lg border border-slate-300 px-3 py-2 text-center text-sm
+                                 text-slate-600 transition hover:border-slate-400
+                                 peer-checked:border-slate-900 peer-checked:bg-slate-900
+                                 peer-checked:text-white
+                                 peer-focus-visible:ring-4 peer-focus-visible:ring-slate-900/10"
+                    >{{ tip.etiket }}</span>
+                </label>
+                {% endfor %}
+            </div>
+            <p id="tip-aciklamasi" class="mt-2 text-sm text-slate-500"></p>
+        </fieldset>
+
+        <label class="block mb-5">
+            <span id="miktar-etiketi" class="block mb-1.5 text-sm font-medium text-slate-700">Miktar</span>
+            <input type="number" name="miktar" inputmode="numeric" required
+                   value="{{ girilen.miktar }}"
+                   class="w-full sm:w-56 rounded-lg border border-slate-300 px-3 py-2 text-sm
+                          focus:outline-none focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5">
+        </label>
+
+        <div class="grid sm:grid-cols-2 gap-4 mb-5">
+            <label class="block" id="kaynak-alani">
+                <span id="kaynak-etiketi" class="block mb-1.5 text-sm font-medium text-slate-700">Kaynak lokasyon</span>
+                <select name="kaynak_lokasyon_id"
+                        class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white
+                               focus:outline-none focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5">
+                    <option value="">— seçilmedi —</option>
+                    {% for lokasyon in lokasyonlar %}
+                    <option value="{{ lokasyon.lokasyon_id }}"
+                            {% if girilen.kaynak_lokasyon_id == lokasyon.lokasyon_id|stringformat:"s" %}selected{% endif %}
+                    >{{ lokasyon.tam_ad }} ({{ lokasyon.tip }})</option>
+                    {% endfor %}
+                </select>
+            </label>
+
+            <label class="block" id="hedef-alani">
+                <span id="hedef-etiketi" class="block mb-1.5 text-sm font-medium text-slate-700">Hedef lokasyon</span>
+                <select name="hedef_lokasyon_id"
+                        class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white
+                               focus:outline-none focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5">
+                    <option value="">— seçilmedi —</option>
+                    {% for lokasyon in lokasyonlar %}
+                    <option value="{{ lokasyon.lokasyon_id }}"
+                            {% if girilen.hedef_lokasyon_id == lokasyon.lokasyon_id|stringformat:"s" %}selected{% endif %}
+                    >{{ lokasyon.tam_ad }} ({{ lokasyon.tip }})</option>
+                    {% endfor %}
+                </select>
+            </label>
+        </div>
+
+        <label class="block mb-6">
+            <span class="block mb-1.5 text-sm font-medium text-slate-700">
+                Açıklama <span class="font-normal text-slate-400">(isteğe bağlı)</span></span>
+            <input type="text" name="aciklama" value="{{ girilen.aciklama }}" maxlength="500"
+                   class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm
+                          focus:outline-none focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5">
+        </label>
+
+        <button type="submit"
+                class="w-full sm:w-auto rounded-lg bg-slate-900 px-6 py-2.5 text-sm font-medium
+                       text-white transition hover:bg-slate-700
+                       focus:outline-none focus:ring-4 focus:ring-slate-900/10">Kaydet</button>
+    </form>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Yalnızca sunum: seçilen işlem tipine göre hangi lokasyon alanının görüneceğini ve
+    // etiketleri ayarlar. Zorunluluk denetimi burada YOK — onu stok_hareketi_kaydet()
+    // yapıyor ve hata mesajını Türkçe döndürüyor. İki yerde doğrulama, zamanla ayrışan
+    // iki kural demek olurdu.
+    function islemTipiDegisti() {
+        const secili = document.querySelector('input[name="islem_tipi"]:checked');
+        if (!secili) return;
+        const veri = secili.dataset;
+
+        document.getElementById('kaynak-alani').classList.toggle('hidden', veri.kaynak !== '1');
+        document.getElementById('hedef-alani').classList.toggle('hidden', veri.hedef !== '1');
+        document.getElementById('tip-aciklamasi').textContent = veri.aciklama;
+        document.getElementById('miktar-etiketi').textContent = veri.miktarEtiketi;
+        document.getElementById('kaynak-etiketi').textContent = veri.kaynakEtiketi;
+        document.getElementById('hedef-etiketi').textContent = veri.hedefEtiketi;
+    }
+
+    islemTipiDegisti();
+</script>
+{% endblock %}

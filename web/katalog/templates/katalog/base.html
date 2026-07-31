@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}METAKS Ürün Kataloğu{% endblock %}</title>
+    {% comment %}
+    Satır içi SVG favicon: tarayıcının /favicon.ico isteğini (ve dev sunucusundaki
+    404'ünü) ortadan kaldırıyor, ayrıca statik dosya sunumu gerektirmiyor.
+    {% endcomment %}
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230f172a'/><text x='16' y='23' font-family='system-ui,sans-serif' font-size='17' font-weight='700' fill='%23fbbf24' text-anchor='middle'>M</text></svg>">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <style>
+        /* Yalnızca utility sınıflarıyla ifade edilemeyen üç şey. Bilinçli olarak
+           Tailwind Play CDN'in `type="text/tailwindcss"` bloğu kullanılmadı: o sözdizimi
+           CDN'e özgü, ileride self-host'a geçilirken taşınması gereken bir şey olurdu. */
+        .seritler::-webkit-scrollbar { display: none; }
+        .seritler { scrollbar-width: none; }
+
+        @keyframes panel-ac { from { opacity: 0; transform: translateY(8px) scale(.98); } }
+        @keyframes fon-ac { from { opacity: 0; } }
+        .panel-ac { animation: panel-ac .18s cubic-bezier(.2,.8,.2,1); }
+        .fon-ac { animation: fon-ac .18s ease-out; }
+
+        /* htmx-indicator'ın varsayılanı opacity geçişi; kaplayan katman olarak
+           kullandığımız yerlerde tıklamayı engellememesi için pointer-events de gerekli. */
+        .htmx-indicator { pointer-events: none; }
+        .htmx-request .htmx-indicator, .htmx-request.htmx-indicator { pointer-events: auto; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 antialiased min-h-screen">
+    {% block content %}{% endblock %}
+
+    <!-- Ürün detay paneli buraya yüklenir (hx-target="#modal"). -->
+    <div id="modal"></div>
+
+    <script>
+        const modal = document.getElementById('modal');
+
+        function modalKapat() {
+            modal.innerHTML = '';
+            document.body.classList.remove('overflow-hidden');
+        }
+
+        // Panel açılınca arkadaki ızgaranın kaymasını durdur (modal kendi içinde kayar).
+        document.body.addEventListener('htmx:afterSwap', (olay) => {
+            if (olay.target.id === 'modal') {
+                document.body.classList.toggle('overflow-hidden', modal.innerHTML.trim() !== '');
+            }
+        });
+
+        document.addEventListener('keydown', (olay) => {
+            if (olay.key === 'Escape') modalKapat();
+        });
+
+        // Görseller gorsel-sunucu'dan (nginx, 8083) geliyor; o servis kapalıysa kart
+        // kırık görsel ikonu göstermesin, yanındaki yedek yer tutucuya geçsin.
+        function gorselHata(gorsel) {
+            gorsel.classList.add('hidden');
+            gorsel.nextElementSibling?.classList.remove('hidden');
+        }
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

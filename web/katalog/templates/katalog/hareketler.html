@@ -1,0 +1,137 @@
+{% extends "katalog/base.html" %}
+
+{% block title %}METAKS · Hareket Geçmişi{% endblock %}
+
+{% block content %}
+<header class="sticky top-0 z-40 bg-white/85 backdrop-blur-md border-b border-slate-200">
+    {# flex-wrap emniyet kemeri: dar ekranda taşmak yerine alt satıra insin. #}
+    <div class="max-w-[1600px] mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center gap-4">
+        <a href="{% url 'katalog:ana_ekran' %}" class="flex items-center gap-2.5 shrink-0"
+           title="Ana ekran">
+            <span class="grid place-items-center w-9 h-9 rounded-xl bg-slate-900
+                         text-amber-400 font-bold text-sm tracking-tight">MK</span>
+        </a>
+
+        <nav class="flex items-center gap-1 shrink-0 rounded-full bg-slate-100 p-1">
+            <a href="{% url 'katalog:urun_listesi' %}"
+               class="rounded-full px-3.5 py-1.5 text-sm font-medium text-slate-500
+                      transition hover:text-slate-900">Katalog</a>
+            <a href="{% url 'katalog:stok_listesi' %}"
+               class="rounded-full px-3.5 py-1.5 text-sm font-medium text-slate-500
+                      transition hover:text-slate-900">Stok</a>
+            <a href="{% url 'katalog:hareket_gecmisi' %}"
+               class="rounded-full bg-white px-3.5 py-1.5 text-sm font-medium text-slate-900
+                      shadow-sm">Hareketler</a>
+        </nav>
+
+        {% comment %}
+        Sağa yaslama sadece sm+ ekranda: 390px'de bu boşluk "Giriş yap"ı taşırıyordu
+        ("Çıkış"tan ~22px geniş). Mobilde bağlantı sekmelerin hemen yanında durur.
+        {% endcomment %}
+        <span class="hidden sm:block flex-1"></span>
+
+        {% if user.is_authenticated %}
+        <form method="post" action="{% url 'katalog:cikis' %}" class="shrink-0">
+            {% csrf_token %}
+            <button type="submit" title="{{ user.email|default:user.username }}"
+                    class="text-sm text-slate-500 transition hover:text-slate-900">Çıkış</button>
+        </form>
+        {% else %}
+        {# Misafir olarak gezenler için girişin kalıcı yolu. #}
+        <a href="{% url 'katalog:giris' %}"
+           class="shrink-0 text-sm text-slate-500 transition hover:text-slate-900">Giriş yap</a>
+        {% endif %}
+    </div>
+</header>
+
+<main class="max-w-[1600px] mx-auto px-4 sm:px-6 py-6">
+    <h1 class="text-lg font-semibold text-slate-900 mb-4">Hareket Geçmişi</h1>
+
+    {% comment %}
+    Filtrelerin hepsi gerçek form alanı (katalogdaki kategori şeritleri gibi buton yok),
+    bu yüzden burada tek bir <form> yeterli: HTMX form üzerinden istek attığında içindeki
+    tüm alanları kendiliğinden gönderiyor, hx-include'a gerek kalmıyor.
+
+    Form takas edilen bloğun DIŞINDA: kullanıcı yazarken/seçim yaparken alanlar DOM'dan
+    sökülmüyor, odak ve girilen değerler yerinde kalıyor.
+    {% endcomment %}
+    <form
+        class="grid sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-5 rounded-xl border border-slate-200
+               bg-white p-4"
+        hx-get="{% url 'katalog:hareket_gecmisi' %}"
+        hx-trigger="change, keyup changed delay:400ms from:input[name='q']"
+        hx-target="#hareket-govde"
+        hx-swap="outerHTML"
+        hx-push-url="true"
+        hx-indicator="#hareket-bekliyor"
+    >
+        <label class="block lg:col-span-2">
+            <span class="block mb-1.5 text-xs font-medium text-slate-600">Stok kodu / açıklama</span>
+            <input type="search" name="q" value="{{ secili.q }}" autocomplete="off"
+                   placeholder="Ara…"
+                   class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm
+                          focus:outline-none focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5">
+        </label>
+
+        <label class="block">
+            <span class="block mb-1.5 text-xs font-medium text-slate-600">İşlem tipi</span>
+            <select name="tip" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5
+                    text-sm focus:outline-none focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5">
+                <option value="">Tümü</option>
+                {% for islem in islem_tipleri %}
+                <option value="{{ islem.deger }}" {% if secili.tip == islem.deger %}selected{% endif %}
+                >{{ islem.etiket }}</option>
+                {% endfor %}
+            </select>
+        </label>
+
+        <label class="block">
+            <span class="block mb-1.5 text-xs font-medium text-slate-600">Lokasyon</span>
+            <select name="lokasyon" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5
+                    text-sm focus:outline-none focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5">
+                <option value="">Tümü</option>
+                {% for lokasyon in lokasyonlar %}
+                <option value="{{ lokasyon.lokasyon_id }}"
+                        {% if secili.lokasyon == lokasyon.lokasyon_id %}selected{% endif %}
+                >{{ lokasyon.tam_ad }}{% if not lokasyon.aktif_mi %} (pasif){% endif %}</option>
+                {% endfor %}
+            </select>
+        </label>
+
+        <label class="block">
+            <span class="block mb-1.5 text-xs font-medium text-slate-600">Yapan</span>
+            <select name="kullanici" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5
+                    text-sm focus:outline-none focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5">
+                <option value="">Tümü</option>
+                {% for ad in kullanicilar %}
+                <option value="{{ ad }}" {% if secili.kullanici == ad %}selected{% endif %}>{{ ad }}</option>
+                {% endfor %}
+            </select>
+        </label>
+
+        <label class="block">
+            <span class="block mb-1.5 text-xs font-medium text-slate-600">Başlangıç</span>
+            <input type="date" name="baslangic" value="{{ secili.baslangic }}"
+                   class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm
+                          focus:outline-none focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5">
+        </label>
+
+        <label class="block">
+            <span class="block mb-1.5 text-xs font-medium text-slate-600">Bitiş</span>
+            <input type="date" name="bitis" value="{{ secili.bitis }}"
+                   class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm
+                          focus:outline-none focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5">
+        </label>
+
+        {% if filtre_var %}
+        <div class="flex items-end lg:col-span-3">
+            <a href="{% url 'katalog:hareket_gecmisi' %}"
+               class="text-sm text-slate-500 underline underline-offset-4
+                      transition hover:text-slate-900">Filtreleri temizle</a>
+        </div>
+        {% endif %}
+    </form>
+
+    {% include "katalog/_hareket_govde.html" %}
+</main>
+{% endblock %}

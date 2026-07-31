@@ -1,0 +1,36 @@
+{% comment %}
+Tek bir form alanının standart gösterimi: etiket + widget + yardım metni + hatalar.
+`{% include "katalog/_form_alani.html" with alan=form.xyz %}` ile çağrılır.
+
+Onay kutuları farklı düzen alır (etiket kutunun sağında, açıklama etiketin altında) —
+bu şablon Tailwind CDN olduğu için widget türüne göre dallanıyor; ayrı bir Python
+form-alanı sınıfı yazmak bu tek görsel fark için gereksiz olurdu.
+{% endcomment %}
+{% if alan.field.widget.input_type == 'checkbox' %}
+<div>
+    <label class="flex items-start gap-2.5 cursor-pointer">
+        {{ alan }}
+        <span class="min-w-0">
+            <span class="block text-sm font-medium text-slate-800">{{ alan.label }}</span>
+            {% if alan.help_text %}
+            <span class="block mt-0.5 text-xs text-slate-500">{{ alan.help_text }}</span>
+            {% endif %}
+        </span>
+    </label>
+    {% for hata in alan.errors %}
+    <p class="mt-1.5 text-xs text-rose-700">{{ hata }}</p>
+    {% endfor %}
+</div>
+{% else %}
+<div>
+    <label for="{{ alan.id_for_label }}"
+           class="block mb-1.5 text-sm font-medium text-slate-800">{{ alan.label }}</label>
+    {{ alan }}
+    {% if alan.help_text %}
+    <p class="mt-1.5 text-xs text-slate-500">{{ alan.help_text }}</p>
+    {% endif %}
+    {% for hata in alan.errors %}
+    <p class="mt-1.5 text-xs text-rose-700">{{ hata }}</p>
+    {% endfor %}
+</div>
+{% endif %}

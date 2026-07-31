@@ -1,0 +1,18 @@
+{% comment %}
+Filtre değişikliklerinde HTMX'e dönen yanıt. Asıl hedef #katalog-govde; kategori
+panelinin listesi ve buton sayacı ise sticky başlıkta, yani takas hedefinin dışında
+kaldığı için out-of-band olarak tazeleniyor (hx-swap-oob).
+
+Panelin kendisine (ve içindeki arama kutusuna) dokunulmuyor: çoklu seçim sırasında
+panel açık kalıyor, kullanıcı üst üste kategori işaretleyebiliyor.
+
+Bu blok tam sayfa yanıtına dahil DEĞİL — orada aynı parçalar zaten kendi yerlerinde
+basılıyor, burada tekrarlansa aynı id'den ikişer tane olurdu.
+{% endcomment %}
+{% include "katalog/_govde.html" %}
+
+<span id="kategori-sayaci" hx-swap-oob="true">{% include "katalog/_kategori_sayaci.html" %}</span>
+
+<div id="kategori-listesi" hx-swap-oob="true" class="max-h-[340px] overflow-y-auto p-1">
+    {% include "katalog/_kategori_listesi.html" %}
+</div>

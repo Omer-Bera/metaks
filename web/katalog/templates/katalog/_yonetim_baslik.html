@@ -1,0 +1,70 @@
+{% comment %}
+Yönetim sayfalarının ortak üst çubuğu + mesaj alanı.
+
+Liste sayfalarındaki (katalog/stok/hareketler) sticky başlıktan bilerek ayrı: orada
+üç sekme arasında hızlı geçiş gerekiyordu, burada gezinme tek yönlü (panel → alt
+sayfa) ve geri dönüş yolu asıl ihtiyaç. Bu yüzden sekme şeridi değil, kırıntı yolu.
+
+Kullanan sayfa `yonetim_alt_baslik`, `yonetim_ust_ad` ve `yonetim_ust_url`
+değişkenlerini set etmeden de çağırabilir; hepsi opsiyonel. Sözlük yerine üç ayrı
+skaler: Django şablonlarında `{% with %}` ile sözlük kurulamıyor.
+{% endcomment %}
+<header class="border-b border-slate-200 bg-white">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center gap-3">
+        <a href="{% url 'katalog:ana_ekran' %}" class="flex items-center gap-2.5 shrink-0"
+           title="Ana ekran">
+            <span class="grid place-items-center w-9 h-9 rounded-xl bg-slate-900
+                         text-amber-400 font-bold text-sm tracking-tight">MK</span>
+        </a>
+
+        <nav aria-label="Konum" class="flex items-center gap-1.5 text-sm min-w-0">
+            <a href="{% url 'katalog:yonetim' %}"
+               class="text-slate-500 transition hover:text-slate-900">Yönetim</a>
+            {% if yonetim_ust_ad %}
+            <span class="text-slate-300" aria-hidden="true">/</span>
+            <a href="{{ yonetim_ust_url }}"
+               class="text-slate-500 transition hover:text-slate-900">{{ yonetim_ust_ad }}</a>
+            {% endif %}
+            {% if yonetim_alt_baslik %}
+            <span class="text-slate-300" aria-hidden="true">/</span>
+            <span class="font-medium text-slate-900 truncate">{{ yonetim_alt_baslik }}</span>
+            {% endif %}
+        </nav>
+
+        <span class="hidden sm:block flex-1"></span>
+
+        <div class="flex items-center gap-3 shrink-0">
+            <span class="hidden sm:block text-sm text-slate-500">
+                {{ user.email|default:user.username }}</span>
+            <form method="post" action="{% url 'katalog:cikis' %}">
+                {% csrf_token %}
+                <button type="submit"
+                        class="text-sm text-slate-500 transition hover:text-slate-900">Çıkış</button>
+            </form>
+        </div>
+    </div>
+</header>
+
+{% if messages %}
+<div class="max-w-5xl mx-auto px-4 sm:px-6 pt-6 space-y-2">
+    {% for mesaj in messages %}
+    {% comment %}
+    Durum yalnızca renge bırakılmıyor: her mesajın önünde bir ikon var ve metnin
+    kendisi zaten ne olduğunu söylüyor.
+    {% endcomment %}
+    <div class="flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-sm
+        {% if 'error' in mesaj.tags %}border-rose-200 bg-rose-50 text-rose-900
+        {% else %}border-emerald-200 bg-emerald-50 text-emerald-900{% endif %}">
+        <svg class="w-4 h-4 mt-0.5 shrink-0" fill="none" stroke="currentColor"
+             stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+            {% if 'error' in mesaj.tags %}
+            <circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/>
+            {% else %}
+            <circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/>
+            {% endif %}
+        </svg>
+        <span>{{ mesaj }}</span>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}

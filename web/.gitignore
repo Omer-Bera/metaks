@@ -1,0 +1,15 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Django
+db.sqlite3
+staticfiles/
+media/
+
+# Ortam değişkenleri / sırlar
+.env
+
+# macOS
+.DS_Store
