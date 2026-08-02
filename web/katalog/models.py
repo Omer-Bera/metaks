@@ -318,12 +318,18 @@ def yerel_tarih(alan='islem_tarihi'):
 
 
 class LokasyonStok(models.Model):
-    """v_lokasyon_stok_ozet view'ının salt-okunur haritalaması (ürün × lokasyon).
+    """v_lokasyon_stok_ozet view'ının salt-okunur haritalaması (ürün × lokasyon × kova).
 
-    View'ın kendi birincil anahtarı yok (stok_kodu + lokasyon_id birlikte tekil).
-    Django her modelde bir pk istediği için stok_kodu pk olarak işaretlendi — bu model
-    yalnızca .filter(...) ile liste okumak için kullanılıyor, pk ile tekil erişim
-    yapılmıyor, dolayısıyla bu işaretleme sorgu sonuçlarını etkilemiyor.
+    2026-07-31 (veritabani migration 007): view artık (stok_kodu, lokasyon) başına
+    BİRDEN FAZLA satır dönebiliyor — kaplama rengi + çeşidi + montaj birlikte bir
+    stok "kovası" tanımlıyor ve her kova ayrı satır. Yani aynı ürünün "light gold /
+    askıda" stoğu ile "ham / dolap" stoğu ayrı görünür ve ayrı sayılır.
+
+    View'ın kendi birincil anahtarı yok. Django her modelde bir pk istediği için
+    stok_kodu pk olarak işaretlendi — bu model yalnızca .filter(...) ile liste
+    okumak için kullanılıyor, pk ile tekil erişim yapılmıyor. Kova kırılımından
+    sonra bu daha da önemli: aynı stok_kodu artık birden çok satırda görünüyor,
+    ama .filter() satırları teklemediği için sonuç doğru kalıyor.
     """
 
     stok_kodu = models.CharField(max_length=100, primary_key=True)
@@ -332,6 +338,14 @@ class LokasyonStok(models.Model):
     lokasyon_tipi = models.CharField(max_length=50)
     mevcut_miktar = models.IntegerField()
 
+    # Kova alanları (migration 007). Hepsi NULL olabilir: kırılım öncesi yazılmış
+    # hareketler ve kaplaması belirtilmeden girilen stok "belirtilmemiş" kovasına
+    # düşer — uydurma bir renge atanmaktansa doğru olan bu.
+    kaplama_id = models.IntegerField(null=True)
+    kaplama_adi = models.CharField(max_length=100, null=True)
+    kaplama_cesidi = models.CharField(max_length=20, null=True)
+    montaj = models.BooleanField(null=True)
+
     # Çalışma anında iliştiriliyor (views._lokasyon_stok): lokasyon artık aktif mi.
     # Sadece tip bildirimi, kolon değil — gerekçe için bkz. AktifUrun.
     pasif: bool
@@ -339,7 +353,22 @@ class LokasyonStok(models.Model):
     class Meta:
         managed = False
         db_table = 'v_lokasyon_stok_ozet'
-        ordering = ['lokasyon_adi']
+        ordering = ['lokasyon_adi', 'kaplama_adi']
+
+    @property
+    def kova_adi(self):
+        """Kovanın okunur adı — "light gold · askıda · montajlı".
+
+        Boş kalan parçalar atlanıyor; hiçbiri yoksa "kaplama belirtilmemiş".
+        Aynı metin veritabanı tarafında da üretiliyor (yetersiz stok hatasında),
+        ama orası kullanıcıya hata gösterirken kullanıyor — bu ise liste için.
+        """
+        parcalar = [
+            self.kaplama_adi,
+            {'ASKIDA': 'askıda', 'DOLAP': 'dolap'}.get(self.kaplama_cesidi),
+            {True: 'montajlı', False: 'montajsız'}.get(self.montaj),
+        ]
+        return ' · '.join(p for p in parcalar if p) or 'kaplama belirtilmemiş'
 
     def __str__(self):
-        return f'{self.stok_kodu} @ {self.lokasyon_adi}: {self.mevcut_miktar}'
+        return f'{self.stok_kodu} @ {self.lokasyon_adi} ({self.kova_adi}): {self.mevcut_miktar}'

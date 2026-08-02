@@ -18,6 +18,10 @@ urlpatterns = [
     path('stok/islem/<str:stok_kodu>/', views.stok_islem, name='stok_islem'),
     path('stok/hareketler/', views.hareket_gecmisi, name='hareket_gecmisi'),
 
+    # Depoya yeni stok girişi. Her zaman GİRİŞ hareketi yazar; işlem tipi sormaz.
+    # Kataloğun "+ Ürün ekle"sinin stok tarafındaki karşılığı (bkz. views.stok_ekle).
+    path('stok/ekle/', views.stok_ekle, name='stok_ekle'),
+
     # Hızlı giriş: depo sahası ekranı. Tek URL, üç iş — kod çözme (GET), canlı öneri
     # (GET ?ara=1) ve hareket kaydı (POST). Üçü de aynı #islem-alani'nı tazelediği
     # için ayrı uç noktalara bölmek gereksiz olurdu.

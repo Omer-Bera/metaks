@@ -518,6 +518,17 @@ yanlış ürün/görsel sayıları) ama gereksinimleri gerçek eksikleri ortaya 
   `lokasyonlar` artık kullanıcının doğruladığı üç gerçek konum (Metaks, Fabrika, Skor),
   `stok_hareketleri` ise migration 006 ile tamamen boşaltıldı — defterdeki 30 satırın
   tamamı test girişiydi. Sayım verisi bugün hâlâ Excel'de tutuluyor.
+  **Güncelleme (aynı gün, akşam):** defter artık boş değil, `1005910` üzerinde
+  arayüzden girilmiş 5 hareket var (net: Skor'da 1000 adet). Bu tür "şu an kaç satır"
+  bilgisi iki makineli çalışmada hızla bayatlıyor — `count(*)` çekmek daha güvenilir.
+- ✅ **Stok kaplama kırılımı (2026-07-31)** — migration 007. Kaplama rengi/çeşidi ve
+  montaj durumu ürün özelliği olmaktan çıkıp **stok partisinin** özelliği oldu:
+  `stok_hareketleri`'ne beş kolon eklendi, boş duran `kaplamalar` tablosuna 11 gerçek
+  renk yüklendi, `v_lokasyon_stok_ozet` kova kırılımıyla genişledi ve
+  `stok_hareketi_kaydet()`'in yeterli stok kontrolü **kova bazına** indi. Yani aynı
+  ürünün "light gold / askıda" stoğu ile "ham / dolap" stoğu ayrı sayılıyor.
+  `v_toplam_stok` bilerek DEĞİŞMEDİ (ürün başına tek satır sözleşmesi korunuyor).
+  Ayrıntı ve gerekçeler: `docs/aktif-urun-veri-sozlesmesi.md`.
 
 ### Faz 5: Web ERP arayüzü ✅ TAMAMLANDI (2026-07-31)
 

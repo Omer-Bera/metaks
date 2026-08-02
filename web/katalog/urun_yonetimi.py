@@ -23,7 +23,10 @@ def _form_initial(urun):
     """`models.Urun` satırından `UrunFormu`'nun beklediği initial sözlüğü.
 
     `ModelChoiceField`'lara doğrudan id verilebilir (Django pk ile eşleştirir),
-    kategori/hammadde/kaplama için ayrı bir sorguya gerek yok.
+    kategori/hammadde için ayrı bir sorguya gerek yok.
+
+    kaplama/boya_mine/montaj_durumu 2026-07-31'de formdan çıktığı için burada
+    da yok — bkz. `forms.py::UrunFormu`.
     """
     return {
         'stok_kodu': urun.stok_kodu,
@@ -33,11 +36,8 @@ def _form_initial(urun):
         'varyant_adi': urun.varyant_adi or '',
         'olcu_mm': urun.olcu_mm,
         'hammadde': urun.hammadde_id,
-        'kaplama': urun.kaplama_id,
         'boy_ligne': urun.boy_ligne,
-        'boya_mine': urun.boya_mine or '',
         'gramaj_gr': urun.gramaj_gr,
-        'montaj_durumu': urun.montaj_durumu or '',
         'kalip_versiyonu': urun.kalip_versiyonu or '',
         'aciklama': urun.aciklama or '',
         'kritik_stok_esigi': urun.kritik_stok_esigi,
@@ -60,7 +60,6 @@ def _kaydet(request, form, *, mod):
         kategori_id = form.cleaned_data['kategori'].kategori_id
 
     hammadde = form.cleaned_data.get('hammadde')
-    kaplama = form.cleaned_data.get('kaplama')
 
     # Sıra: önce dosya, sonra DB. urun_kaydet() reddederse az önce yazılan
     # dosya geri alınır (aşağıdaki except); ters sırada çökme olsaydı var
@@ -82,16 +81,18 @@ def _kaydet(request, form, *, mod):
             yapan_kullanici=request.user.email or request.user.get_username(),
             kategori_id=kategori_id,
             hammadde_id=hammadde.hammadde_id if hammadde else None,
-            kaplama_id=kaplama.kaplama_id if kaplama else None,
+            # kaplama_id / boya_mine / montaj_durumu BİLEREK geçirilmiyor
+            # (2026-07-31): bunlar artık ürünün değil stoğun özellikleri,
+            # yerleri /stok/ekle/. urun_kaydet() GUNCELLE modu tam-değiştirme
+            # olduğu için geçirmemek onları NULL'a çekiyor — doğru sonuç,
+            # çünkü üçü de 2.974 satırın hepsinde zaten NULL'dı.
             urun_tipi=form.cleaned_data['urun_tipi'],
             parent_stok_kodu=form.cleaned_data.get('parent_stok_kodu'),
             varyant_adi=form.cleaned_data.get('varyant_adi') or None,
             kalip_versiyonu=form.cleaned_data.get('kalip_versiyonu') or None,
             olcu_mm=form.cleaned_data.get('olcu_mm'),
             boy_ligne=form.cleaned_data.get('boy_ligne'),
-            boya_mine=form.cleaned_data.get('boya_mine') or None,
             gramaj_gr=form.cleaned_data.get('gramaj_gr'),
-            montaj_durumu=form.cleaned_data.get('montaj_durumu') or None,
             aciklama=form.cleaned_data.get('aciklama') or None,
             kritik_stok_esigi=form.cleaned_data['kritik_stok_esigi'],
             stok_takip_edilsin_mi=form.cleaned_data['stok_takip_edilsin_mi'],

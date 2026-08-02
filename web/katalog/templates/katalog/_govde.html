@@ -75,6 +75,16 @@ sıralama) bunun dışında kalıyor ve durumu buradaki #filtre-durumu üzerinde
             {% endcomment %}
             {% if user.is_authenticated %}
                 {% if stok_goster %}
+                {% comment %}
+                Stok tarafında İKİ eylem var ve ayrı duruyorlar çünkü ayrı işler:
+                "+ Stok ekle" mal kabuldür (hep GİRİŞ, kaplama sorar), "Hızlı stok
+                işlemi" ise kodu okutup HERHANGİ bir işlemi (çıkış/transfer/sayım)
+                yapmaktır. Kataloğun "+ Ürün ekle"si ile aynı hizada duran, yeni
+                kayıt açan eylem birincisi.
+                {% endcomment %}
+                <a href="{% url 'katalog:stok_ekle' %}"
+                   class="text-sm text-slate-500 underline underline-offset-4
+                          transition hover:text-slate-900">+ Stok ekle</a>
                 <a href="{% url 'katalog:hizli_islem' %}"
                    class="text-sm text-slate-500 underline underline-offset-4
                           transition hover:text-slate-900">Hızlı stok işlemi</a>

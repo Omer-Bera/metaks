@@ -18,8 +18,8 @@ from django import forms
 from django.contrib.auth.forms import AdminPasswordChangeForm, UserCreationForm
 from django.contrib.auth.models import User
 
-from . import urun_servisi
-from .models import Hammadde, Kaplama, Kategori, Lokasyon
+from . import stok_servisi, urun_servisi
+from .models import Hammadde, Kategori, Lokasyon, LokasyonDetay
 
 # Girdi kutularının ortak görünümü. Şablonlarda tek tek yazmak yerine burada:
 # form alanları Django tarafından basıldığı için sınıfın da Python tarafında
@@ -260,22 +260,26 @@ class UrunFormu(forms.Form):
     )
 
     # ---- Detay (katlanır bölüm) ----
+    #
+    # Kaplama, boya/mine ve montaj durumu 2026-07-31'de buradan ÇIKARILDI:
+    # bunlar ürünün değil, o parti STOĞUN özellikleri. Aynı stok kodu farklı
+    # kaplamalarda üretilebiliyor, yani ürüne tek bir kaplama yazmak yanlış
+    # soruya cevap veriyordu. Yerleri artık `/stok/ekle/` ekranı ve
+    # `stok_hareketleri`'nin kaplama kolonları (veritabani migration 007).
+    #
+    # `urunler` tablosundaki kaplama_id/boya_mine/montaj_durumu kolonları
+    # DÜŞÜRÜLMEDİ ama artık yazılmıyor — üçü de 2.974 satırın hepsinde zaten
+    # NULL'dı (ölçüldü), yani kaldırmak hiçbir veri kaybetmedi.
     hammadde = forms.ModelChoiceField(
         label='Hammadde', queryset=Hammadde.objects.none(), required=False,
-        empty_label='— seçilmedi —',
-    )
-    kaplama = forms.ModelChoiceField(
-        label='Kaplama', queryset=Kaplama.objects.none(), required=False,
         empty_label='— seçilmedi —',
     )
     boy_ligne = forms.DecimalField(
         label='Boy (ligne)', max_digits=6, decimal_places=2, required=False,
     )
-    boya_mine = forms.CharField(label='Boya/mine', max_length=100, required=False)
     gramaj_gr = forms.DecimalField(
         label='Gramaj (gr)', max_digits=10, decimal_places=3, required=False,
     )
-    montaj_durumu = forms.CharField(label='Montaj durumu', max_length=50, required=False)
     kalip_versiyonu = forms.CharField(label='Kalıp versiyonu', max_length=100, required=False)
     aciklama = forms.CharField(
         label='Açıklama', required=False, widget=forms.Textarea(attrs={'rows': 3}),
@@ -288,12 +292,11 @@ class UrunFormu(forms.Form):
 
     def __init__(self, *args, stok_kodu_kilitli=False, **kwargs):
         super().__init__(*args, **kwargs)
-        # Formun tanımlandığı anda Kategori/Hammadde/Kaplama sorgulanamaz (import
+        # Formun tanımlandığı anda Kategori/Hammadde sorgulanamaz (import
         # sırasında henüz DB bağlantısı yok, üstelik using('metaks') gerekiyor) —
         # queryset'ler burada, her form örneği kurulurken atanıyor.
         self.fields['kategori'].queryset = Kategori.objects.using('metaks').filter(aktif_mi=True)
         self.fields['hammadde'].queryset = Hammadde.objects.using('metaks').filter(aktif_mi=True)
-        self.fields['kaplama'].queryset = Kaplama.objects.using('metaks').filter(aktif_mi=True)
         if stok_kodu_kilitli:
             # Düzenlemede stok_kodu değiştirilemez: urun_kaydet() GUNCELLE modunda
             # onu kimlik olarak kullanıyor, değiştirmiyor (veritabani migration 005,
@@ -349,4 +352,81 @@ class ParolaBelirlemeFormu(AdminPasswordChangeForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        _girdileri_bicimlendir(self)
+
+
+class StokEkleFormu(forms.Form):
+    """Depoya yeni stok girişi — `/stok/ekle/`.
+
+    Bu ekran her zaman bir **GİRİŞ** hareketi yazıyor; işlem tipi seçimi yok. Bu
+    yüzden `stok_islem`/`hizli_islem`'in paylaştığı genel formdan (o beş işlem
+    tipini birden karşılıyor) ayrı duruyor: oradaki işlem-tipine-göre-alan-gizle
+    mantığının burada karşılığı yok, tek yönlü ve daha az soru soran bir ekran.
+
+    Ayrı olan yalnızca FORM; yazma yolu değil. Kayıt yine
+    `stok_servisi.hareket_kaydet()` -> `stok_hareketi_kaydet()` üzerinden gidiyor,
+    yani yeterli stok/lokasyon/mükerrer gönderim kuralları burada tekrarlanmıyor
+    (projenin "yazma tek kapıdan" kuralı).
+
+    Kova alanları (kaplama rengi + çeşidi + montaj) 2026-07-31'de ürün formundan
+    buraya taşındı: bunlar ürünün değil o parti stoğun özellikleri. Üçü birlikte
+    stoğun izlendiği kovayı tanımlıyor; boya/mine ise kovanın dışında, açıklayıcı
+    metin (gerekçe: stok_servisi.py'deki kova notu).
+    """
+
+    stok_kodu = forms.CharField(
+        label='Stok kodu', max_length=100,
+        help_text='Kataloğdaki kod. Barkod okuyucuyla da okutulabilir.',
+    )
+    miktar = forms.IntegerField(
+        label='Stok sayısı', min_value=1,
+        help_text='Depoya giren adet.',
+    )
+    hedef_lokasyon_id = forms.TypedChoiceField(
+        label='Lokasyon', coerce=int, choices=(),
+        help_text='Stoğun girdiği yer.',
+    )
+
+    kaplama_id = forms.TypedChoiceField(
+        label='Kaplama rengi', coerce=int, choices=(), required=False, empty_value=None,
+    )
+    kaplama_cesidi = forms.ChoiceField(
+        label='Kaplama çeşidi', choices=(), required=False,
+    )
+    montaj = forms.ChoiceField(
+        label='Montaj', choices=(), required=False,
+    )
+
+    boya = forms.CharField(label='Boya', max_length=100, required=False)
+    mine = forms.CharField(label='Mine', max_length=100, required=False)
+
+    aciklama = forms.CharField(
+        label='Açıklama', required=False, widget=forms.Textarea(attrs={'rows': 2}),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Seçenekler __init__'te: import anında `metaks` bağlantısına sorgu
+        # atılamaz ve using('metaks') gerekiyor — `UrunFormu`'ndaki queryset
+        # atamasının aynı gerekçesi (bkz. LokasyonEklemeFormu docstring'i:
+        # DATABASE_ROUTERS olmadığı için using() olmayan her sorgu SQLite'a gider).
+        #
+        # aktif_mi + yaprak_mi: dolap gibi ÜST lokasyonlar seçilebilir görünürse
+        # stok_hareketi_kaydet() onları reddediyor (migration 004) ve kullanıcı
+        # hatayı formu doldurup gönderdikten SONRA görürdü.
+        self.fields['hedef_lokasyon_id'].choices = [
+            (lok.lokasyon_id, lok.tam_ad or lok.lokasyon_adi)
+            for lok in LokasyonDetay.objects.using('metaks')
+            .filter(aktif_mi=True, yaprak_mi=True)
+        ]
+
+        self.fields['kaplama_id'].choices = [
+            ('', '— belirtilmedi —'), *stok_servisi.kaplama_secenekleri()
+        ]
+        self.fields['kaplama_cesidi'].choices = [
+            ('', '— belirtilmedi —'), *stok_servisi.KAPLAMA_CESITLERI
+        ]
+        self.fields['montaj'].choices = stok_servisi.MONTAJ_SECENEKLERI
+
         _girdileri_bicimlendir(self)

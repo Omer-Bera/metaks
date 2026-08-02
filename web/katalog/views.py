@@ -9,7 +9,7 @@ from django.http import QueryDict
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
-from . import stok_servisi
+from . import forms, stok_servisi
 from .models import (
     AktifUrun,
     Kategori,
@@ -519,6 +519,12 @@ def _detay_alanlari(urun):
 
     kritik_stok_esigi bilinçli olarak listede yok: ürünü tanımlayan bir özellik değil,
     stok uyarı eşiği — ve şu an her üründe 0.
+
+    Kaplama / boya-mine / montaj durumu 2026-07-31'de bu listeden ÇIKARILDI:
+    artık ürünün değil o parti stoğun özellikleri (veritabani migration 007) ve
+    ürün formu onları yazmıyor. Kaplama bilgisini görmek isteyen yer stok detay
+    paneli — orada kova kırılımı olarak gösteriliyor. Kolonlar `urunler`de hâlâ
+    duruyor ama hepsi NULL, yani buradan kaldırmak görünür hiçbir şeyi eksiltmiyor.
     """
     adaylar = [
         ('Kategori', urun.kategori_adi),
@@ -526,9 +532,6 @@ def _detay_alanlari(urun):
         ('Boy', _sayi(urun.boy_ligne, 'ligne')),
         ('Gramaj', _sayi(urun.gramaj_gr, 'gr')),
         ('Hammadde', urun.hammadde_adi),
-        ('Kaplama', urun.kaplama_adi),
-        ('Boya / mine', urun.boya_mine),
-        ('Montaj durumu', urun.montaj_durumu),
         ('Varyant', urun.varyant_adi),
         ('Açıklama', urun.aciklama),
     ]
@@ -684,6 +687,13 @@ def _islem_baglami(request, urun, *, varsayilan_tip, hizli=False):
         'kaynak_lokasyon_id': request.POST.get('kaynak_lokasyon_id', ''),
         'hedef_lokasyon_id': request.POST.get('hedef_lokasyon_id', ''),
         'aciklama': request.POST.get('aciklama', ''),
+        # Kova alanları (migration 007). Boş string = "belirtilmemiş" kovası;
+        # _tam_sayi/montaj_cozumle onu None'a çeviriyor.
+        'kaplama_id': request.POST.get('kaplama_id', ''),
+        'kaplama_cesidi': request.POST.get('kaplama_cesidi', ''),
+        'montaj': request.POST.get('montaj', ''),
+        'boya': request.POST.get('boya', ''),
+        'mine': request.POST.get('mine', ''),
     }
     islem_kimligi = request.POST.get('istemci_kimligi') or stok_servisi.yeni_islem_kimligi()
 
@@ -703,6 +713,11 @@ def _islem_baglami(request, urun, *, varsayilan_tip, hizli=False):
                     hedef_lokasyon_id=_tam_sayi(girilen['hedef_lokasyon_id']),
                     aciklama=girilen['aciklama'].strip(),
                     yapan_kullanici=request.user.email or request.user.get_username(),
+                    kaplama_id=_tam_sayi(girilen['kaplama_id']),
+                    kaplama_cesidi=girilen['kaplama_cesidi'],
+                    montaj=stok_servisi.montaj_cozumle(girilen['montaj']),
+                    boya=girilen['boya'].strip(),
+                    mine=girilen['mine'].strip(),
                 )
             except stok_servisi.StokIslemHatasi as istisna:
                 hata = str(istisna)
@@ -716,6 +731,14 @@ def _islem_baglami(request, urun, *, varsayilan_tip, hizli=False):
                 'kaynak_lokasyon_id': '',
                 'hedef_lokasyon_id': '',
                 'aciklama': '',
+                # Kova seçimi KORUNUYOR (miktar/lokasyonun aksine): aynı partiden
+                # arka arkaya işlem yapmak normal, kaplamayı her seferinde yeniden
+                # seçtirmek gereksiz sürtünme olurdu. /stok/ekle/ ile aynı duruş.
+                'kaplama_id': girilen['kaplama_id'],
+                'kaplama_cesidi': girilen['kaplama_cesidi'],
+                'montaj': girilen['montaj'],
+                'boya': girilen['boya'],
+                'mine': girilen['mine'],
             }
             islem_kimligi = stok_servisi.yeni_islem_kimligi()
 
@@ -729,6 +752,11 @@ def _islem_baglami(request, urun, *, varsayilan_tip, hizli=False):
         'lokasyonlar': list(
             LokasyonDetay.objects.using('metaks').filter(aktif_mi=True, yaprak_mi=True)
         ),
+        # Kova seçimi (migration 007). Renkler `kaplamalar` tablosundan okunuyor,
+        # sabit liste değil — yeni renk eklemek migration değil tek INSERT.
+        'kaplamalar': stok_servisi.kaplama_secenekleri(),
+        'kaplama_cesitleri': stok_servisi.KAPLAMA_CESITLERI,
+        'montaj_secenekleri': stok_servisi.MONTAJ_SECENEKLERI,
         'mevcut_stok': _lokasyon_stok(urun.stok_kodu),
         'girilen': girilen,
         'istemci_kimligi': islem_kimligi,
@@ -758,6 +786,86 @@ def stok_islem(request, stok_kodu):
     # sayımı — varsayılan SAYIM. Hızlı ekranın varsayılanı GİRİŞ (bkz. hizli_islem).
     baglam = _islem_baglami(request, urun, varsayilan_tip='SAYIM_DEVRI')
     return render(request, 'katalog/stok_islem.html', baglam)
+
+
+@login_required
+def stok_ekle(request):
+    """Depoya yeni stok girişi — her zaman bir GİRİŞ hareketi (`/stok/ekle/`).
+
+    Stok sayfasının "+ Stok ekle" bağlantısının hedefi; kataloğun "+ Ürün ekle"
+    bağlantısının stok tarafındaki karşılığı. İkisinin ayrı olması bu projenin
+    "her sayfa kendi işini anlatır" kuralının devamı: katalog ÜRÜN kaydının yeri,
+    stok STOĞUN.
+
+    `stok_islem`/`hizli_islem`'den farkı işlem tipi sormaması — burada tek bir
+    senaryo var (mal kabul). Yazma yolu yine aynı tek kapı: `hareket_kaydet()`.
+
+    Ürünün varlığı POST'tan ÖNCE kontrol ediliyor. `stok_hareketleri.stok_kodu`'nun
+    FK'sı zaten reddederdi ama mesajı psycopg2'nin İngilizce kısıt hatası olurdu;
+    bunun yerine Türkçe bir mesaj ve "bu kodla ürün oluştur" bağlantısı veriliyor —
+    hızlı ekranın "bulunamadı" dalıyla aynı davranış.
+    """
+    form = forms.StokEkleFormu(request.POST or None)
+    sonuc = None
+    hata = None
+    bilinmeyen_kod = None
+    islem_kimligi = request.POST.get('istemci_kimligi') or stok_servisi.yeni_islem_kimligi()
+
+    if request.method == 'POST' and form.is_valid():
+        stok_kodu = form.cleaned_data['stok_kodu'].strip()
+        varsa = (
+            Urun.objects.using('metaks').filter(pk=stok_kodu).values_list('stok_kodu', flat=True).first()
+            or Urun.objects.using('metaks').filter(stok_kodu__iexact=stok_kodu)
+            .values_list('stok_kodu', flat=True).first()
+        )
+        if varsa is None:
+            bilinmeyen_kod = stok_kodu
+            hata = f'"{stok_kodu}" kodlu bir ürün bulunamadı.'
+        else:
+            try:
+                sonuc = stok_servisi.hareket_kaydet(
+                    istemci_kimligi=islem_kimligi,
+                    stok_kodu=varsa,
+                    islem_tipi='GIRIS',
+                    miktar=form.cleaned_data['miktar'],
+                    kaynak_lokasyon_id=None,
+                    hedef_lokasyon_id=form.cleaned_data['hedef_lokasyon_id'],
+                    aciklama=form.cleaned_data.get('aciklama', ''),
+                    yapan_kullanici=request.user.email or request.user.get_username(),
+                    kaplama_id=form.cleaned_data.get('kaplama_id'),
+                    kaplama_cesidi=form.cleaned_data.get('kaplama_cesidi'),
+                    montaj=stok_servisi.montaj_cozumle(form.cleaned_data.get('montaj')),
+                    boya=form.cleaned_data.get('boya'),
+                    mine=form.cleaned_data.get('mine'),
+                )
+            except stok_servisi.StokIslemHatasi as istisna:
+                hata = str(istisna)
+
+        if sonuc and not sonuc['atlandi']:
+            # Başarılı kayıttan sonra form SIFIRDAN kurulmuyor: lokasyon ve kova
+            # alanları KORUNUYOR, yalnızca stok kodu ve miktar temizleniyor. Mal
+            # kabulde aynı partiden onlarca ürün arka arkaya giriliyor; kaplamayı
+            # her seferinde yeniden seçtirmek gereksiz sürtünme olurdu.
+            # Yeni istemci kimliği şart, yoksa sonraki gönderim "zaten kaydedilmiş"
+            # diye atlanırdı (uq_stok_hareketleri_istemci_kimligi).
+            form = forms.StokEkleFormu(initial={
+                'hedef_lokasyon_id': form.cleaned_data['hedef_lokasyon_id'],
+                'kaplama_id': form.cleaned_data.get('kaplama_id'),
+                'kaplama_cesidi': form.cleaned_data.get('kaplama_cesidi'),
+                'montaj': form.cleaned_data.get('montaj'),
+                'boya': form.cleaned_data.get('boya'),
+                'mine': form.cleaned_data.get('mine'),
+            })
+            islem_kimligi = stok_servisi.yeni_islem_kimligi()
+
+    return render(request, 'katalog/stok_ekle.html', {
+        'form': form,
+        'sonuc': sonuc,
+        'hata': hata,
+        'bilinmeyen_kod': bilinmeyen_kod,
+        'istemci_kimligi': islem_kimligi,
+        'aktif_sekme': 'stok',
+    })
 
 
 # --------------------------------------------------------------------------------------

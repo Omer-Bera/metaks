@@ -99,18 +99,27 @@
                     </div>
 
                     {% if lokasyonlar %}
+                    {% comment %}
+                    Satırlar lokasyon × KOVA (migration 007): aynı lokasyonda farklı
+                    kaplamadaki stok ayrı satır. Yukarıdaki toplam bunların hepsini
+                    kapsıyor — v_toplam_stok kova kırılımından bağımsız olarak ürün
+                    başına tek rakam vermeye devam ediyor.
+                    {% endcomment %}
                     <dl class="divide-y divide-slate-100">
                         {% for lokasyon in lokasyonlar %}
                         <div class="flex items-center justify-between gap-4 px-4 py-2">
-                            <dt class="text-sm text-slate-600">
-                                {{ lokasyon.lokasyon_adi }}
-                                <span class="ml-1 text-[11px] text-slate-400">{{ lokasyon.lokasyon_tipi }}</span>
-                                {% if lokasyon.pasif %}
-                                <span class="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500"
-                                      title="Bu lokasyon kapatıldı">pasif</span>
-                                {% endif %}
+                            <dt class="min-w-0 text-sm text-slate-600">
+                                <span class="block">
+                                    {{ lokasyon.lokasyon_adi }}
+                                    <span class="ml-1 text-[11px] text-slate-400">{{ lokasyon.lokasyon_tipi }}</span>
+                                    {% if lokasyon.pasif %}
+                                    <span class="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500"
+                                          title="Bu lokasyon kapatıldı">pasif</span>
+                                    {% endif %}
+                                </span>
+                                <span class="block mt-0.5 text-xs {% if lokasyon.kaplama_adi %}text-slate-500{% else %}text-slate-400 italic{% endif %}">{{ lokasyon.kova_adi }}</span>
                             </dt>
-                            <dd class="text-sm font-medium text-slate-900">
+                            <dd class="shrink-0 text-sm font-medium text-slate-900">
                                 {{ lokasyon.mevcut_miktar|intcomma }}</dd>
                         </div>
                         {% endfor %}

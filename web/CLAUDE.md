@@ -185,6 +185,7 @@ kendiliğinden kapattı — depo `veritabani/`nin üçlü modelini kullanıyor.
 | Panel | `/` | Modüllere yönlendirme, özet sayılar, son hareketler |
 | Ürün Kataloğu | `/katalog/` | Görsel galeri. **Stoktan hiç söz etmez.** |
 | Stok Durumu | `/stok/` | Aynı galeri + kart başına stok durumu + "sadece stokta olanlar" anahtarı + detayda lokasyon dökümü |
+| Stok ekle | `/stok/ekle/` | Depoya yeni stok girişi — hep GİRİŞ, kaplama sorar (giriş zorunlu) |
 | Stok işlemi | `/stok/islem/<stok_kodu>/` | Hareket kaydı (giriş zorunlu). AKTİF **ve** PASİF ürünler |
 | Hızlı işlem | `/stok/hizli/` | Tek kutu: kod/barkod → doğrudan stok işlem formu (giriş zorunlu) |
 | Hareket Geçmişi | `/stok/hareketler/` | `stok_hareketleri` dökümü, filtreli (salt-okunur) |
@@ -387,12 +388,11 @@ Bu ayrım devam eden depo sayımında anlamlı: "daha neye bakmadık?" sorusunun
 üçüncü durum. "Sadece stokta olanlar" anahtarı yalnızca `var` durumunu bırakıyor
 (`toplam_miktar > 0` alt sorgusu).
 
-**2026-07-31 itibarıyla defter tamamen boş.** Daha önce buradaki 30 kaydın tamamı
-test girişiydi (29 Temmuz düşük-kod arayüz denemeleri + 30 Temmuz Django doğrulamaları);
-`veritabani` migration 006 hepsini sildi ve sequence'i 1'e aldı. Yani `v_toplam_stok`
-sıfır satır, her ürün "Sayılmadı" durumunda ve "sadece stokta olanlar" boş sonuç
-veriyor. Sayfa sayım ilerledikçe kendiliğinden dolacak, kodda değişiklik gerekmiyor.
-(Devam eden sayımın verisi hâlâ Excel'de tutuluyor, veritabanında değil.)
+**Defter 2026-07-31 akşamı itibarıyla 5 satır.** Migration 006 o güne kadarki 30 test
+kaydını silmişti; sonrasında Ömer arayüzden `1005910` üzerinde beş hareket girdi (net
+sonuç: Skor'da 1000 adet). Geri kalan her ürün hâlâ "Sayılmadı" ve devam eden sayımın
+verisi hâlâ Excel'de. **Bu satıra güvenmek yerine `count(*)` çekin** — iki kişi iki
+makinede çalışmaya başlayınca saatler içinde bayatladı.
 
 **Lokasyonlar da aynı gün üçe indi:** kullanıcının doğruladığı gerçek konumlar
 **Metaks, Fabrika** (DAHİLİ) ve **Skor** (FASON). Geri kalan beşi (Ana Depo,
@@ -624,6 +624,75 @@ satırı onu tüketirdi. Yazma yolunun çalıştığı satır bırakmayan senary
 kaydet-sonrası odak döngüsü, sunucunun başarılı kayıtta bastığı `data-kayit-tamam`
 işareti tarayıcıda birebir taklit edilerek doğrulandı (**4/4**).
 
+## Stok kaplama kırılımı ve "+ Stok ekle" (2026-07-31)
+
+Kaplama rengi, kaplama çeşidi ve montaj durumu **ürün formundan çıkarıldı**, stok
+tarafına taşındı. Gerekçe kullanıcının kendi tespiti: bunlar ürünün değil, o parti
+**stoğun** özellikleri — aynı stok kodu farklı kaplamalarda üretiliyor, dolayısıyla
+ürüne tek bir kaplama yazmak yanlış soruya cevap veriyordu. Veri kaybı olmadı:
+`urunler.kaplama_id`, `boya_mine` ve `montaj_durumu` **2.974 satırın hepsinde
+NULL'dı** (ölçüldü). Kolonlar `urunler`de duruyor ama artık yazılmıyor;
+`urun_kaydet()` GUNCELLE modu tam-değiştirme olduğu için geçirmemek onları NULL'da
+tutuyor.
+
+### Kova modeli — bu değişikliğin asıl sonucu
+
+`kaplama_id` + `kaplama_cesidi` (ASKIDA/DOLAP) + `montaj` üçlüsü bir stok **kovası**
+tanımlıyor. Aynı ürünün aynı lokasyondaki "light gold / askıda / montajlı" stoğu ile
+"ham / dolap / montajsız" stoğu **ayrı izleniyor ve ayrı sayılıyor**
+(`veritabani` migration 007).
+
+Bunun kullanıcının başta istemediği ama zorunlu olan sonucu: **çıkış/transfer/sayım
+ekranları da kaplama sormak zorunda.** Yeterli stok kontrolü kova bazında olduğu için
+"light gold" stoğundan çıkış yaparken kaplamayı boş bırakmak "yetersiz stok" verir —
+doğru davranış, ama kullanıcıya anlatılması gereken bir davranış. Bu yüzden
+`_stok_islem_govde.html`'e (yani `stok_islem` ve `hizli_islem`'in ikisine birden)
+kova seçimi eklendi ve "Sistemdeki mevcut stok" dökümü artık kova kırılımını
+gösteriyor — seçim oraya bakılarak yapılıyor.
+
+**Boya ve mine bilerek kovanın DIŞINDA.** İkisi de serbest metin; kimlik anahtarına
+girselerdi `"kırmızı"`, `"Kırmızı"` ve `"kırmızı "` üç ayrı stok kovası açar ve stok
+sessizce kaybolurdu. Deftere not olarak düşüyorlar, toplamı bölmüyorlar.
+
+`LokasyonStok.kova_adi` bu üçlüyü okunur tek satıra çeviriyor ("light gold · askıda ·
+montajlı", hiçbiri yoksa "kaplama belirtilmemiş"). Aynı metin veritabanı tarafında da
+üretiliyor ama orası yetersiz-stok hatası için — bu ise liste için.
+
+### `/stok/ekle/` neden ayrı bir form
+
+`StokEkleFormu` (`forms.py`), `stok_islem`/`hizli_islem`'in paylaştığı genel formdan
+ayrı: burada **tek senaryo** var (mal kabul, hep GİRİŞ), dolayısıyla işlem tipi
+seçimi ve ona bağlı alan gizleme mantığının karşılığı yok. Ayrı olan yalnızca form;
+**yazma yolu değil** — kayıt yine `stok_servisi.hareket_kaydet()` →
+`stok_hareketi_kaydet()` üzerinden gidiyor, iş kuralları tekrarlanmıyor.
+
+Başarılı kayıttan sonra form sıfırdan kurulmuyor: **lokasyon ve kova seçimleri
+korunuyor**, yalnızca stok kodu ve miktar temizlenip odak koda dönüyor. Mal kabulde
+aynı partiden onlarca ürün arka arkaya giriliyor; kaplamayı her seferinde yeniden
+seçtirmek gereksiz sürtünme olurdu. Aynı duruş `_islem_baglami`'de de var.
+
+Stok sayfasının sağ üst köşesinde artık **iki** bağlantı var ve ayrı durmaları
+bilinçli: "+ Stok ekle" mal kabuldür, "Hızlı stok işlemi" ise kodu okutup herhangi
+bir işlemi (çıkış/transfer/sayım) yapmaktır. Kataloğun "+ Ürün ekle"si ile aynı
+hizada duran, yeni kayıt açan eylem birincisi.
+
+### Doğrulama
+
+Yazma yolu uçtan uca ölçüldü, defter **5 satırda korunarak**: başarılı senaryolar
+(iki ayrı kovaya giriş, kova dökümünün ayrışması, light gold'dan çıkışta 100→40
+olurken ham'ın 50'de kalması, `v_toplam_stok`'un hâlâ tek satır 90 dönmesi, boya
+alanının deftere düşmesi) geri alınan bir transaction içinde; hata senaryoları ise
+tanımı gereği satır yazmadıkları için üretimdeki gibi autocommit'te (yetersiz stok,
+kova ayrımının çıkışı engellemesi, bilinmeyen stok kodu, geçersiz miktar). Testin
+başındaki ve sonundaki `count(*)` ikisi de 5.
+
+Bir tuzak yaşandı ve belgelenmeye değer: hata senaryolarını dış bir
+`transaction.atomic()` içinde test etmek **çalışmıyor** — view `StokIslemHatasi`'nı
+yakalayıp sayfayı render etmeye devam ediyor, ama `RAISE EXCEPTION` transaction'ı
+zaten bozmuş oluyor ve sonraki her sorgu "current transaction is aborted" veriyor.
+Üretimde bu olmuyor (autocommit, ölçüldü). SAVEPOINT de çözmüyor, çünkü sorun
+view'ın kendi içindeki sonraki sorgularda.
+
 ## Ürün ekleme/düzenleme (2026-07-31)
 
 `/urun/ekle/` ve `/urun/<stok_kodu>/duzenle/` aynı formu (`katalog/forms.py::
@@ -745,6 +814,9 @@ davranış kendiliğinden değişir, kodda düzeltme gerekmez:
   `hammadde_adi`, `kaplama_adi` **hiçbir** satırda dolu değil, `aciklama` 1.780'in
   30'unda dolu ve bunların 26'sı yer tutucu ("yok", "E"). `kritik_stok_esigi` listede
   bilinçli olarak yok: ürünü tanımlayan bir özellik değil ve her satırda 0.
+  **2026-07-31'de kaplama/boya-mine/montaj bu listeden büsbütün çıkarıldı** — artık
+  ürünün değil stoğun özellikleri, kaplama bilgisi stok detay panelinde kova
+  kırılımı olarak gösteriliyor (bkz. "Stok kaplama kırılımı" bölümü).
 - **"En son eklenen modeller" görünümü yok, sıralama stok koduna göre.** Ürün başına
   gerçek bir ekleme zamanı **yok**: `urunler.created_at` tüm satırlarda toplu yüklemenin
   tek timestamp'i (`2026-07-28 21:31:10`) ve `v_aktif_urunler`'da hiç görünmüyor. Sipariş

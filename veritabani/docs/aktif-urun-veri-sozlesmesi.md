@@ -49,7 +49,8 @@ için (küçük dosyalar genelde gerçekten küçük/basit ürün fotoğrafları
 | `urunler.katalog_durumu` | yeni kolon | `'AKTIF' \| 'PASIF' \| 'INCELEME_BEKLIYOR'` |
 | `urunler.aktif_mi` | mevcut kolon | değişmedi; `katalog_durumu='AKTIF'` ile her zaman tutarlı (CHECK constraint) |
 | `v_aktif_urunler` | yeni view | Katalog/arama ekranlarının **tek** okuma kaynağı — sadece aktif ürünler, kategori/hammadde/kaplama/ana görsel join'li |
-| `v_lokasyon_stok_ozet` | view (002, 004'te genişledi) | ürün × lokasyon bazında net miktar |
+| `v_lokasyon_stok_ozet` | view (002, 004 ve **007'de genişledi**) | ürün × lokasyon × **kaplama kovası** bazında net miktar |
+| `stok_hareketleri.kaplama_id` / `kaplama_cesidi` / `montaj` / `boya` / `mine` | yeni kolon (007) | stok partisinin kaplama bilgisi; ilk üçü stok kovasını tanımlar |
 | `v_toplam_stok` | view (002, **004'te anlamı değişti**) | ürün başına **satılabilir** toplam (004 sonrası NUMUNE hariç) |
 | `v_lokasyonlar_detay` | yeni view (004) | lokasyon açılır listelerinin **tek** kaynağı — hiyerarşi, `tam_ad`, `yaprak_mi` |
 | `v_fiziksel_stok` | yeni view (004) | ürün başına fiziksel toplam (numuneler **dahil**) |
@@ -74,11 +75,26 @@ küçük harfe çevrilip birleştirilmiş hali — tek bir `ILIKE '%...%'` ile h
 için (bkz. `csv_guncelle.py`'deki `arama_metni_olustur()` ile aynı yaklaşım).
 
 `v_lokasyon_stok_ozet`: `stok_kodu`, `lokasyon_id`, `lokasyon_adi`, `lokasyon_tipi`,
-`mevcut_miktar` **+ 004 sonrası:** `lokasyon_kodu`, `lokasyon_tam_adi`. Yeni kolonlar
-sona eklendi, mevcut kolonların adı/sırası/tipi korundu — isimle seçen sorgular
-etkilenmez.
+`mevcut_miktar` **+ 004 sonrası:** `lokasyon_kodu`, `lokasyon_tam_adi`
+**+ 007 sonrası:** `kaplama_id`, `kaplama_adi`, `kaplama_cesidi`, `montaj`.
+Yeni kolonlar her seferinde sona eklendi, mevcut kolonların adı/sırası/tipi korundu —
+isimle seçen sorgular etkilenmez.
+
+**007 bu view'ın SATIR ANLAMINI değiştirdi:** artık (stok_kodu, lokasyon) başına
+birden fazla satır dönebiliyor — `kaplama_id` + `kaplama_cesidi` + `montaj` üçlüsü
+bir stok **kovası** tanımlıyor ve her kova ayrı satır. Yani aynı ürünün aynı
+lokasyondaki "light gold / askıda / montajlı" stoğu ile "ham / dolap / montajsız"
+stoğu ayrı ayrı görünüyor ve **ayrı sayılıyor**. Bu view'dan tekil bir bakiye
+okuyan her sorgu kovayı da eşleştirmek zorunda; üçü de NULL olabildiği için
+karşılaştırma `=` ile değil **`IS NOT DISTINCT FROM`** ile yapılmalı (`= NULL`
+hiçbir zaman eşleşmez, "belirtilmemiş" kovası hep 0 okunurdu).
 
 `v_toplam_stok`: `stok_kodu`, `toplam_miktar`. `v_fiziksel_stok`: aynı kolonlar.
+**İkisi de 007'de DEĞİŞMEDİ ve bu bilinçli** — ürün başına tek satır sözleşmesi
+korunuyor. Altlarındaki satır sayısı arttı ama `SUM(...) GROUP BY stok_kodu`
+sonucu aynı. Kırılımı buraya taşımak katalogdaki "sadece stokta olanlar"
+filtresini, ana ekranın sayım ilerlemesini ve stok kartlarındaki tek rakamı
+sessizce bozardı.
 
 ## Boş değer davranışları
 
@@ -216,9 +232,27 @@ SELECT * FROM stok_hareketi_kaydet(
     %s,   -- kaynak_lokasyon_id (GIRIS/SAYIM_DEVRI'de NULL, CIKIS'te zorunlu)
     %s,   -- hedef_lokasyon_id
     %s,   -- aciklama
-    %s    -- yapan_kullanici, zorunlu
+    %s,   -- yapan_kullanici, zorunlu
+    -- 007 sonrası, hepsi opsiyonel (verilmezse "belirtilmemiş" kovası):
+    %s,   -- kaplama_id (kaplamalar tablosuna FK)
+    %s,   -- kaplama_cesidi ('ASKIDA' | 'DOLAP')
+    %s,   -- montaj (BOOLEAN)
+    %s,   -- boya (serbest metin)
+    %s    -- mine (serbest metin)
 );
 ```
+
+**007 imzayı genişletti ama geriye uyumlu**: beş yeni parametrenin hepsi
+`DEFAULT NULL`, yani eski 8 argümanlı çağrılar değişmeden çalışıyor. Fonksiyon
+`CREATE OR REPLACE` ile değil **önce `DROP` edilerek** yeniden yaratıldı; PostgreSQL
+fonksiyonları (ad + argüman tipleri) ile tanımladığı için parametre eklemek eskisini
+değiştirmez, yanına ikinci bir aşırı yükleme koyar ve 8 argümanlı çağrı
+"function is not unique" ile belirsizleşirdi.
+
+**Kova kimliği `kaplama_id` + `kaplama_cesidi` + `montaj`** üçlüsüdür; `boya`/`mine`
+bilerek DIŞINDA. İkisi de serbest metin ve kimlik anahtarına girselerdi
+`"kırmızı"`/`"Kırmızı"`/`"kırmızı "` üç ayrı stok kovası açar, stok sessizce
+kaybolurdu. Onlar partinin açıklayıcı bilgisi, deftere not olarak düşüyor.
 
 Dönüş: `hareket_id`, `uygulanan_miktar`, `atlandi` (bool — mükerrer gönderim ya da sıfır
 farklı sayım nedeniyle kayıt oluşmadıysa `TRUE`), `mesaj` (kullanıcıya gösterilecek
@@ -229,7 +263,10 @@ kullanıcıya göstermek — kuralları ikinci kez doğrulamak değil.
 gereksinimleri gözden geçirilirken ortaya çıktı, canlı şemaya karşı `BEGIN...ROLLBACK`
 ile test edildi, hiçbir kalıcı iz bırakmadan):
 
-- **Yeterli stok kontrolü**: kaynak lokasyondan bir miktar düşülecekse (ÇIKIŞ, TRANSFER'in
+- **Yeterli stok kontrolü** (**007'de KOVA bazına indi**: artık "bu lokasyonda bu
+  kaplamada kaç adet var" sorusuna bakıyor, lokasyonun toplamına değil — 100 adet
+  "light gold" stoğu, "ham" kovasından yapılacak bir çıkışı karşılamıyor):
+  kaynak lokasyondan bir miktar düşülecekse (ÇIKIŞ, TRANSFER'in
   kaynak ucu, DÜZELTME'nin azaltma ucu), oradaki mevcut miktarı aşamaz — aşarsa
   `RAISE EXCEPTION 'Yetersiz stok: bu lokasyonda % adet var, % adet çıkış isteniyor.'`.
   SAYIM_DEVRİ'nin kendi azaltma ucu matematiksel olarak bu kontrolü hep geçer (mevcuttan
