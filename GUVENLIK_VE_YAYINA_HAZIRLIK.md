@@ -7,6 +7,28 @@ anlamına gelmez. Geliştirme erişimi yalnızca Tailscale/Headscale ağı için
 
 ## Geliştirme dönemi veritabanı kararı
 
+### Pi kurulum durumu (2026-08-04)
+
+- Raspberry Pi Tailscale adı `rpi`, IPv4 adresi `100.64.0.7`.
+- `depo-postgres`, `depo-gorsel-sunucu` ve `metaks-web.service` açılışta başlar.
+- PostgreSQL `100.64.0.7:5433`, görseller `100.64.0.7:8083`, Django ise
+  `http://100.64.0.7:8000` üzerinden tailnet'e sunulur.
+- Docker Compose cihaz adresini gitignored `veritabani/.env` içindeki
+  `TAILSCALE_BIND_ADDRESS` değişkeninden alır.
+- Pi şu anda microSD kullanıyor. Geliştirme kopyası için kabul edildi; gerçek
+  kullanım öncesinde NVMe SSD ve mümkünse UPS'e geçiş hâlâ zorunlu listededir.
+
+Başka bir Tailscale cihazında yerel Django çalıştırılacaksa `web/.env` içinde:
+
+```env
+WEB_DB_HOST=100.64.0.7
+METAKS_DB_HOST=100.64.0.7
+GORSEL_SUNUCU_BASE_URL=http://100.64.0.7:8083/urun-gorselleri/
+```
+
+Portlar `5433` olarak kalır. Veritabanı parolaları Git'e yazılmaz; Pi'deki
+`web/.env` dosyasından yetkili cihaza güvenli kanalla aktarılır.
+
 Raspberry Pi 5 sürekli açık ve Tailscale ağına bağlı olduğu için geliştirme
 döneminde PostgreSQL kopyasının ve ürün görsellerinin merkezi saklama/önizleme
 noktasıdır.

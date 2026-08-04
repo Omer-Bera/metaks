@@ -17,7 +17,10 @@ services:
       POSTGRES_PASSWORD: supergizlisifre
       POSTGRES_DB: depo_sistemi
     ports:
-      - "5433:5432"
+      # Pi'de TAILSCALE_BIND_ADDRESS veritabani/.env'de 100.64.0.7 olarak
+      # tanımlıdır. Diğer geliştiriciler değişkeni vermediğinde mevcut yerel
+      # geliştirme davranışı korunur.
+      - "${TAILSCALE_BIND_ADDRESS:-0.0.0.0}:5433:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ./sql/01_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
@@ -31,7 +34,7 @@ services:
     container_name: depo-gorsel-sunucu
     restart: unless-stopped
     ports:
-      - "8083:80"
+      - "${TAILSCALE_BIND_ADDRESS:-0.0.0.0}:8083:80"
     volumes:
       - ./images/final/products:/usr/share/nginx/html/urun-gorselleri:ro
       - ./docker/nginx/gorseller.conf:/etc/nginx/conf.d/default.conf:ro
