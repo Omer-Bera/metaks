@@ -60,6 +60,58 @@
             gorsel.classList.add('hidden');
             gorsel.nextElementSibling?.classList.remove('hidden');
         }
+
+        function filtreIstegiSuruyorMu() {
+            return Boolean(document.querySelector(
+                '.htmx-request[hx-target="#katalog-govde"], ' +
+                '.htmx-request[hx-target="#hareket-govde"]'
+            ));
+        }
+
+        // Dosya bağlantısı sunucunun son render'ındaki sorguyu kullanmaz. Arama alanı
+        // debounce süresindeyken bile FormData canlı değeri okur. Kategori/stok gibi
+        // durumu HTMX yanıtıyla güncellenen kontrollerde ise takasın bitmesini bekler.
+        function disaAktar(dugme) {
+            if (filtreIstegiSuruyorMu()) {
+                dugme.disabled = true;
+                const beklemeOlaylari = [
+                    'htmx:afterSettle',
+                    'htmx:sendError',
+                    'htmx:responseError',
+                ];
+
+                function beklemeyiBitir(olay) {
+                    // Birden çok filtre isteği çakıştıysa son başarılı takası bekle.
+                    if (olay.type === 'htmx:afterSettle' && filtreIstegiSuruyorMu()) return;
+
+                    for (const olayAdi of beklemeOlaylari) {
+                        document.body.removeEventListener(olayAdi, beklemeyiBitir);
+                    }
+                    dugme.disabled = false;
+
+                    // Hata durumunda bayat filtreyle indirmek yerine kullanıcı yeniden
+                    // dener; yalnız başarılı takastan sonra otomatik devam edilir.
+                    if (olay.type === 'htmx:afterSettle') disaAktar(dugme);
+                }
+
+                for (const olayAdi of beklemeOlaylari) {
+                    document.body.addEventListener(olayAdi, beklemeyiBitir);
+                }
+                return;
+            }
+
+            const form = document.getElementById(dugme.dataset.filtreFormu);
+            if (!form) return;
+
+            const parametreler = new URLSearchParams();
+            for (const [anahtar, deger] of new FormData(form)) {
+                if (String(deger) !== '') parametreler.append(anahtar, String(deger));
+            }
+
+            const hedef = new URL(dugme.dataset.disaYol, window.location.origin);
+            hedef.search = parametreler.toString();
+            window.location.assign(hedef);
+        }
     </script>
     {% block scripts %}{% endblock %}
 </body>

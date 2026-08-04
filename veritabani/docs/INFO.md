@@ -137,11 +137,10 @@ tam olarak kanıtlanamaz.
 
 1. Gerçek numune dolabı ve raflarını `NUMUNE` hiyerarşisi olarak girin.
 2. Arayüzde ürün detayına numune konumu/miktarı görünümünü ekleyin.
-3. Hareket geçmişi için Türkçe Excel ile uyumlu CSV/Excel dışa aktarmayı ekleyin.
-4. Dış/fason kullanıcı ihtiyacı doğduğunda rol ve işlem yetkilerini ayırın.
+3. Dış/fason kullanıcı ihtiyacı doğduğunda rol ve işlem yetkilerini ayırın.
 
-İkinci, üçüncü ve dördüncü maddelerin uygulama durumu
-`../../web/YAPILACAKLAR.md` tarafından izlenir.
+İkinci ve üçüncü maddelerin uygulama durumu `../../web/YAPILACAKLAR.md`
+tarafından izlenir.
 
 ### Faz 3 — Kalıp modülü
 

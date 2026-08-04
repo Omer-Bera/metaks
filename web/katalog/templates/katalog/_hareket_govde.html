@@ -4,10 +4,13 @@ Filtre değiştiğinde HTMX'in outerHTML ile takas ettiği blok. Filtre formu bu
 dışında (bkz. hareketler.html) — alanlar DOM'da kalıyor, odak kaybolmuyor.
 {% endcomment %}
 <div id="hareket-govde">
-    <p class="mb-3 text-sm text-slate-500">
-        <span class="font-medium text-slate-900">{{ toplam|intcomma }}</span> hareket
-        <span id="hareket-bekliyor" class="htmx-indicator ml-1 text-slate-400">yükleniyor…</span>
-    </p>
+    <div class="mb-3 flex flex-wrap items-center gap-3">
+        <p class="text-sm text-slate-500">
+            <span class="font-medium text-slate-900">{{ toplam|intcomma }}</span> hareket
+            <span id="hareket-bekliyor" class="htmx-indicator ml-1 text-slate-400">yükleniyor…</span>
+        </p>
+        {% include "katalog/_disa_aktar.html" %}
+    </div>
 
     {% if toplam %}
     {# Tablo dar ekranda kendi içinde yatay kayar; sayfanın kendisi kaymaz. #}

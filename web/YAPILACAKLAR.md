@@ -9,8 +9,7 @@ Eski madde numaraları kod ve diğer belge referanslarını bozmamak için korun
 Güncel uygulama sırası:
 
 1. **Madde 4 — numune arayüzü ve gerçek dolap/raf düzeni**
-2. **Madde 5 — filtreli CSV/Excel dışa aktarma**
-3. **Madde 2b — rol ayrımı**, dış/fason kullanıcı sisteme girene kadar erteli
+2. **Madde 2b — rol ayrımı**, dış/fason kullanıcı sisteme girene kadar erteli
 
 ---
 
@@ -57,37 +56,6 @@ hareketidir ve aynı defterde izlenir.
 
 ---
 
-## 5. Hareket geçmişinde CSV / Excel dışa aktarma
-
-`/stok/hareketler/` üzerindeki aktif filtrelerle aynı kayıt kümesini dosya olarak
-indiren “Dışa aktar” eylemi eklenecek. Kapsam ve kararlar için
-[`DISA_AKTARIM_TASARIMI.md`](DISA_AKTARIM_TASARIMI.md) belgesine bakın.
-
-### Yapılacaklar
-
-- [ ] HTML liste ve dışa aktarma aynı filtreleme fonksiyonunu/queryset kurucusunu
-  kullansın; arama, işlem tipi, kaynak/hedef lokasyon, kullanıcı ve tarih aralığı
-  iki yerde kopyalanmasın.
-- [ ] Dışa aktarmada sayfalama uygulama; filtrelenmiş kümenin tamamını
-  `StreamingHttpResponse` ile satır satır üret.
-- [ ] Tarihi `yerel_tarih()` üzerinden Europe/Istanbul saatinde yaz. Ham naive UTC
-  kolonunu doğrudan dışa aktarma.
-- [ ] Türkçe Excel uyumu için ayraç `;`, kodlama UTF-8 ve dosyanın başı BOM olsun.
-- [ ] Stok kodu/açıklama/kullanıcı gibi metin alanlarının Excel formülü olarak
-  yorumlanmasını engelle; `=`, `+`, `-` veya `@` ile başlayan hücreleri güvenli yaz.
-- [ ] Dosya adı tarih içersin; uygulanan filtreler dosya içeriğinde veya adında
-  anlaşılabilir olsun.
-
-### Kabul ölçütleri
-
-- Ekrandaki filtrelerle dosyadaki satırlar birebir aynı kayıt kümesini temsil ediyor.
-- Tarih gün sınırlarında üç saat kaymıyor.
-- Türkçe karakterler ve sütunlar gerçek Excel'de doğru açılıyor.
-- Büyük sonuç kümesi bellekte bütünüyle tutulmuyor.
-- Filtre yokken ve sonuç boşken geçerli dosya üretiliyor.
-
----
-
 ## 2b. Rol/yetki ayrımı — ertelendi
 
 Bugünkü kapılar:
@@ -109,9 +77,9 @@ matrisine dökülmeli; güvenlik kararları kök güvenlik belgesiyle birlikte e
 
 ## Sırası gelmemiş / arka planda duranlar
 
-- **Otomatik test altyapısı:** `katalog/tests.py` boş. Canlı `depo_sistemi`ne test
-  DB'si oluşturmayan güvenli bir fixture/test şeması tasarlanmadan test runner'ı
-  paylaşılan veriye karşı çalıştırılmamalı.
+- **Otomatik test altyapısı:** Dışa aktarımın saf `SimpleTestCase` testleri
+  veritabanı kurmadan çalışıyor. ORM entegrasyonları için güvenli fixture/test şeması
+  tasarlanmadan test runner'ını paylaşılan `depo_sistemi`ne karşı çalıştırmayın.
 - **Çoklu görsel galerisi:** veri ve kullanıcı ihtiyacı belirginleşene kadar tek ana
   görsel korunuyor.
 - **Otomatik stok yenileme:** açık sekme kendiliğinden yenilenmiyor. Operasyonel
@@ -136,6 +104,7 @@ matrisine dökülmeli; güvenlik kararları kök güvenlik belgesiyle birlikte e
 | ✅ 3b — hızlı stok işlemi | 2026-07-31 | Kod/barkod, öneri, ürün formu ve kayıt döngüsü URL değiştirmeyen tek sayfada birleşti; PASİF ürünler de işleniyor. |
 | ✅ stok kovası ve stok ekle | 2026-08-02 | Kaplama/çeşit/montaj ürün özelliği değil stok kovası oldu; `/stok/ekle/` mal kabul ekranı eklendi. |
 | ✅ numune şema ön koşulu | 2026-07-30 | Ayrı varlık yerine lokasyon hiyerarşisi seçildi; migration 004 ve Django yaprak-lokasyon geçişi tamamlandı. |
+| ✅ 5 — filtreli CSV/Excel dışa aktarım | 2026-08-04 | Katalog, stok ve hareket ekranları aynı filtre sorgularından sayfalamasız dosya üretiyor; CSV akışlı, XLSX write-only/geçici dosyalı ve anonim okuma davranışı korundu. |
 
 Bir madde tamamlandığında açık bölümden kaldırıp bu tabloya tarih ve tek cümlelik
 kalıcı gerekçeyle ekleyin. Canlı satır sayısı, kişisel cihaz durumu ve tek kullanımlık
