@@ -1,76 +1,105 @@
 # veritabani — METAKS veri ve şema katmanı
 
-`metaks` deposunun iki dizininden biri (diğeri `web/`). Şemanın ve verinin otoritesi
-burasıdır: ürün kataloğunu temizleyip normalleştiren pipeline, PostgreSQL şeması ve
-migration'ları, docker servisleri ve ürün görselleri.
+Bu dizin ürün kataloğunu temizleyen/normalleştiren veri hattını, PostgreSQL baz
+şemasını ve migration'ları, veri aktarım araçlarını, Docker servislerini ve ürün
+görsellerini içerir. Django + HTMX arayüzü kardeş `web/` dizinindedir.
 
-- **Nerede kaldık, sırada ne var:** `docs/INFO.md` ("Güncel Çalışma Noktası", "Sonraki Fazlar").
-- **Mimari bağlam ve kalıcı kurallar:** buradaki `CLAUDE.md`, depo geneli için kökteki `CLAUDE.md`.
-- **Arayüzün okuduğu view/fonksiyon sözleşmesi:** `docs/aktif-urun-veri-sozlesmesi.md`.
+- Çalışma kuralları: [`AGENTS.md`](AGENTS.md)
+- Güncel durum ve yol haritası: [`docs/INFO.md`](docs/INFO.md)
+- Arayüz veri sözleşmesi:
+  [`docs/aktif-urun-veri-sozlesmesi.md`](docs/aktif-urun-veri-sozlesmesi.md)
+- Karışık stok kodu kuralı:
+  [`docs/karisik_stok_kodu_kurali.md`](docs/karisik_stok_kodu_kurali.md)
 
-## Servisler
+## Geliştirme araçlarını ve servisleri başlatma
+
+Pipeline sanal ortamı Django'nunkinden ayrıdır:
 
 ```bash
-docker compose up -d      # bu dizinden çalıştırılır
+python3 -m venv venv
+venv/bin/pip install -r requirements.txt
+source venv/bin/activate
 ```
 
-İki servis kalkar: `depo-postgres` (Postgres 16, port **5433**) ve `depo-gorsel-sunucu`
-(nginx, port **8083**, `images/final/products`'ı salt-okunur sunar).
+Servisleri bu dizinden başlatın:
 
-Compose projesi `docker-compose.yml`'de `name: metaks_db` ile **sabitlenmiştir** —
-canlı veritabanı `metaks_db_pg_data` volume'ünde duruyor, bu satır silinirse compose
-dizin adından yeni ve boş bir volume türetir. Elle bağlanmak için:
+```bash
+docker compose up -d
+docker compose ps
+```
+
+İki servis açılır:
+
+- `depo-postgres`: PostgreSQL 16, host portu `5433`;
+- `depo-gorsel-sunucu`: ürün görsellerini salt-okunur sunan nginx, host portu
+  `8083`.
+
+Compose proje adı `name: metaks_db` ile sabittir. Bu ad mevcut
+`metaks_db_pg_data` volume'ünü bulmak için gereklidir; değiştirmeyin. Portların
+hangi host adresine bağlanacağı ignored `.env` içindeki `TAILSCALE_BIND_ADDRESS`
+ile belirlenebilir; örnek için `.env.example` dosyasına bakın.
+
+Elle veritabanı bağlantısı:
 
 ```bash
 docker exec -it depo-postgres psql -U depo_admin -d depo_sistemi
 ```
 
-## Klasörler
+## Şema modeli
+
+Şema otoritesi `sql/01_schema.sql` ile `sql/migrations/` altındaki numaralı
+migration'ların sıralı birleşimidir. `01_schema.sql` yalnızca yeni volume'e
+kurulan baz şemadır ve canlı şemanın tek başına tam görüntüsü değildir.
+Migration'lar Docker tarafından otomatik uygulanmaz.
+
+Migration 006, belirli 30 tarihsel test hareketini silen koşullu bir veri
+temizliğidir; fresh/boş kurulumda körlemesine uygulanmaz. Ayrıntılı uygulama ve
+test kuralları `AGENTS.md` içindedir.
+
+Boş ortamı güncel hâle getirmek düz bir `001`–`007` döngüsü değildir: migration
+001 ürün/görsel verisine göre backfill yapar, 006 ise yalnız tarihsel canlı veriyi
+temizler. Doğrulanmış dump geri yüklemek tercih edilir; sıfırdan yeniden üretim
+sırası ve önkoşulları için `AGENTS.md` izlenmelidir.
+
+Django, `depo_sistemi` bağlantısına `migrate` çalıştırmaz; bu şemaya bağlı tüm
+modeller `managed = False` durumundadır.
+
+Yazma kapıları:
+
+- `stok_hareketleri` → yalnız `stok_hareketi_kaydet()`;
+- `urunler` → yalnız `urun_kaydet()`.
+
+## Dizinler
 
 | Yol | İçerik |
 | --- | --- |
-| `sql/01_schema.sql` | **Güncel şema.** docker-compose bunu `docker-entrypoint-initdb.d`'ye mount eder |
-| `sql/migrations/` | Numaralı migration'lar (`00N_x.sql` + `00N_x_rollback.sql`), elle uygulanır |
-| `sql/legacy/init_db.sql` | Eski/basit şema, hiçbir yerde kullanılmıyor — yalnızca referans |
-| `scripts/cleaning/` | Aşama 1: temizle, olcu_temizle, duzelt, ayir |
-| `scripts/normalization/` | Aşama 2–3: birleşik/karışık stok kodu çözümü, final Excel |
-| `scripts/maintenance/` | Tekrar silme, kalıp yedeği, arşivleme, `yedek_al.sh` |
-| `scripts/database/` | `yukle.py`, `gorselleri_yukle.py`, CSV/Excel dışa aktarma, `urun_ara.py` |
-| `scripts/images/` | Excel içindeki gömülü görselleri stok koduyla eşleyen hat |
-| `data/raw/` | `urun_listesi.xlsx` — görsel gömülü ham kaynak (~195 MB, gitignored) |
+| `sql/01_schema.sql` | Yeni kurulumun baz şeması |
+| `sql/migrations/` | Sıralı ileri migration'lar ve rollback dosyaları |
+| `scripts/cleaning/` | İlk temizlik aşamaları |
+| `scripts/normalization/` | Tekilleştirme ve karışık stok kodu çözümü |
+| `scripts/maintenance/` | Arşivleme, kalıp yedeği, tekrar temizliği ve yedek |
+| `scripts/database/` | Yükleme, arama ve CSV/Excel dışa aktarma |
+| `scripts/images/` | Excel görsellerini stok kodlarıyla eşleme ve raporlama |
+| `data/raw/` | Gömülü görselli ham Excel kaynağı (gitignored) |
 | `data/interim/` | Pipeline ara çıktıları |
-| `data/processed/` | `temiz_urunler_final_v2.xlsx` — DB'ye yüklenen nihai veri |
-| `data/reference/` | Kalıp yedeği, arşivlenen ürün listesi, manuel eşlemeler |
-| `images/final/products/` | Aktif ürün görselleri (DB ile eşleşen, 1.799 dosya) |
-| `images/arsiv/products/` | Yeni stok kodlarıyla eşleşmeyen arşiv görselleri (934 dosya) |
-| `images/working/products/` | Çalışma kopyası + ham eşleme raporu |
-| `reports/excel/` | Denetim ve dönüşüm raporları, `veritabani_guncel_durum.xlsx` (canlı DB aynası) |
-| `docker/nginx/` | Görsel sunucusunun nginx yapılandırması |
-| `docs/` | INFO.md (durum/yol haritası), veri sözleşmesi, karışık stok kodu kuralı |
-| `archive/` | Aktif hattın dışında kalan eski script/veri/notebook'lar (gitignored) |
-| `backups/` | `yedek_al.sh` çıktısı: pg_dump + görsel aynası (gitignored) |
+| `data/processed/` | DB yükleme kaynağı ve üretilebilir çıktılar |
+| `data/reference/` | Kalıcı referans ve arşiv kayıtları |
+| `images/final/products/` | DB ile eşleşen, Django/nginx tarafından paylaşılan görseller |
+| `images/arsiv/products/` | Aktif kapsam dışında tutulan görseller |
+| `reports/excel/` | Dönüşüm ve denetim raporları |
+| `backups/` | Yerel dump ve görsel kopyaları (gitignored) |
 
-## Ortam
+## Koruma ve yedek
+
+Ham Excel, nihai yükleme dosyası, kalıp yedeği, aktif görsel dizini, baz şema ve
+`scripts/database/yukle.py` yedeksiz silinmemeli veya toplu değiştirilmemelidir.
+`yukle.py` katalog tablolarını temizleyip yeniden yüklediği için yıkıcı kabul edilir.
+
+İki veritabanının dump'ını ve görsel kopyasını almak için:
 
 ```bash
-python3 -m venv venv && venv/bin/pip install -r requirements.txt
-source venv/bin/activate
+scripts/maintenance/yedek_al.sh
 ```
 
-Bu venv `web/venv` ile **karıştırılmamalıdır** — biri pandas/psycopg2 pipeline'ı, diğeri Django.
-
-## Dosya koruma
-
-Yedek almadan silinmemesi/toplu değiştirilmemesi gerekenler:
-
-```text
-data/raw/urun_listesi.xlsx            # Excel yeniden kaydı görsel anchor'larını kaydırabilir
-data/processed/temiz_urunler_final_v2.xlsx
-data/reference/kalip_bilgileri_yedek.xlsx
-images/final/products/
-sql/01_schema.sql
-scripts/database/yukle.py
-```
-
-Yazma tek kapıdan: `stok_hareketleri`'ne doğrudan INSERT yok (`stok_hareketi_kaydet()`),
-`urunler`'e doğrudan INSERT/UPDATE yok (`urun_kaydet()`). Ayrıntı kökteki `CLAUDE.md`'de.
+Varsayılan `backups/` aynı disktedir; gerçek yedek için `BACKUP_DEST` ayrı bir
+disk veya NAS yolunu göstermelidir.

@@ -2,24 +2,26 @@
 
 METAKS'ın depo/katalog sistemi. Tek depo, iki dizin:
 
-- **`veritabani/`** — PostgreSQL şeması ve migration'lar, veri temizleme/normalizasyon
-  pipeline'ı, docker servisleri (Postgres + görsel sunucu), ürün görselleri.
+- **[`veritabani/`](veritabani/)** — PostgreSQL şeması ve migration'lar, veri
+  temizleme/normalizasyon pipeline'ı, docker servisleri (Postgres + görsel
+  sunucu), ürün görselleri.
   Şema ve verinin otoritesi burası.
-- **`web/`** — Django + HTMX web arayüzü: ürün kataloğu, stok durumu, stok işlemleri,
-  hareket geçmişi, ürün ve lokasyon/kullanıcı yönetimi.
+- **[`web/`](web/)** — Django + HTMX web arayüzü: ürün kataloğu, stok durumu,
+  stok işlemleri, hareket geçmişi, ürün ve lokasyon/kullanıcı yönetimi.
 
-Ayrıntılı mimari bağlam ve kararlar her iki dizinin kendi `CLAUDE.md`'sinde; depo
-geneli için kökteki `CLAUDE.md`.
+Ayrıntılı mimari bağlam ve kararlar [veritabani/AGENTS.md](veritabani/AGENTS.md) ve
+[web/AGENTS.md](web/AGENTS.md) dosyalarında; depo geneli için [AGENTS.md](AGENTS.md).
 
-**Nerede kaldık, sırada ne var:** arayüz için `web/YAPILACAKLAR.md`, şema/pipeline
-için `veritabani/docs/INFO.md`'nin "Güncel Çalışma Noktası" ve "Sonraki Fazlar"
-bölümleri.
+**Nerede kaldık, sırada ne var:** arayüz için [web/YAPILACAKLAR.md](web/YAPILACAKLAR.md),
+şema/pipeline için [veritabani/docs/INFO.md](veritabani/docs/INFO.md) dosyasının
+"Güncel çalışma noktası" ve "Sıradaki işler" bölümleri.
 
 **Güvenlik ve barındırma:** geliştirme döneminde Raspberry Pi üzerinde tutulan
 veritabanı kopyasının akışı ve gerçek kullanımdan önce kapatılacak güvenlik
-maddeleri `GUVENLIK_VE_YAYINA_HAZIRLIK.md` dosyasında izlenir.
+maddeleri [GUVENLIK_VE_YAYINA_HAZIRLIK.md](GUVENLIK_VE_YAYINA_HAZIRLIK.md)
+dosyasında izlenir.
 
-## Hızlı başlangıç
+## Mevcut geliştirme ortamını çalıştırma
 
 ```bash
 cd veritabani && docker compose up -d      # Postgres (5433) + görsel sunucu (8083)

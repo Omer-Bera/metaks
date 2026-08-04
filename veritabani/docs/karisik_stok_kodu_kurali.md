@@ -95,4 +95,4 @@ Script çalıştığında `reports/excel/karisik_urun_cozme_raporu.xlsx` üretir
 - `scripts/normalization/karisik_urunleri_birlestir.py` bu çözülen varyantları
   `temiz_urunler_tekrarsiz_v2.xlsx` ile birleştirip `final_excel_hazirla.py` →
   `yukle.py` akışına besler — 2026-07-28'den beri **aktif akışın parçası**,
-  taslak değil. Veritabanında şu an 2.973 ürün var.
+  taslak değil.
