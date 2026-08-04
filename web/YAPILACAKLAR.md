@@ -60,7 +60,8 @@ hareketidir ve aynı defterde izlenir.
 ## 5. Hareket geçmişinde CSV / Excel dışa aktarma
 
 `/stok/hareketler/` üzerindeki aktif filtrelerle aynı kayıt kümesini dosya olarak
-indiren “Dışa aktar” eylemi eklenecek.
+indiren “Dışa aktar” eylemi eklenecek. Kapsam ve kararlar için
+[`DISA_AKTARIM_TASARIMI.md`](DISA_AKTARIM_TASARIMI.md) belgesine bakın.
 
 ### Yapılacaklar
 
