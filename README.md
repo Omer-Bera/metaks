@@ -15,6 +15,10 @@ geneli için kökteki `CLAUDE.md`.
 için `veritabani/docs/INFO.md`'nin "Güncel Çalışma Noktası" ve "Sonraki Fazlar"
 bölümleri.
 
+**Güvenlik ve barındırma:** geliştirme döneminde Raspberry Pi üzerinde tutulan
+veritabanı kopyasının akışı ve gerçek kullanımdan önce kapatılacak güvenlik
+maddeleri `GUVENLIK_VE_YAYINA_HAZIRLIK.md` dosyasında izlenir.
+
 ## Hızlı başlangıç
 
 ```bash
