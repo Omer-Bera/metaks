@@ -318,6 +318,81 @@ class MontajDurumuGecisiTestleri(SimpleTestCase):
         self.assertEqual(kalanlar, [], f'Kalan HAM montaj değeri: {kalanlar}')
 
 
+class FasonIsEmriTuretmeTestleri(SimpleTestCase):
+    """Dönecek SKU'nun türetilmesi: işlem türü eşlemesi ve nitelik deltası."""
+
+    def test_tek_islem_kendi_turunu_verir(self):
+        from .forms import fason_islem_turu
+
+        self.assertEqual(fason_islem_turu(['kaplama_yapilacak']), 'KAPLAMA')
+        self.assertEqual(fason_islem_turu(['boya_yapilacak']), 'BOYA')
+        self.assertEqual(fason_islem_turu(['montaj_yapilacak']), 'MONTAJ')
+
+    def test_kolonda_karsiligi_olmayan_islem_diger(self):
+        from .forms import fason_islem_turu
+
+        self.assertEqual(fason_islem_turu(['lak_yapilacak']), 'DIGER')
+        self.assertEqual(fason_islem_turu(['iscilik_yapilacak']), 'DIGER')
+
+    def test_birden_fazla_islem_diger_ve_ayrinti_ozette(self):
+        from .forms import fason_islem_ozeti, fason_islem_turu
+
+        secilen = ['kaplama_yapilacak', 'lak_yapilacak']
+        self.assertEqual(fason_islem_turu(secilen), 'DIGER')
+        # `islem_turu` tek değerli olduğu için ayrıntı açıklamaya düşüyor;
+        # bilgi kaybolmamalı.
+        self.assertEqual(fason_islem_ozeti(secilen), 'kaplama, lak')
+
+    def test_islem_secilmemisse_tur_diger_ozet_bos(self):
+        from .forms import fason_islem_ozeti, fason_islem_turu
+
+        self.assertEqual(fason_islem_turu([]), 'DIGER')
+        self.assertEqual(fason_islem_ozeti([]), '')
+
+    def _kaynak(self, **ezilen):
+        from .models import StokKalemi
+
+        alanlar = dict(
+            urun_kodu='1005910', kaplama_id=15, boya_renk_id=6, mine_renk_id=None,
+            montaj_durumu='DEMONTE', lak_mi=False, vernik_mi=False, iscilik_mi=False,
+        )
+        alanlar.update(ezilen)
+        return StokKalemi(**alanlar)
+
+    def _parametreler(self, kaynak, veri, renkler=None):
+        from .stok_yonetimi import _hedef_sku_parametreleri
+
+        with patch('katalog.stok_yonetimi.Renk') as sahte:
+            sahte.objects.using.return_value.filter.return_value.values_list \
+                .return_value = list((renkler or {6: 'Siyah'}).items())
+            return _hedef_sku_parametreleri(kaynak, veri)
+
+    def test_dokunulmayan_nitelik_kaynaktan_tasiniyor(self):
+        # "Yalnız lak yaptır" diyen bir iş emri kaplamayı ve rengi korumalı.
+        parametreler = self._parametreler(self._kaynak(), {'lak_yapilacak': True})
+        self.assertEqual(parametreler['kaplama_id'], 15)
+        self.assertEqual(parametreler['boya_renk'], 'Siyah')
+        self.assertEqual(parametreler['montaj_durumu'], 'DEMONTE')
+        self.assertTrue(parametreler['lak_mi'])
+        self.assertFalse(parametreler['vernik_mi'])
+
+    def test_secilen_islem_niteligi_degistiriyor(self):
+        parametreler = self._parametreler(self._kaynak(), {
+            'kaplama_yapilacak': True, 'yeni_kaplama_id': 21,
+            'montaj_yapilacak': True, 'yeni_montaj_durumu': 'MONTE',
+        })
+        self.assertEqual(parametreler['kaplama_id'], 21)
+        self.assertEqual(parametreler['montaj_durumu'], 'MONTE')
+
+    def test_fason_islemi_nitelik_ekler_kaldirmaz(self):
+        # Kaynakta zaten lak varsa dönüşte de var; "lak sök" diye iş emri yok.
+        parametreler = self._parametreler(
+            self._kaynak(lak_mi=True), {'vernik_yapilacak': True}
+        )
+        self.assertTrue(parametreler['lak_mi'])
+        self.assertTrue(parametreler['vernik_mi'])
+
+
 class TuretilmisIslemKimligiTestleri(SimpleTestCase):
     """Fason dönüşünün yanında yazılan fire belgesinin kimliği.
 

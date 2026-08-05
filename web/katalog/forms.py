@@ -818,21 +818,107 @@ class StokKalemiFormu(forms.Form):
         }
 
 
+# Fason işlem kutucuğu -> (`fason_is_emirleri.islem_turu`, okunur ad).
+# Kolon TEK değerli: tek işlem seçildiyse onun türü, birden fazlaysa 'DIGER'
+# (alt tablo AÇILMADI). Lak, vernik ve işçiliğin kolonda karşılığı yok, onlar da
+# 'DIGER'e düşüyor. Ayrıntı `aciklama`'ya yazılıyor, yani bilgi kaybolmuyor.
+FASON_ISLEM_ESLESMESI = {
+    'kaplama_yapilacak': ('KAPLAMA', 'kaplama'),
+    'boya_yapilacak': ('BOYA', 'boya'),
+    'mine_yapilacak': ('MINE', 'mine'),
+    'montaj_yapilacak': ('MONTAJ', 'montaj'),
+    'lak_yapilacak': ('DIGER', 'lak'),
+    'vernik_yapilacak': ('DIGER', 'vernik'),
+    'iscilik_yapilacak': ('DIGER', 'işçilik'),
+}
+
+
+def fason_islem_turu(secilen_alanlar):
+    turler = {FASON_ISLEM_ESLESMESI[a][0] for a in secilen_alanlar}
+    return turler.pop() if len(turler) == 1 else 'DIGER'
+
+
+def fason_islem_ozeti(secilen_alanlar):
+    """İşlem listesinin okunur özeti; iş emrinin `aciklama`'sına ekleniyor."""
+    return ', '.join(FASON_ISLEM_ESLESMESI[a][1] for a in secilen_alanlar)
+
+
+def fasoncu_lokasyon_haritasi():
+    """{is_ortagi_id: [(lokasyon_id, tam_ad), ...]} — fasoncu başına aktif atölyeler.
+
+    İki ayrı kaynaktan geliyor çünkü `v_lokasyonlar_detay` `is_ortagi_id` taşımıyor:
+    yaprak/aktif/tip bilgisi view'dan, fasoncu bağı ham `lokasyonlar`'dan. İki toplu
+    sorgu; eşleştirme Python'da (cross-DB JOIN yok, fasoncu başına sorgu yok).
+    """
+    ortak_bagi = dict(
+        Lokasyon.objects.using('metaks')
+        .filter(tip='FASON', is_ortagi_id__isnull=False)
+        .values_list('lokasyon_id', 'is_ortagi_id')
+    )
+    harita = {}
+    for l in LokasyonDetay.objects.using('metaks').filter(
+        aktif_mi=True, yaprak_mi=True, tip='FASON'
+    ):
+        ortak_id = ortak_bagi.get(l.lokasyon_id)
+        if ortak_id:
+            harita.setdefault(ortak_id, []).append((l.lokasyon_id, l.tam_ad))
+    return harita
+
+
+def fasoncu_lokasyonlari(is_ortagi_id):
+    """Bir fasoncunun aktif yaprak fason lokasyonları; yoksa boş liste."""
+    if not is_ortagi_id:
+        return []
+    return fasoncu_lokasyon_haritasi().get(is_ortagi_id, [])
+
+
 class FasonIsEmriFormu(forms.Form):
+    """Fason iş emri: depocu YAPILACAK İŞİ girer, dönecek SKU'yu sistem türetir.
+
+    Önceden "Dönecek SKU" elle yazılan bir kutuydu. Depocunun bilmesi gereken şey
+    fasoncuya ne yaptıracağı; dönen malın SKU kodunu elle üretmesi hem bir kod
+    ezberi hem de sessiz bir hata kaynağıydı — yanlış SKU yazıldığında iş emri
+    kabul ediliyor, hata ancak fason dönüşünde ortaya çıkıyordu.
+
+    Şimdi: kaynak SKU'nun niteliklerine seçilen işlemler delta olarak uygulanıyor,
+    `stok_kalemi_kaydet()` ile bul-veya-oluştur yapılıyor ve dönen id iş emrinin
+    hedef SKU'su oluyor (bkz. `stok_yonetimi.fason_is_emri_yeni`).
+    """
+
     is_ortagi_id = forms.TypedChoiceField(
         label='Fasoncu', coerce=int, choices=(), empty_value=None,
     )
+    # Normalde GİZLİ: bir fasoncunun tek atölyesi var ve o otomatik seçiliyor.
+    # Şema birden fazlasına izin verdiği için alan duruyor ve o durumda görünür
+    # oluyor — kod "tek lokasyon" varsayımını sessizce yapmıyor.
     fason_lokasyon_id = forms.TypedChoiceField(
-        label='Fason lokasyonu', coerce=int, choices=(), empty_value=None,
+        label='Fason lokasyonu (atölye)', coerce=int, choices=(), required=False,
+        empty_value=None,
+        help_text='Fasoncunun birden fazla atölyesi varsa seçin.',
     )
     kaynak_sku_kodu = forms.CharField(label='Gönderilecek SKU', max_length=100)
-    hedef_sku_kodu = forms.CharField(label='Dönecek SKU', max_length=100)
-    islem_turu = forms.ChoiceField(
-        label='İşlem', choices=[
-            ('KAPLAMA', 'Kaplama'), ('MINE', 'Mine'), ('BOYA', 'Boya'),
-            ('MONTAJ', 'Montaj'), ('DIGER', 'Diğer'),
-        ],
+
+    # ---- Yapılacak işlemler (dönecek SKU bunlardan türetiliyor) ----
+    kaplama_yapilacak = forms.BooleanField(label='Kaplama yapılacak', required=False)
+    yeni_kaplama_id = forms.TypedChoiceField(
+        label='Hangi kaplama', coerce=int, choices=(), required=False, empty_value=None,
     )
+    boya_yapilacak = forms.BooleanField(label='Boya yapılacak', required=False)
+    yeni_boya_renk = forms.CharField(
+        label='Boya rengi', required=False, widget=forms.Select(choices=()),
+    )
+    mine_yapilacak = forms.BooleanField(label='Mine yapılacak', required=False)
+    yeni_mine_renk = forms.CharField(
+        label='Mine rengi', required=False, widget=forms.Select(choices=()),
+    )
+    montaj_yapilacak = forms.BooleanField(label='Montaj işlemi yapılacak', required=False)
+    yeni_montaj_durumu = forms.ChoiceField(
+        label='Dönüşteki montaj hali', choices=(), required=False,
+    )
+    lak_yapilacak = forms.BooleanField(label='Lak yapılacak', required=False)
+    vernik_yapilacak = forms.BooleanField(label='Vernik yapılacak', required=False)
+    iscilik_yapilacak = forms.BooleanField(label='İşçilik yapılacak', required=False)
+
     kaplama_cesidi = forms.ChoiceField(
         label='Kaplama yöntemi', required=False,
         choices=[('', '— uygulanmıyor/belirsiz —'), *stok_servisi.KAPLAMA_CESITLERI],
@@ -845,6 +931,8 @@ class FasonIsEmriFormu(forms.Form):
         label='Açıklama', required=False, widget=forms.Textarea(attrs={'rows': 2}),
     )
 
+    ISLEM_TURU_ESLESMESI = FASON_ISLEM_ESLESMESI
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         fasoncu_idleri = IsOrtagiRolu.objects.using('metaks').filter(rol='FASONCU').values_list(
@@ -855,13 +943,85 @@ class FasonIsEmriFormu(forms.Form):
                 aktif_mi=True, is_ortagi_id__in=fasoncu_idleri
             ).values_list('is_ortagi_id', 'unvan')
         )
-        self.fields['fason_lokasyon_id'].choices = [
+        self.fields['fason_lokasyon_id'].choices = [('', '— otomatik —')] + [
             (l.lokasyon_id, l.tam_ad)
             for l in LokasyonDetay.objects.using('metaks').filter(
                 aktif_mi=True, yaprak_mi=True, tip='FASON'
             )
         ]
+        self.fields['yeni_kaplama_id'].choices = [
+            ('', '— seçilmedi —'), *stok_servisi.kaplama_secenekleri()
+        ]
+        renkler = stok_servisi.renk_secenekleri()
+        for ad in ('yeni_boya_renk', 'yeni_mine_renk'):
+            self.fields[ad].widget.choices = [('', '— renk belirsiz —'), *renkler]
+        self.fields['yeni_montaj_durumu'].choices = [
+            ('', '— değişmiyor —'), *stok_servisi.MONTAJ_DURUMLARI
+        ]
         _girdileri_bicimlendir(self)
+
+    def secilen_islemler(self):
+        """İşaretlenen işlem kutucuklarının alan adları."""
+        return [
+            alan for alan in FASON_ISLEM_ESLESMESI if self.cleaned_data.get(alan)
+        ]
+
+    def islem_turu(self):
+        return fason_islem_turu(self.secilen_islemler())
+
+    def islem_ozeti(self):
+        return fason_islem_ozeti(self.secilen_islemler())
+
+    def clean(self):
+        veri = super().clean()
+
+        # Fason lokasyonu: tek atölyede otomatik, birden fazlada zorunlu, hiç
+        # yoksa anlaşılır hata. "Tek lokasyon" sessizce varsayılmıyor.
+        lokasyonlar = fasoncu_lokasyonlari(veri.get('is_ortagi_id'))
+        self.fasoncu_lokasyonlari = lokasyonlar
+        if veri.get('is_ortagi_id'):
+            if not lokasyonlar:
+                self.add_error(
+                    'is_ortagi_id',
+                    'Bu fasoncunun aktif bir atölye lokasyonu yok. Önce '
+                    '/yonetim/lokasyonlar/ üzerinden fasoncuya bağlı bir FASON '
+                    'lokasyonu açın.',
+                )
+            elif len(lokasyonlar) == 1:
+                veri['fason_lokasyon_id'] = lokasyonlar[0][0]
+            elif not veri.get('fason_lokasyon_id'):
+                self.add_error(
+                    'fason_lokasyon_id',
+                    'Bu fasoncunun birden fazla atölyesi var; hangisine '
+                    'gönderildiğini seçin.',
+                )
+            elif veri['fason_lokasyon_id'] not in {lok_id for lok_id, _ in lokasyonlar}:
+                self.add_error(
+                    'fason_lokasyon_id', 'Seçilen atölye bu fasoncuya bağlı değil.'
+                )
+
+        # JS gizler ama TEMİZLEMEZ (aynı tuzak diğer formlarda da var).
+        if not veri.get('kaplama_yapilacak'):
+            veri['yeni_kaplama_id'] = None
+        if not veri.get('boya_yapilacak'):
+            veri['yeni_boya_renk'] = ''
+        if not veri.get('mine_yapilacak'):
+            veri['yeni_mine_renk'] = ''
+        if not veri.get('montaj_yapilacak'):
+            veri['yeni_montaj_durumu'] = ''
+
+        if veri.get('montaj_yapilacak') and not veri.get('yeni_montaj_durumu'):
+            self.add_error(
+                'yeni_montaj_durumu', 'Montaj işleminde dönüşteki hal seçilmelidir.'
+            )
+        if veri.get('kaplama_yapilacak') and not veri.get('yeni_kaplama_id'):
+            self.add_error('yeni_kaplama_id', 'Kaplama işleminde hangi kaplama olduğu seçilmelidir.')
+
+        # Hiçbir nitelik değişmiyorsa iş emri anlamsız: dönecek SKU kaynağın
+        # aynısı olurdu ve fasoncuya "hiçbir şey yapma" denmiş olurdu.
+        if not self.secilen_islemler():
+            self.add_error(None, 'En az bir işlem seçilmelidir; dönecek SKU bundan türetiliyor.')
+        return veri
 
 
 class IsOrtagiFormu(forms.Form):

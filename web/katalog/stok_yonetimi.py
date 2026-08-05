@@ -11,7 +11,15 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 
 from . import forms, stok_servisi
-from .models import AktifUrun, FasonIsEmriOzet, Kategori, StokBakiye, StokKalemi, Urun
+from .models import (
+    AktifUrun,
+    FasonIsEmriOzet,
+    Kategori,
+    Renk,
+    StokBakiye,
+    StokKalemi,
+    Urun,
+)
 from .yetkiler import izin_gerekli, izni_var_mi
 
 
@@ -356,36 +364,113 @@ def fason_isleri(request):
     })
 
 
+def _hedef_sku_parametreleri(kaynak, veri):
+    """Kaynak SKU'nun niteliklerine seçilen işlemleri delta olarak uygular.
+
+    Dokunulmayan nitelik kaynaktan aynen taşınıyor; bu yüzden "yalnız lak
+    yaptır" diyen bir iş emri kaplamayı ve renkleri koruyor. Renkler id değil AD
+    olarak geçiyor çünkü `stok_kalemi_kaydet()` metin alıyor (bkz. o fonksiyon).
+    """
+    renk_adlari = dict(
+        Renk.objects.using('metaks')
+        .filter(renk_id__in={kaynak.boya_renk_id, kaynak.mine_renk_id} - {None})
+        .values_list('renk_id', 'renk_adi')
+    )
+    return {
+        'urun_kodu': kaynak.urun_kodu,
+        'kaplama_id': (
+            veri['yeni_kaplama_id'] if veri.get('kaplama_yapilacak') else kaynak.kaplama_id
+        ),
+        'boya_renk': (
+            (veri.get('yeni_boya_renk') or None) if veri.get('boya_yapilacak')
+            else renk_adlari.get(kaynak.boya_renk_id)
+        ),
+        'mine_renk': (
+            (veri.get('yeni_mine_renk') or None) if veri.get('mine_yapilacak')
+            else renk_adlari.get(kaynak.mine_renk_id)
+        ),
+        'montaj_durumu': (
+            veri['yeni_montaj_durumu'] if veri.get('montaj_yapilacak')
+            else kaynak.montaj_durumu
+        ),
+        # Fason işlemi niteliği EKLER, kaldırmaz: kaynakta zaten lak varsa dönüşte
+        # de var. "Lak sök" diye bir iş emri türü yok.
+        'lak_mi': bool(kaynak.lak_mi or veri.get('lak_yapilacak')),
+        'vernik_mi': bool(kaynak.vernik_mi or veri.get('vernik_yapilacak')),
+        'iscilik_mi': bool(kaynak.iscilik_mi or veri.get('iscilik_yapilacak')),
+    }
+
+
 @izin_gerekli('fason')
 def fason_is_emri_yeni(request):
     form = forms.FasonIsEmriFormu(request.POST or None)
     istemci_kimligi = request.POST.get('istemci_kimligi') or stok_servisi.yeni_islem_kimligi()
+    hedef_sonucu = None
     if request.method == 'POST' and form.is_valid():
-        kaynak = _sku_bul(form.cleaned_data['kaynak_sku_kodu'])
-        hedef = _sku_bul(form.cleaned_data['hedef_sku_kodu'])
+        veri = form.cleaned_data
+        kaynak = _sku_bul(veri['kaynak_sku_kodu'])
         if not kaynak:
             form.add_error('kaynak_sku_kodu', 'Gönderilecek SKU bulunamadı.')
-        if not hedef:
-            form.add_error('hedef_sku_kodu', 'Dönecek SKU bulunamadı.')
-        if kaynak and hedef:
-            veri = form.cleaned_data.copy()
-            veri.pop('kaynak_sku_kodu')
-            veri.pop('hedef_sku_kodu')
+        elif kaynak.nitelik_durumu == 'BELIRSIZ':
+            # Nitelikleri bilinmeyen bir şeye delta uygulanamaz: miras SKU'nun
+            # kaplaması/rengi/montajı "yok" değil BİLİNMİYOR (migration 008/010).
+            # Türetilen hedef, olmayan bir bilgiye dayanırdı.
+            form.add_error(
+                'kaynak_sku_kodu',
+                f'"{kaynak.sku_kodu}" eski/belirsiz bir varyant; nitelikleri '
+                f'bilinmediği için dönecek SKU türetilemez. Önce bu ürüne gerçek '
+                f'bir varyant açın: /stok/varyant/yeni/?urun_kodu={kaynak.urun_kodu}',
+            )
+        else:
+            aciklama = veri.get('aciklama', '')
+            ozet = form.islem_ozeti()
+            if ozet:
+                aciklama = f'{aciklama}\nYapılacak işlemler: {ozet}'.strip()
             try:
-                sonuc = stok_servisi.fason_is_emri_kaydet(
-                    istemci_kimligi=istemci_kimligi,
-                    kaynak_stok_kalemi_id=kaynak.stok_kalemi_id,
-                    hedef_stok_kalemi_id=hedef.stok_kalemi_id,
-                    yapan_kullanici=_kullanici_adi(request),
-                    **veri,
-                )
+                # SKU oluşturma ve iş emri yazma AYNI transaction'da: iş emri
+                # reddedilirse yeni açılmış hedef SKU da geri alınsın. Aksi hâlde
+                # her başarısız denemede arkada sahipsiz bir SKU kalırdı.
+                with transaction.atomic(using='metaks'):
+                    hedef_sonucu = stok_servisi.stok_kalemi_kaydet(
+                        **_hedef_sku_parametreleri(kaynak, veri),
+                        yapan_kullanici=_kullanici_adi(request),
+                    )
+                    sonuc = stok_servisi.fason_is_emri_kaydet(
+                        istemci_kimligi=istemci_kimligi,
+                        is_ortagi_id=veri['is_ortagi_id'],
+                        fason_lokasyon_id=veri['fason_lokasyon_id'],
+                        kaynak_stok_kalemi_id=kaynak.stok_kalemi_id,
+                        hedef_stok_kalemi_id=hedef_sonucu['stok_kalemi_id'],
+                        islem_turu=form.islem_turu(),
+                        kaplama_cesidi=veri.get('kaplama_cesidi'),
+                        planlanan_miktar=veri['planlanan_miktar'],
+                        beklenen_donus_tarihi=veri.get('beklenen_donus_tarihi'),
+                        aciklama=aciklama,
+                        yapan_kullanici=_kullanici_adi(request),
+                    )
             except stok_servisi.StokIslemHatasi as istisna:
+                hedef_sonucu = None
                 form.add_error(None, str(istisna))
             else:
-                messages.success(request, f"{sonuc['emir_no']}: {sonuc['mesaj']}")
+                yenilik = (
+                    'mevcut SKU kullanıldı' if hedef_sonucu['atlandi']
+                    else 'yeni SKU açıldı'
+                )
+                messages.success(
+                    request,
+                    f"{sonuc['emir_no']}: {sonuc['mesaj']} "
+                    f"Dönecek SKU {hedef_sonucu['sku_kodu']} ({yenilik}).",
+                )
                 return redirect('katalog:fason_isleri')
     return render(request, 'katalog/fason_is_emri_formu.html', {
         'form': form, 'istemci_kimligi': istemci_kimligi,
+        'hedef_sonucu': hedef_sonucu,
+        # Fasoncu -> atölyeleri. Alanın gizli mi görünür mü olacağını JS buradan
+        # biliyor; "her fasoncunun tek atölyesi var" varsayımı koda gömülmedi.
+        'fasoncu_lokasyonlari': {
+            str(ortak_id): lokasyonlar
+            for ortak_id, lokasyonlar in forms.fasoncu_lokasyon_haritasi().items()
+        },
     })
 
 

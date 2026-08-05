@@ -1,3 +1,132 @@
 {% extends "katalog/base.html" %}
 {% block title %}METAKS · Fason iş emri{% endblock %}
-{% block content %}<main class="max-w-2xl mx-auto px-4 py-8"><a href="{% url 'katalog:fason_isleri' %}" class="text-sm text-slate-500">← Fason işler</a><h1 class="mt-4 text-2xl font-semibold">Yeni fason iş emri</h1><form method="post" class="mt-6 rounded-xl border bg-white p-6 space-y-4">{% csrf_token %}<input type="hidden" name="istemci_kimligi" value="{{ istemci_kimligi }}">{{ form.non_field_errors }}{% for alan in form %}{% include "katalog/_form_alani.html" with alan=alan %}{% endfor %}<button class="rounded-lg bg-slate-900 px-5 py-2.5 text-sm text-white">İş emrini oluştur</button></form></main>{% endblock %}
+{% block content %}
+<main class="max-w-2xl mx-auto px-4 py-8">
+    <a href="{% url 'katalog:fason_isleri' %}" class="text-sm text-slate-500">← Fason işler</a>
+    <h1 class="mt-4 text-2xl font-semibold">Yeni fason iş emri</h1>
+    <p class="mt-1 text-sm text-slate-500">
+        Gönderilecek SKU'yu ve yapılacak işlemleri girin; dönecek SKU'yu sistem türetir.
+    </p>
+
+    <form method="post" class="mt-6 rounded-xl border bg-white p-6 space-y-4">
+        {% csrf_token %}
+        <input type="hidden" name="istemci_kimligi" value="{{ istemci_kimligi }}">
+        {% if form.non_field_errors %}
+        <div class="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+            {% for hata in form.non_field_errors %}<p>{{ hata }}</p>{% endfor %}
+        </div>
+        {% endif %}
+
+        {% include "katalog/_form_alani.html" with alan=form.is_ortagi_id %}
+
+        {% comment %}
+        Fason lokasyonu normalde GİZLİ: bir fasoncunun tek atölyesi var ve form
+        onu kendisi seçiyor. Şema birden fazlasına izin verdiği için alan duruyor
+        ve o durumda (ya da hata varsa) görünür oluyor — kod "tek atölye"
+        varsayımını sessizce yapmıyor.
+        {% endcomment %}
+        <div id="fason-lokasyonu" class="{% if not form.fason_lokasyon_id.errors %}hidden{% endif %}">
+            {% include "katalog/_form_alani.html" with alan=form.fason_lokasyon_id %}
+        </div>
+
+        {% include "katalog/_form_alani.html" with alan=form.kaynak_sku_kodu %}
+
+        <fieldset class="rounded-lg border border-slate-200 p-4 space-y-3">
+            <legend class="px-1 text-sm font-medium text-slate-800">Yapılacak işlemler</legend>
+            <p class="text-xs text-slate-500">
+                Dönecek SKU bu işlemlerden türetilir: dokunulmayan nitelik kaynaktan aynen taşınır.
+            </p>
+
+            {% include "katalog/_form_alani.html" with alan=form.kaplama_yapilacak %}
+            <div data-ayrinti="kaplama" class="pl-6 space-y-3">
+                {% include "katalog/_form_alani.html" with alan=form.yeni_kaplama_id %}
+                {% include "katalog/_form_alani.html" with alan=form.kaplama_cesidi %}
+            </div>
+
+            {% include "katalog/_form_alani.html" with alan=form.boya_yapilacak %}
+            <div data-ayrinti="boya" class="pl-6">
+                {% include "katalog/_form_alani.html" with alan=form.yeni_boya_renk %}
+            </div>
+
+            {% include "katalog/_form_alani.html" with alan=form.mine_yapilacak %}
+            <div data-ayrinti="mine" class="pl-6">
+                {% include "katalog/_form_alani.html" with alan=form.yeni_mine_renk %}
+            </div>
+
+            {% include "katalog/_form_alani.html" with alan=form.montaj_yapilacak %}
+            <div data-ayrinti="montaj" class="pl-6">
+                {% include "katalog/_form_alani.html" with alan=form.yeni_montaj_durumu %}
+            </div>
+
+            {% include "katalog/_form_alani.html" with alan=form.lak_yapilacak %}
+            {% include "katalog/_form_alani.html" with alan=form.vernik_yapilacak %}
+            {% include "katalog/_form_alani.html" with alan=form.iscilik_yapilacak %}
+        </fieldset>
+
+        {% include "katalog/_form_alani.html" with alan=form.planlanan_miktar %}
+        {% include "katalog/_form_alani.html" with alan=form.beklenen_donus_tarihi %}
+        {% include "katalog/_form_alani.html" with alan=form.aciklama %}
+
+        <button class="rounded-lg bg-slate-900 px-5 py-2.5 text-sm text-white">İş emrini oluştur</button>
+    </form>
+
+    {{ fasoncu_lokasyonlari|json_script:"fasoncu-lokasyonlari" }}
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Kapı kutucukları: seçilmemiş işlemin ayrıntısı hiç sorulmuyor. Gizleme
+    // yalnız görünüm — gizli kalan değeri POST'ta temizleyen `FasonIsEmriFormu.clean`.
+    const KAPILAR = [
+        ['kaplama_yapilacak', 'kaplama'],
+        ['boya_yapilacak', 'boya'],
+        ['mine_yapilacak', 'mine'],
+        ['montaj_yapilacak', 'montaj'],
+    ];
+    for (const [kutucukAdi, ayrintiAdi] of KAPILAR) {
+        const kutucuk = document.querySelector(`[name="${kutucukAdi}"]`);
+        const ayrinti = document.querySelector(`[data-ayrinti="${ayrintiAdi}"]`);
+        if (!kutucuk || !ayrinti) continue;
+        const uygula = () => ayrinti.classList.toggle('hidden', !kutucuk.checked);
+        kutucuk.addEventListener('change', uygula);
+        uygula();
+    }
+
+    // -------------------------------------------------------------------------
+    // Fason lokasyonu: tek atölyede gizli, birden fazlada görünür.
+    //
+    // Sunucu tarafında da aynı kural var (`FasonIsEmriFormu.clean`) ve asıl karar
+    // orası; buradaki tek iş, tek atölyeli fasoncuda kullanıcıya anlamsız bir
+    // seçim göstermemek. Şema birden fazla atölyeye izin verdiği için alan
+    // silinmedi — bugün olmayan ama mümkün olan durum sessizce varsayılmıyor.
+    // -------------------------------------------------------------------------
+    const FASONCU_LOKASYONLARI = JSON.parse(
+        document.getElementById('fasoncu-lokasyonlari').textContent
+    );
+    const fasoncuKutusu = document.querySelector('[name="is_ortagi_id"]');
+    const lokasyonSarmalayici = document.getElementById('fason-lokasyonu');
+    const lokasyonKutusu = document.querySelector('[name="fason_lokasyon_id"]');
+
+    function lokasyonAlaniniAyarla() {
+        if (!fasoncuKutusu || !lokasyonKutusu || !lokasyonSarmalayici) return;
+        const lokasyonlar = FASONCU_LOKASYONLARI[fasoncuKutusu.value] || [];
+        const oncekiDeger = lokasyonKutusu.value;
+        lokasyonKutusu.replaceChildren();
+        if (lokasyonlar.length !== 1) {
+            lokasyonKutusu.append(new Option('— seçilmedi —', ''));
+        }
+        for (const [id, ad] of lokasyonlar) {
+            lokasyonKutusu.append(new Option(ad, String(id)));
+        }
+        lokasyonKutusu.value = oncekiDeger;
+        if (lokasyonKutusu.value !== oncekiDeger) lokasyonKutusu.selectedIndex = 0;
+        // Hata varsa alan görünür kalsın; kullanıcı neyi düzelteceğini görmeli.
+        const hataVar = Boolean(lokasyonSarmalayici.querySelector('.text-rose-700'));
+        lokasyonSarmalayici.classList.toggle('hidden', lokasyonlar.length <= 1 && !hataVar);
+    }
+
+    if (fasoncuKutusu) fasoncuKutusu.addEventListener('change', lokasyonAlaniniAyarla);
+    lokasyonAlaniniAyarla();
+</script>
+{% endblock %}
