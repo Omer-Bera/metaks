@@ -9,12 +9,21 @@ Canlı satır sayıları kalıcı gerçekler değildir. Aşağıdaki sayılar
 **2026-08-04 tarihli salt-okunur denetim snapshot'ıdır**; karar vermeden önce
 yeniden sorgulanmalıdır.
 
-## Güncel çalışma noktası — 2026-08-04
+## Güncel çalışma noktası — 2026-08-05
 
 Veri temizleme, normalizasyon, karışık stok kodu çözümü, PostgreSQL yüklemesi ve
-görsel eşleme tamamlandı. Migration 001–007 ortak `depo_sistemi` veritabanına
-uygulanmış durumda. Migration 008 kodu ve kabul testi hazırdır; **ortak veritabanına
-uygulanmamıştır**, güncel yedek ve kullanıcı onayı bekler.
+görsel eşleme tamamlandı. **Migration 001–009 ortak `depo_sistemi` veritabanına
+(Raspberry Pi, 100.64.0.7:5433) uygulanmış durumdadır.** 008 ve 009 2026-08-05'te,
+kullanıcının açık onayı ve güncel yedekle uygulandı; ayrıntı aşağıdaki tabloda.
+
+### İki ayrı `depo_sistemi` var, ikisi de güncel şemada
+
+Bu bir hata değil, `web/AGENTS.md`'deki kurulumun sonucu: geliştirme makinesindeki
+Docker (`localhost:5433`) varsayılan, Raspberry Pi'deki (`100.64.0.7:5433`) ortak
+kopya, ve hangisine bağlanılacağı `web/.env` ile seçiliyor. **Şemaları aynı,
+DEFTER İÇERİKLERİ ayrı** — biri diğerinin replikası değil, ikisi de kendi
+hareketlerini biriktiriyor. Migration uygularken ikisini de saymak gerekir; bir
+tarafta uygulayıp diğerini atlamak, `.env`'i çeviren kişide sessiz hatalar üretir.
 
 | Ölçüt | Snapshot |
 | --- | ---: |
@@ -26,9 +35,10 @@ uygulanmamıştır**, güncel yedek ve kullanıcı onayı bekler.
 | VARYANT | 2 |
 | Görsel kaydı / aktif görsel dosyası | 1.799 |
 | Kategori | 35 |
-| Hammadde | 0 (migration 009 uygulanınca 7) |
-| Boya/mine rengi | 0 (migration 009 uygulanınca 13) |
+| Hammadde | 7 |
+| Boya/mine rengi | 13 |
 | Kaplama rengi | 11 |
+| Miras (BELIRSIZ) SKU | 2.973 |
 | Lokasyon | 4 |
 | Stok hareketi | 5 |
 
@@ -59,8 +69,8 @@ değildir. Henüz `NUMUNE` tipinde gerçek dolap/raf satırı yoktur.
 | 005 | Uygulandı | `urun_kaydet()`, görsel sıra fonksiyonu ve ürün denetim alanları |
 | 006 | Uygulandı | Tarihsel 30 test hareketinin koşullu temizliği |
 | 007 | Uygulandı | Stok partisi için kaplama/montaj kovaları ve 11 kaplama rengi |
-| 008 | Çekirdek kabul testi geçti; son disposable turu ve onay bekliyor | Ürün/SKU ayrımı, belge başlığı, stok durumu, parti, iş ortağı ve fason iş emri |
-| 009 | Yazıldı ve disposable kopyada doğrulandı; ortak DB onayı bekliyor | 13 standart renk ve 7 hammadde çeşidi başlangıç verisi |
+| 008 | Uygulandı (2026-08-05) | Ürün/SKU ayrımı, belge başlığı, stok durumu, parti, iş ortağı ve fason iş emri |
+| 009 | Uygulandı (2026-08-05) | 13 standart renk ve 7 hammadde çeşidi başlangıç verisi |
 
 Migration 009 yalnız veri ekler (tablo/kolon/kısıt/view değiştirmez) ve 008'in
 `renkler` tablosuna bağımlıdır, yani 008'den SONRA uygulanır. İleri yönü
@@ -85,14 +95,26 @@ Canlı yüzeyler `v_aktif_urunler`, stok/lokasyon/numune view'ları,
 kuralları `aktif-urun-veri-sozlesmesi.md` içinde belgelenir.
 
 Migration 008 sonrası yüzeyler ve geçiş kuralları
-[`stok-urun-veri-sozlesmesi.md`](stok-urun-veri-sozlesmesi.md) içindedir. 008;
-2026-08-04'te `depo_sistemi` dump'ından oluşturulan `metaks_m008_test` disposable
-veritabanında ileri migration ve `sql/tests/008_stok_urun_modeli_test.sql` ile
-çekirdek satın alma, satış, transfer, fason sevk/dönüş, sayım, idempotency ve
-toplam mutabakatı senaryolarında doğrulandı. Bu turun ardından eklenen parti,
-fason fire ve 007 fonksiyon gövdesini geri yükleyen rollback korumaları için yeni
-restore edilmiş disposable kopyada forward + kabul + rollback turu henüz
-tekrarlanmadı. Ortak veritabanında hiçbir şema/veri değişikliği yapılmadı.
+[`stok-urun-veri-sozlesmesi.md`](stok-urun-veri-sozlesmesi.md) içindedir.
+
+### 008 + 009'un ortak veritabanına uygulanması — 2026-08-05
+
+Sıra şuydu: ortak veritabanının `pg_dump -Fc` yedeği alındı, **o yedekten**
+kurulan tek kullanımlık kopyada tam tur çalıştırıldı, sonra Pi'ye uygulandı.
+Disposable turda doğrulananlar:
+
+- 008 ileri: 2.973 miras (BELIRSIZ) SKU açıldı, 9 hareketin tamamı SKU'ya ve
+  belge başlığına bağlandı, sahipsiz satır kalmadı;
+- `sql/tests/008_stok_urun_modeli_test.sql` (17 assertion) hatasız geçti — testin
+  sessizce geçmediği, 008 uygulanmamış bir kopyada hata verdirilerek doğrulandı;
+- 009 ileri (13 renk + 7 hammadde) ve 009 rollback;
+- 008 rollback: nesneler düştü, 007'nin `stok_hareketi_kaydet` gövdesi geri geldi
+  ve kopya özgün hâline (2.973 ürün / 9 hareket / 11 kaplama / 4 lokasyon) döndü.
+
+Uygulama sonrası ortak veritabanında ölçülenler: ürün/hareket/kategori/lokasyon/
+kaplama sayıları yedekle birebir aynı, SKU'suz ve belgesiz hareket sıfır, altı
+yazma kapısının altısı da yerinde, ve defter neti ile `v_stok_bakiye` toplamı
+eşit (2.022). Django arayüzü Pi'ye bağlanarak on iki sayfada denendi.
 
 ## Veri hattının sonucu
 
@@ -163,17 +185,14 @@ tam olarak kanıtlanamaz.
 
 ### Yakın dönem
 
-1. Ortak veritabanının güncel yedeğini alın; migration 008 forward + rollback'i
-   yeni restore edilmiş kopyada son kez çalıştırın ve açık kullanıcı onayıyla uygulayın.
-   Aynı turda 009'u da (008'den sonra) uygulayın: arayüzdeki renk/hammadde açılır
-   listeleri o veri gelene kadar boş kalıyor.
-2. Eski/belirsiz SKU bakiyesini ham varsaymadan fiziksel sayımla gerçek SKU'lara
-   sınıflandırın.
-3. Gerçek numune dolabı ve raflarını `NUMUNE` hiyerarşisi olarak girin.
-4. Hareket geçmişi için Türkçe Excel ile uyumlu CSV/Excel dışa aktarmayı ekleyin.
+1. Eski/belirsiz SKU bakiyesini ham varsaymadan fiziksel sayımla gerçek SKU'lara
+   sınıflandırın. 008 ortak veritabanına uygulandığı için **2.973 ürünün tamamı
+   şu an tek bir miras (BELIRSIZ) SKU taşıyor**; gerçek kaplama/montaj varyantları
+   `/stok/varyant/yeni/` üzerinden açılıp bakiye oraya taşınmalı.
+2. Gerçek numune dolabı ve raflarını `NUMUNE` hiyerarşisi olarak girin.
+3. Hareket geçmişi için Türkçe Excel ile uyumlu CSV/Excel dışa aktarmayı ekleyin.
 
-İkinci, üçüncü ve dördüncü maddelerin uygulama durumu
-`../../web/YAPILACAKLAR.md` tarafından izlenir.
+Üç maddenin de uygulama durumu `../../web/YAPILACAKLAR.md` tarafından izlenir.
 
 ### Faz 3 — Kalıp modülü
 

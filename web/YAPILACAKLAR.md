@@ -8,11 +8,16 @@ kurallar [AGENTS.md](AGENTS.md), şema yol haritası
 Eski madde numaraları kod ve diğer belge referanslarını bozmamak için korunur.
 Güncel uygulama sırası:
 
-1. **Migration 008 + 009'u yedek + açık onayla ortak veritabanına uygulama**
-   (009 renk/hammadde tohumlaması; 008'e bağımlı, ondan sonra uygulanır)
-2. **Eski/belirsiz SKU bakiyesini fiziksel sayımla gerçek SKU'lara sınıflandırma**
-3. **Madde 4 — gerçek numune dolap/raf düzeni**
-4. **Madde 5 — filtreli CSV/Excel dışa aktarma**
+1. **Eski/belirsiz SKU bakiyesini fiziksel sayımla gerçek SKU'lara sınıflandırma**
+2. **Madde 4 — gerçek numune dolap/raf düzeni**
+3. **Madde 5 — filtreli CSV/Excel dışa aktarma**
+
+Migration 008 ve 009 **2026-08-05'te ortak veritabanına uygulandı** (ayrıntı ve
+doğrulama kaydı [`veritabani/docs/INFO.md`](../veritabani/docs/INFO.md)). Bunun
+arayüz tarafındaki doğrudan sonucu: 2.973 ürünün tamamı şu an tek bir miras
+(BELIRSIZ) SKU taşıyor, yani stok işlem ekranında çoğu kodda "eski / belirsiz
+varyant" rozeti ve "+ Bu ürüne yeni varyant aç" kısayolu görünecek. Sıradaki iş
+bu — kısayol tam olarak o akış için kondu.
 
 ---
 
@@ -129,8 +134,8 @@ kararlar:
   `stok_islem` view'ı yalnız eski derin bağlantıyı taşıyan yönlendirme olarak
   kaldı.
 
-Renk ve hammadde açılır listeleri **migration 009 ortak veritabanına uygulanana
-kadar boş kalmaya devam eder**; kod tarafında yapılacak bir şey yok.
+Renk ve hammadde açılır listeleri migration 009 ile doldu (13 renk, 7 hammadde);
+2026-08-05'te hem yerel hem ortak veritabanında doğrulandı.
 
 ---
 
