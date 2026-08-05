@@ -161,9 +161,11 @@ HTMX ve doğrudan URL aynı decorator/sorgu kontrolünü kullanır.
   `depo_sistemi`ne karşı çalıştırmayın. Defter kabul testleri
   `veritabani/sql/tests/008_stok_urun_modeli_test.sql` içinde ve yalnız disposable
   kopyada çalışır; tam web akış testleri için izole METAKS DB fixture'ı hâlâ
-  gerekir. Çekirdek SQL kabul turu geçti; sonradan eklenen parti, fason fire ve
-  rollback korumaları için son forward + kabul + rollback turu ortak DB'ye
-  geçmeden önce yeni restore edilmiş kopyada tekrarlanmalıdır.
+  gerekir. Parti, fason fire ve rollback korumalarını da kapsayan son forward +
+  kabul + rollback turu 2026-08-05'te YAPILDI: ortak veritabanının yedeğinden
+  kurulan tek kullanımlık kopyada 008 ileri, 17 assertion'lık kabul testi, 009
+  ileri + rollback ve 008 rollback çalıştırıldı; testin sessizce geçmediği 008
+  uygulanmamış bir kopyada hata verdirilerek doğrulandı (bkz. 11eeffe).
 - **Çoklu görsel galerisi:** veri ve kullanıcı ihtiyacı belirginleşene kadar tek ana
   görsel korunuyor.
 - **Otomatik stok yenileme:** açık sekme kendiliğinden yenilenmiyor. Operasyonel
