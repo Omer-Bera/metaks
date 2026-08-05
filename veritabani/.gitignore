@@ -31,3 +31,9 @@ __pycache__/
 
 # Yerel yedekler (scripts/maintenance/yedek_al.sh çıktısı)
 /backups/
+
+# Migration öncesi elle alınan pg_dump'lar (ör. yedek_m008_oncesi_20260805.sql).
+# Kurtarma değeri olan kopya makinedeki yedek dizininde/diskte durur; git'e
+# girerse her migration turunda depoya yeni bir yüz KB'lik blob kalıcı olarak
+# eklenir ve geri çıkarılamaz.
+/yedek_*.sql

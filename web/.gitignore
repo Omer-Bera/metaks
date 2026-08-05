@@ -14,5 +14,9 @@ media/
 # Ortam değişkenleri / sırlar
 .env
 
+# Tip denetleyici yerel ayarı: içeriği makineye özgü yorumlayıcı yolu
+# (python_interpreter = "venv/bin/python"), paylaşılan bir proje ayarı değil.
+pyrefly.toml
+
 # macOS
 .DS_Store
