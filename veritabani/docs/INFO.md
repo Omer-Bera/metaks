@@ -26,7 +26,8 @@ uygulanmamıştır**, güncel yedek ve kullanıcı onayı bekler.
 | VARYANT | 2 |
 | Görsel kaydı / aktif görsel dosyası | 1.799 |
 | Kategori | 35 |
-| Hammadde | 0 |
+| Hammadde | 0 (migration 009 uygulanınca 7) |
+| Boya/mine rengi | 0 (migration 009 uygulanınca 13) |
 | Kaplama rengi | 11 |
 | Lokasyon | 4 |
 | Stok hareketi | 5 |
@@ -59,6 +60,16 @@ değildir. Henüz `NUMUNE` tipinde gerçek dolap/raf satırı yoktur.
 | 006 | Uygulandı | Tarihsel 30 test hareketinin koşullu temizliği |
 | 007 | Uygulandı | Stok partisi için kaplama/montaj kovaları ve 11 kaplama rengi |
 | 008 | Çekirdek kabul testi geçti; son disposable turu ve onay bekliyor | Ürün/SKU ayrımı, belge başlığı, stok durumu, parti, iş ortağı ve fason iş emri |
+| 009 | Yazıldı ve disposable kopyada doğrulandı; ortak DB onayı bekliyor | 13 standart renk ve 7 hammadde çeşidi başlangıç verisi |
+
+Migration 009 yalnız veri ekler (tablo/kolon/kısıt/view değiştirmez) ve 008'in
+`renkler` tablosuna bağımlıdır, yani 008'den SONRA uygulanır. İleri yönü
+`ON CONFLICT DO NOTHING` ile tekrar çalıştırılabilir. 2026-08-05'te stub tablolu
+disposable bir veritabanında ileri + tekrar + rollback turu yapıldı; doğrulanan
+üç davranış: (1) ikinci çalıştırma 0 satır ekliyor, (2) harf duyarsız
+`uq_renkler_adi_ci` sayesinde önceden farklı yazımla girilmiş bir renk (`siyah`)
+korunuyor ve rollback ona dokunmuyor, (3) rollback kullanıma girmiş (SKU'ya veya
+ürüne bağlanmış) tohum satırlarını yerinde bırakıyor.
 
 Şema otoritesi `../sql/01_schema.sql` ile `../sql/migrations/` altındaki sıralı
 migration'ların birleşimidir. `01_schema.sql` yalnızca baz şemadır; Compose yeni
@@ -154,6 +165,8 @@ tam olarak kanıtlanamaz.
 
 1. Ortak veritabanının güncel yedeğini alın; migration 008 forward + rollback'i
    yeni restore edilmiş kopyada son kez çalıştırın ve açık kullanıcı onayıyla uygulayın.
+   Aynı turda 009'u da (008'den sonra) uygulayın: arayüzdeki renk/hammadde açılır
+   listeleri o veri gelene kadar boş kalıyor.
 2. Eski/belirsiz SKU bakiyesini ham varsaymadan fiziksel sayımla gerçek SKU'lara
    sınıflandırın.
 3. Gerçek numune dolabı ve raflarını `NUMUNE` hiyerarşisi olarak girin.
