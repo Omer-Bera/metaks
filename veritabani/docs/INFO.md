@@ -13,7 +13,8 @@ yeniden sorgulanmalıdır.
 
 Veri temizleme, normalizasyon, karışık stok kodu çözümü, PostgreSQL yüklemesi ve
 görsel eşleme tamamlandı. Migration 001–007 ortak `depo_sistemi` veritabanına
-uygulanmış durumda.
+uygulanmış durumda. Migration 008 kodu ve kabul testi hazırdır; **ortak veritabanına
+uygulanmamıştır**, güncel yedek ve kullanıcı onayı bekler.
 
 | Ölçüt | Snapshot |
 | --- | ---: |
@@ -57,6 +58,7 @@ değildir. Henüz `NUMUNE` tipinde gerçek dolap/raf satırı yoktur.
 | 005 | Uygulandı | `urun_kaydet()`, görsel sıra fonksiyonu ve ürün denetim alanları |
 | 006 | Uygulandı | Tarihsel 30 test hareketinin koşullu temizliği |
 | 007 | Uygulandı | Stok partisi için kaplama/montaj kovaları ve 11 kaplama rengi |
+| 008 | Çekirdek kabul testi geçti; son disposable turu ve onay bekliyor | Ürün/SKU ayrımı, belge başlığı, stok durumu, parti, iş ortağı ve fason iş emri |
 
 Şema otoritesi `../sql/01_schema.sql` ile `../sql/migrations/` altındaki sıralı
 migration'ların birleşimidir. `01_schema.sql` yalnızca baz şemadır; Compose yeni
@@ -70,6 +72,16 @@ körlemesine uygulanmamalıdır.
 Canlı yüzeyler `v_aktif_urunler`, stok/lokasyon/numune view'ları,
 `stok_hareketi_kaydet()` ve `urun_kaydet()` fonksiyonlarıdır. Alanlar ve iş
 kuralları `aktif-urun-veri-sozlesmesi.md` içinde belgelenir.
+
+Migration 008 sonrası yüzeyler ve geçiş kuralları
+[`stok-urun-veri-sozlesmesi.md`](stok-urun-veri-sozlesmesi.md) içindedir. 008;
+2026-08-04'te `depo_sistemi` dump'ından oluşturulan `metaks_m008_test` disposable
+veritabanında ileri migration ve `sql/tests/008_stok_urun_modeli_test.sql` ile
+çekirdek satın alma, satış, transfer, fason sevk/dönüş, sayım, idempotency ve
+toplam mutabakatı senaryolarında doğrulandı. Bu turun ardından eklenen parti,
+fason fire ve 007 fonksiyon gövdesini geri yükleyen rollback korumaları için yeni
+restore edilmiş disposable kopyada forward + kabul + rollback turu henüz
+tekrarlanmadı. Ortak veritabanında hiçbir şema/veri değişikliği yapılmadı.
 
 ## Veri hattının sonucu
 
@@ -112,20 +124,25 @@ tam olarak kanıtlanamaz.
 
 ## Kalıcı kapsam ve mimari kararları
 
-- `urunler` yalnız ürünün kimlik/fiziksel ana verisini taşır; üretim ve stok
-  partisi özellikleri ayrı tutulur.
+- `urunler` tasarım/model ana verisidir; stoklanan/sevk edilen kaplama, boya, mine
+  ve montaj kombinasyonu `stok_kalemleri` içindeki SKU'dur.
 - Kalıp göz sayısı `urunler` dışında, `kalip_bilgileri_yedek.xlsx` içinde Faz 3'ü
   bekler.
-- Kaplama rengi, kaplama yöntemi ve montaj durumu stok partisinin özelliğidir.
-  Kova anahtarı `kaplama_id + kaplama_cesidi + montaj` üçlüsüdür.
-- `boya` ve `mine` serbest metindir; yazım farkları sahte stok kovaları açmasın
-  diye kova anahtarına dahil edilmez.
+- Kaplama rengi, kontrollü boya/mine rengi ve montaj hali SKU niteliğidir. Askıda/
+  dolap kaplama sevk edilen malı değiştirmiyorsa fason iş emri yöntemidir.
+- Parti/lot SKU'nun belirli üretim veya kabul miktarını izler; SKU kodunun yerine
+  geçmez ve yalnız ihtiyaç olan akışlarda kullanılır.
+- Dışarıdaki METAKS malı ayrı veritabanına çıkmaz: FASON lokasyonunda, aynı stok
+  defterinde ve `fason_is_emirleri` bağlantısıyla tutulur.
+- Fiziksel lokasyon ile kullanılabilirlik bağımsızdır; stok durumu `SERBEST`,
+  `KALITE_BEKLIYOR` veya `BLOKE` olur.
 - Numune ayrı ürün değildir: ürünün `NUMUNE` tipindeki bir lokasyonda duran fiziksel
   adedidir; hareket geçmişi normal stok defterinden gelir.
-- `v_toplam_stok` satılabilir stoğu, `v_fiziksel_stok` numuneler dahil fiziksel
-  stoğu gösterir.
-- Stok ve ürün iş kuralları Django'da kopyalanmaz; iki veritabanı fonksiyonu tek
-  yazma kapısıdır.
+- Migration 008 sonrasında `v_stok_urun_ozet`; sahip olunan, tesis içi, satışa
+  hazır, fason, numune, kalite ve bloke toplamlarını ayrı verir. Eski
+  `v_toplam_stok` bu ayrımların otoritesi değildir.
+- Stok ve ürün iş kuralları Django'da kopyalanmaz; stok için
+  `stok_islemi_kaydet()`, ürün için `urun_kaydet()` tek yazma kapısıdır.
 - Görsel dosyasının fiziksel otoritesi `images/final/products/` dizinidir. Django
   yazar, nginx aynı dizini salt-okunur sunar, DB yalnız dosya adını tutar.
 - Ham kaynak, nihai yükleme dosyası, kalıp yedeği ve aktif görsel dizini yedeksiz
@@ -135,10 +152,12 @@ tam olarak kanıtlanamaz.
 
 ### Yakın dönem
 
-1. Gerçek numune dolabı ve raflarını `NUMUNE` hiyerarşisi olarak girin.
-2. Arayüzde ürün detayına numune konumu/miktarı görünümünü ekleyin.
-3. Hareket geçmişi için Türkçe Excel ile uyumlu CSV/Excel dışa aktarmayı ekleyin.
-4. Dış/fason kullanıcı ihtiyacı doğduğunda rol ve işlem yetkilerini ayırın.
+1. Ortak veritabanının güncel yedeğini alın; migration 008 forward + rollback'i
+   yeni restore edilmiş kopyada son kez çalıştırın ve açık kullanıcı onayıyla uygulayın.
+2. Eski/belirsiz SKU bakiyesini ham varsaymadan fiziksel sayımla gerçek SKU'lara
+   sınıflandırın.
+3. Gerçek numune dolabı ve raflarını `NUMUNE` hiyerarşisi olarak girin.
+4. Hareket geçmişi için Türkçe Excel ile uyumlu CSV/Excel dışa aktarmayı ekleyin.
 
 İkinci, üçüncü ve dördüncü maddelerin uygulama durumu
 `../../web/YAPILACAKLAR.md` tarafından izlenir.

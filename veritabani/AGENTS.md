@@ -91,16 +91,17 @@ the separate `metaks_web` database.
 Business rules live in PostgreSQL. Application code passes parameters and shows
 the Turkish result/error message; it must not duplicate those rules.
 
-- Never `INSERT` directly into `stok_hareketleri`. Use
-  `stok_hareketi_kaydet()`.
+- Never `INSERT` directly into `stok_hareketleri`. After migration 008 use
+  `stok_islemi_kaydet()`; `stok_hareketi_kaydet()` is only the legacy wrapper.
 - Never directly `INSERT` or `UPDATE` `urunler`. Use `urun_kaydet()`.
-- `stok_hareketi_kaydet()` owns idempotency, location requirements, leaf-location
-  checks, sufficient-stock checks, count-difference calculation, and coating
-  bucket semantics.
+- `stok_islemi_kaydet()` owns document and request idempotency, purpose/ledger
+  consistency, location and detailed-balance checks, count differences, SKU/lot/
+  status semantics, corrections, and subcontracting transaction atomicity.
 - `urun_kaydet()` owns create/update intent, product relationships, audit fields,
   catalog state, and primary-image metadata.
 - Read contracts and exact fields are documented in
-  `docs/aktif-urun-veri-sozlesmesi.md`.
+  `docs/aktif-urun-veri-sozlesmesi.md` and, after migration 008,
+  `docs/stok-urun-veri-sozlesmesi.md`.
 
 Location management is the limited exception: Django writes `lokasyonlar`
 directly, while PostgreSQL constraints enforce hierarchy and uniqueness. Read
