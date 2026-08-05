@@ -1,0 +1,48 @@
+{% comment %}
+Katalog, stok ve hareket ekranlarının ortak indirme eylemi. Düğmeler temel URL'yi
+taşır; base.html::disaAktar tıklama anında canlı form alanlarını ekler. Böylece
+arama debounce'u veya süren HTMX takası bayat filtreli dosya indirmez.
+{% endcomment %}
+<details class="relative shrink-0">
+    <summary
+        class="list-none [&::-webkit-details-marker]:hidden cursor-pointer
+               inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white
+               px-3 py-1.5 text-sm text-slate-700 transition hover:border-slate-400
+               focus:outline-none focus:ring-4 focus:ring-slate-900/5"
+    >
+        <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor"
+             stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 3v12m0 0 4-4m-4 4-4-4"/>
+            <path d="M5 17v3h14v-3"/>
+        </svg>
+        Dışa aktar
+        <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor"
+             stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m6 9 6 6 6-6"/>
+        </svg>
+    </summary>
+
+    <div class="absolute left-0 z-50 mt-2 w-56 overflow-hidden rounded-xl border
+                border-slate-200 bg-white p-1.5 shadow-xl shadow-slate-300/40">
+        <button type="button"
+                data-disa-aktar="xlsx"
+                data-disa-yol="{{ disa_aktar.xlsx_yol }}"
+                data-filtre-formu="{{ disa_aktar.filtre_formu }}"
+                onclick="disaAktar(this)"
+                class="block w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700
+                       transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-50">
+            <span class="block font-medium">Excel dosyası (.xlsx)</span>
+            <span class="block mt-0.5 text-xs text-slate-400">Biçimlendirilmiş çalışma sayfası</span>
+        </button>
+        <button type="button"
+                data-disa-aktar="csv"
+                data-disa-yol="{{ disa_aktar.csv_yol }}"
+                data-filtre-formu="{{ disa_aktar.filtre_formu }}"
+                onclick="disaAktar(this)"
+                class="block w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700
+                       transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-50">
+            <span class="block font-medium">CSV dosyası (.csv)</span>
+            <span class="block mt-0.5 text-xs text-slate-400">Noktalı virgülle ayrılmış metin</span>
+        </button>
+    </div>
+</details>

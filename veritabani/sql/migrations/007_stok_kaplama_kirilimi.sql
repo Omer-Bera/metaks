@@ -30,8 +30,10 @@
 -- geçmiş hareketler "kaplaması bilinmiyor" olarak okunmalı, uydurulmuş bir
 -- renge atanmamalı.
 --
--- Bu dosya HENÜZ UYGULANMADI. Ortak veritabanına karşı çalıştırmadan
--- önce kullanıcı onayı gerekir.
+-- Bu dosya ortak `depo_sistemi` veritabanına UYGULANDI (2026-08-04 tarihli
+-- salt-okunur denetim snapshot'ında doğrulandı; bkz. docs/INFO.md
+-- "Uygulanmış migration'lar"). Anlık durumun otoritesi burası değil o
+-- belgedir; başka bir kopyaya uygulamadan önce oradaki önkoşulları okuyun.
 -- =========================================================
 
 BEGIN;

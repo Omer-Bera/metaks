@@ -190,9 +190,11 @@ tam olarak kanıtlanamaz.
    şu an tek bir miras (BELIRSIZ) SKU taşıyor**; gerçek kaplama/montaj varyantları
    `/stok/varyant/yeni/` üzerinden açılıp bakiye oraya taşınmalı.
 2. Gerçek numune dolabı ve raflarını `NUMUNE` hiyerarşisi olarak girin.
-3. Hareket geçmişi için Türkçe Excel ile uyumlu CSV/Excel dışa aktarmayı ekleyin.
+3. Arayüzde ürün detayına numune konumu/miktarı görünümünü ekleyin.
 
 Üç maddenin de uygulama durumu `../../web/YAPILACAKLAR.md` tarafından izlenir.
+Türkçe Excel uyumlu CSV/XLSX dışa aktarma (katalog, stok ve hareket geçmişi) ve
+rol/işlem yetkisi ayrımı tamamlandı.
 
 ### Faz 3 — Kalıp modülü
 

@@ -10,7 +10,6 @@ Güncel uygulama sırası:
 
 1. **Eski/belirsiz SKU bakiyesini fiziksel sayımla gerçek SKU'lara sınıflandırma**
 2. **Madde 4 — gerçek numune dolap/raf düzeni**
-3. **Madde 5 — filtreli CSV/Excel dışa aktarma**
 
 Migration 008 ve 009 **2026-08-05'te ortak veritabanına uygulandı** (ayrıntı ve
 doğrulama kaydı [`veritabani/docs/INFO.md`](../veritabani/docs/INFO.md)). Bunun
@@ -18,6 +17,8 @@ arayüz tarafındaki doğrudan sonucu: 2.973 ürünün tamamı şu an tek bir mi
 (BELIRSIZ) SKU taşıyor, yani stok işlem ekranında çoğu kodda "eski / belirsiz
 varyant" rozeti ve "+ Bu ürüne yeni varyant aç" kısayolu görünecek. Sıradaki iş
 bu — kısayol tam olarak o akış için kondu.
+
+Madde 5 (dışa aktarma) ve madde 2b (rol ayrımı) tamamlandı; kararları aşağıda.
 
 ---
 
@@ -64,34 +65,30 @@ hareketidir ve aynı defterde izlenir.
 
 ---
 
-## 5. Hareket geçmişinde CSV / Excel dışa aktarma
+## ✅ 5. Katalog, stok ve hareket dışa aktarma — tamamlandı (2026-08-04)
 
-`/stok/hareketler/` üzerindeki aktif filtrelerle aynı kayıt kümesini dosya olarak
-indiren “Dışa aktar” eylemi eklenecek. Kapsam ve kararlar için
-[`DISA_AKTARIM_TASARIMI.md`](DISA_AKTARIM_TASARIMI.md) belgesine bakın.
+`/katalog/`, `/stok/` ve `/stok/hareketler/` ekranlarının her biri, o an açık
+filtreleriyle aynı kayıt kümesini CSV veya XLSX olarak indiriyor. Kapsam ve
+kararlar için [`DISA_AKTARIM_TASARIMI.md`](DISA_AKTARIM_TASARIMI.md). Kalıcı
+kararlar:
 
-### Yapılacaklar
-
-- [ ] HTML liste ve dışa aktarma aynı filtreleme fonksiyonunu/queryset kurucusunu
-  kullansın; arama, işlem tipi, kaynak/hedef lokasyon, kullanıcı ve tarih aralığı
-  iki yerde kopyalanmasın.
-- [ ] Dışa aktarmada sayfalama uygulama; filtrelenmiş kümenin tamamını
-  `StreamingHttpResponse` ile satır satır üret.
-- [ ] Tarihi `yerel_tarih()` üzerinden Europe/Istanbul saatinde yaz. Ham naive UTC
-  kolonunu doğrudan dışa aktarma.
-- [ ] Türkçe Excel uyumu için ayraç `;`, kodlama UTF-8 ve dosyanın başı BOM olsun.
-- [ ] Stok kodu/açıklama/kullanıcı gibi metin alanlarının Excel formülü olarak
-  yorumlanmasını engelle; `=`, `+`, `-` veya `@` ile başlayan hücreleri güvenli yaz.
-- [ ] Dosya adı tarih içersin; uygulanan filtreler dosya içeriğinde veya adında
-  anlaşılabilir olsun.
-
-### Kabul ölçütleri
-
-- Ekrandaki filtrelerle dosyadaki satırlar birebir aynı kayıt kümesini temsil ediyor.
-- Tarih gün sınırlarında üç saat kaymıyor.
-- Türkçe karakterler ve sütunlar gerçek Excel'de doğru açılıyor.
-- Büyük sonuç kümesi bellekte bütünüyle tutulmuyor.
-- Filtre yokken ve sonuç boşken geçerli dosya üretiliyor.
+- **Filtre sözleşmesi tek yerde.** `ListeFiltresi` ve `HareketFiltresi` hem HTML
+  hem dosya yolunu besliyor; arama, işlem tipi, iş amacı, lokasyon, kullanıcı ve
+  tarih aralığı kopyalanmıyor. Dışa aktarım madde 6'dan ÖNCE yazıldığı için
+  birleştirmede iki yer ayrıca hizalandı: hareket amacı (`islem_nedeni`) filtresi
+  `HareketFiltresi`'ne alındı ve stok dosyası `_stok_liste_sorgusu()` üzerinden
+  ekranın kendi `StokBakiye`/`StokUrunOzet` sorgusuna bağlandı. Eski
+  `v_toplam_stok` yolu bırakılsaydı dosya, kaplama/parti/fason filtrelerini hiç
+  uygulamadan ekrandan BAŞKA bir küme indirirdi.
+- **Sayfalama yok, akış var.** Filtrelenmiş kümenin tamamı `StreamingHttpResponse`
+  ile satır satır üretiliyor (`iterator(chunk_size=2000)`), bellekte tutulmuyor.
+- **Tarih `yerel_tarih()` üzerinden Europe/Istanbul.** Ham naive UTC kolonu dışa
+  aktarılmıyor; gün sınırında üç saatlik kayma yok.
+- **Türkçe Excel uyumu:** CSV ayracı `;`, kodlama UTF-8 ve dosyanın başında BOM.
+- **Formül enjeksiyonu kapalı:** `=`, `+`, `-` veya `@` ile başlayan metin
+  hücreleri `_metni_formulden_koru()` ile güvenli yazılıyor.
+- **Dosya adı tarihli**, uygulanan filtreler dosyanın ilk satırındaki "Kapsam"
+  bilgisinde okunabiliyor (`kapsam_ozeti()`).
 
 ---
 
@@ -158,12 +155,15 @@ HTMX ve doğrudan URL aynı decorator/sorgu kontrolünü kullanır.
 
 ## Sırası gelmemiş / arka planda duranlar
 
-- **Django otomatik test altyapısı:** Yetki/kanonik URL için veritabanısız hızlı
-  testler var. Defter kabul testleri `veritabani/sql/tests/008_stok_urun_modeli_test.sql`
-  içinde ve yalnız disposable kopyada çalışır; tam web akış testleri için izole
-  METAKS DB fixture'ı hâlâ gerekir. Çekirdek SQL kabul turu geçti; sonradan eklenen
-  parti, fason fire ve rollback korumaları için son forward + kabul + rollback
-  turu ortak DB'ye geçmeden önce yeni restore edilmiş kopyada tekrarlanmalıdır.
+- **Django otomatik test altyapısı:** Yetki/kanonik URL ve dışa aktarım testleri
+  saf `SimpleTestCase` — veritabanı kurmadan çalışıyor. ORM entegrasyonları için
+  güvenli fixture/test şeması tasarlanmadan test runner'ını paylaşılan
+  `depo_sistemi`ne karşı çalıştırmayın. Defter kabul testleri
+  `veritabani/sql/tests/008_stok_urun_modeli_test.sql` içinde ve yalnız disposable
+  kopyada çalışır; tam web akış testleri için izole METAKS DB fixture'ı hâlâ
+  gerekir. Çekirdek SQL kabul turu geçti; sonradan eklenen parti, fason fire ve
+  rollback korumaları için son forward + kabul + rollback turu ortak DB'ye
+  geçmeden önce yeni restore edilmiş kopyada tekrarlanmalıdır.
 - **Çoklu görsel galerisi:** veri ve kullanıcı ihtiyacı belirginleşene kadar tek ana
   görsel korunuyor.
 - **Otomatik stok yenileme:** açık sekme kendiliğinden yenilenmiyor. Operasyonel
@@ -190,6 +190,7 @@ HTMX ve doğrudan URL aynı decorator/sorgu kontrolünü kullanır.
 | ✅ stok görünürlük ve roller | 2026-08-04 | Katalog açık kaldı; stok/hareket sorguları ayrı Django izinleri ve yönetim ekranındaki stok rolleriyle kapatıldı. |
 | ✅ 6 — stok & fason kullanım turu | 2026-08-05 | Lokasyonlar iş amacına göre süzülüyor, fason dönüşü fireyi tek atomik akışta yazıyor, hareket geçmişi iş amacıyla filtreleniyor; kullanılmayan eski stok akışları silindi. |
 | ✅ numune şema ön koşulu | 2026-07-30 | Ayrı varlık yerine lokasyon hiyerarşisi seçildi; migration 004 ve Django yaprak-lokasyon geçişi tamamlandı. |
+| ✅ 5 — filtreli CSV/Excel dışa aktarım | 2026-08-04 | Katalog, stok ve hareket ekranları aynı filtre sorgularından sayfalamasız dosya üretiyor; CSV akışlı, XLSX write-only/geçici dosyalı ve anonim okuma davranışı korundu. |
 
 Bir madde tamamlandığında açık bölümden kaldırıp bu tabloya tarih ve tek cümlelik
 kalıcı gerekçeyle ekleyin. Canlı satır sayısı, kişisel cihaz durumu ve tek kullanımlık

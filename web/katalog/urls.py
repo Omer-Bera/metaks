@@ -11,9 +11,19 @@ urlpatterns = [
     path('', views.ana_ekran, name='ana_ekran'),
 
     path('katalog/', views.urun_listesi, name='urun_listesi'),
+    path(
+        'katalog/disa-aktar/<str:dosya_turu>/',
+        views.urun_disa_aktar,
+        name='urun_disa_aktar',
+    ),
     path('katalog/urun/<str:stok_kodu>/', views.urun_detay, name='urun_detay'),
 
     path('stok/', views.stok_listesi, name='stok_listesi'),
+    path(
+        'stok/disa-aktar/<str:dosya_turu>/',
+        views.stok_disa_aktar,
+        name='stok_disa_aktar',
+    ),
     path('stok/urun/<str:stok_kodu>/', views.stok_urun_detay, name='stok_urun_detay'),
     path('stok/islem/', stok_yonetimi.stok_merkezi, name='stok_merkezi'),
     path('stok/islem/oneriler/', stok_yonetimi.stok_kodu_onerileri, name='stok_kodu_onerileri'),
@@ -21,6 +31,11 @@ urlpatterns = [
     # bir stok kodu sanılıp eski yönlendirme view'ına düşer.
     path('stok/islem/<str:stok_kodu>/', views.stok_islem, name='stok_islem'),
     path('stok/hareketler/', views.hareket_gecmisi, name='hareket_gecmisi'),
+    path(
+        'stok/hareketler/disa-aktar/<str:dosya_turu>/',
+        views.hareket_disa_aktar,
+        name='hareket_disa_aktar',
+    ),
 
     # Eski adresler kanonik amaç-temelli ekrana HTTP yönlendirmesi yapar.
     path('stok/ekle/', stok_yonetimi.eski_stok_url_yonlendir, name='stok_ekle'),

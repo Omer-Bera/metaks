@@ -4,12 +4,13 @@ from decimal import Decimal, InvalidOperation
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.db.models import Count, F, OuterRef, Q, Subquery
+from django.db.models import Count, F, IntegerField, OuterRef, Q, Subquery
 from django.http import QueryDict
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 
-from . import forms, stok_servisi
+from . import disa_aktarim, forms, stok_servisi
 from .models import (
     AktifUrun,
     FasonIsEmriOzet,
@@ -48,6 +49,28 @@ SIRALAMALAR = {
     'kod_azalan': ('-stok_kodu', 'Stok kodu (azalan)'),
 }
 VARSAYILAN_SIRALAMA = 'kod_artan'
+
+# Stok filtrelerinin okunur karşılıkları. Şablondaki <option> etiketleriyle aynı
+# (bkz. _govde.html); dosya "Kapsam" satırının ham kodları basmaması için burada.
+_YER_ETIKETLERI = {'DAHILI': 'Tesis içi', 'FASON': 'Fasonda', 'NUMUNE': 'Numune'}
+_STOK_DURUMU_ETIKETLERI = {
+    'SERBEST': 'Serbest',
+    'KALITE_BEKLIYOR': 'Kalite bekliyor',
+    'BLOKE': 'Bloke',
+}
+_STOK_TURU_ETIKETLERI = {
+    'SATISA_HAZIR': 'Satışa hazır',
+    'FASONDA': 'Fasonda',
+    'KALITE': 'Kalite bekleyen',
+    'BLOKE': 'Bloke',
+}
+_SEVIYE_ETIKETLERI = {
+    'STOKLU': 'Stoklu',
+    'SIFIR': 'Sıfır',
+    'SAYILMAMIS': 'Sayılmamış',
+    'KRITIK': 'Kritik altı',
+}
+_FASON_DURUM_ETIKETLERI = {'ACIK': 'Açık', 'GECIKMIS': 'Gecikmiş'}
 
 
 # Kullanıcının "giriş yapmadan devam et" dediğini session'da tutan anahtar.
@@ -195,7 +218,7 @@ class ListeFiltresi:
         )
 
     def url(
-        self, *, kategoriler=None, arama=None, sadece_stok=None,
+        self, *, yol=None, kategoriler=None, arama=None, sadece_stok=None,
         yer=None, lokasyon=None, kaplama=None, montaj=None, durum=None,
         boya=None, mine=None, stok_turu=None, seviye=None, fasoncu=None,
         fason_durum=None, parti=None, olcu=None, **ekstra
@@ -244,7 +267,53 @@ class ListeFiltresi:
             parametreler[anahtar] = deger
 
         sorgu = parametreler.urlencode()
-        return f'{self.yol}?{sorgu}' if sorgu else self.yol
+        hedef = yol or self.yol
+        return f'{hedef}?{sorgu}' if sorgu else hedef
+
+    def kapsam_ozeti(self, *, stok_goster):
+        """Dosyanın üst bilgisinde gösterilecek, kanonik filtre özeti."""
+        parcalar = ['Stok durumu' if stok_goster else 'Ürün kataloğu']
+        if self.arama:
+            parcalar.append(f'Arama: {self.arama}')
+        if self.kategoriler:
+            kategoriler = [
+                'Kategorisiz' if kategori == KATEGORISIZ else kategori
+                for kategori in self.kategoriler
+            ]
+            parcalar.append('Kategoriler: ' + ', '.join(kategoriler))
+        if self.sadece_stok:
+            parcalar.append('Yalnız stokta olanlar')
+        # Migration 008'in SKU filtreleri de özete giriyor: dosyayı açan kişi hangi
+        # kısıtlarla indirildiğini görmeden sayıyı başkasına aktarabilirdi. Ad
+        # gerektiren alanlar (lokasyon, kaplama, renk, fasoncu) id ile yazılıyor —
+        # dosya üretirken referans tablolarını ayrıca sorgulamamak için.
+        for etiket, deger, secenekler in (
+            ('Yer', self.yer, _YER_ETIKETLERI),
+            ('Montaj', self.montaj, MONTAJ_ETIKETLERI),
+            ('Stok durumu', self.durum, _STOK_DURUMU_ETIKETLERI),
+            ('Stok türü', self.stok_turu, _STOK_TURU_ETIKETLERI),
+            ('Seviye', self.seviye, _SEVIYE_ETIKETLERI),
+            ('Fason', self.fason_durum, _FASON_DURUM_ETIKETLERI),
+        ):
+            if deger in secenekler:
+                parcalar.append(f'{etiket}: {secenekler[deger]}')
+        for etiket, deger in (
+            ('Parti', self.parti),
+            ('Ölçü (mm)', self.olcu),
+        ):
+            if deger:
+                parcalar.append(f'{etiket}: {deger}')
+        for etiket, deger in (
+            ('Lokasyon', self.lokasyon),
+            ('Kaplama', self.kaplama),
+            ('Boya rengi', self.boya),
+            ('Mine rengi', self.mine),
+            ('Fasoncu', self.fasoncu),
+        ):
+            if deger:
+                parcalar.append(f'{etiket} #{deger}')
+        parcalar.append(f'Sıralama: {SIRALAMALAR[self.sirala][1]}')
+        return ' · '.join(parcalar)
 
     def kategori_degistir(self, kategori):
         """Bir kategoriyi seçime ekleyip çıkaran URL (aç/kapa) — panel satırları için."""
@@ -384,6 +453,9 @@ def _stok_bilgisini_ekle(urunler):
 
 def _liste_context(request, filtre, *, stok_goster):
     """İki liste sayfasının ortak context'i."""
+    disa_aktar_url_adi = (
+        'katalog:stok_disa_aktar' if stok_goster else 'katalog:urun_disa_aktar'
+    )
     urunler = filtre.uygula(AktifUrun.objects.using('metaks').all())
 
     sayfalayici = Paginator(urunler, SAYFA_BOYUTU)
@@ -403,6 +475,15 @@ def _liste_context(request, filtre, *, stok_goster):
         'temiz_url': filtre.url(arama='', kategoriler=[], sadece_stok=False),
         'stok_ac_url': filtre.url(sadece_stok=True),
         'stok_kapat_url': filtre.url(sadece_stok=False),
+        'disa_aktar': {
+            'filtre_formu': 'katalog-disa-aktar-filtreleri',
+            'xlsx_yol': reverse(
+                disa_aktar_url_adi, kwargs={'dosya_turu': 'xlsx'}
+            ),
+            'csv_yol': reverse(
+                disa_aktar_url_adi, kwargs={'dosya_turu': 'csv'}
+            ),
+        },
         'sonraki_url': (
             filtre.url(sayfa=sayfa.next_page_number()) if sayfa.has_next() else None
         ),
@@ -435,8 +516,14 @@ def _stok_kategori_secenekleri(filtre):
     return sonuc
 
 
-def _stok_liste_context(request, filtre):
-    """Aktif görsel şartı olmadan bütün stok takipli ürünleri SKU bakiyesiyle listeler."""
+def _stok_liste_sorgusu(filtre):
+    """Stok ekranının ve stok dosyasının paylaştığı tek queryset kurucusu.
+
+    Migration 008'le stok listesi `StokBakiye`/`StokUrunOzet` üzerine geçti; dışa
+    aktarım ise eski `v_toplam_stok` yolundan geliyordu. İkisi ayrı kaldığında dosya
+    ekranda görünenden BAŞKA bir kümeyi indiriyordu (kaplama, parti, fason gibi SKU
+    filtreleri dosyada hiç uygulanmıyordu). Kural burada tek yerde.
+    """
     urunler = Urun.objects.using('metaks').filter(stok_takip_edilsin_mi=True)
     if filtre.arama:
         sku_urunleri = StokKalemi.objects.using('metaks').filter(
@@ -534,7 +621,12 @@ def _stok_liste_context(request, filtre):
         ).values('urun_kodu')
         urunler = urunler.filter(stok_kodu__in=Subquery(ilgili_sku))
 
-    urunler = urunler.order_by(SIRALAMALAR[filtre.sirala][0])
+    return urunler.order_by(SIRALAMALAR[filtre.sirala][0])
+
+
+def _stok_liste_context(request, filtre):
+    """Aktif görsel şartı olmadan bütün stok takipli ürünleri SKU bakiyesiyle listeler."""
+    urunler = _stok_liste_sorgusu(filtre)
     sayfalayici = Paginator(urunler, SAYFA_BOYUTU)
     sayfa = sayfalayici.get_page(request.GET.get('sayfa'))
     kodlar = [u.stok_kodu for u in sayfa.object_list]
@@ -574,6 +666,15 @@ def _stok_liste_context(request, filtre):
         ),
         'stok_ac_url': filtre.url(sadece_stok=True),
         'stok_kapat_url': filtre.url(sadece_stok=False),
+        'disa_aktar': {
+            'filtre_formu': 'katalog-disa-aktar-filtreleri',
+            'xlsx_yol': reverse(
+                'katalog:stok_disa_aktar', kwargs={'dosya_turu': 'xlsx'}
+            ),
+            'csv_yol': reverse(
+                'katalog:stok_disa_aktar', kwargs={'dosya_turu': 'csv'}
+            ),
+        },
         'sonraki_url': filtre.url(sayfa=sayfa.next_page_number()) if sayfa.has_next() else None,
         'lokasyonlar': list(LokasyonDetay.objects.using('metaks').filter(aktif_mi=True, yaprak_mi=True)),
         'kaplamalar': stok_servisi.kaplama_secenekleri(),
@@ -623,6 +724,129 @@ def stok_listesi(request):
         'detay_url_adi': 'katalog:stok_urun_detay',
     })
     return _liste_yanit(request, context)
+
+
+KATALOG_DISA_AKTARIM_SUTUNLARI = (
+    ('Stok kodu', 18),
+    ('Kategori', 24),
+    ('Ürün tipi', 16),
+    ('Ana ürün kodu', 18),
+    ('Varyant', 22),
+    ('Ölçü (mm)', 13),
+    ('Boy (ligne)', 13),
+    ('Gramaj (gr)', 13),
+    ('Hammadde', 20),
+    ('Açıklama', 42),
+    ('Görsel URL\'si', 52),
+)
+
+STOK_DISA_AKTARIM_SUTUNLARI = (
+    ('Stok kodu', 18),
+    ('Kategori', 24),
+    ('Satışa hazır', 14),
+    ('Sahip olunan', 14),
+    ('Stok durumu', 16),
+)
+
+_URUN_TIPI_DISA_AKTARIM_ETIKETLERI = {
+    'ANA_URUN': 'Ana ürün',
+    'VARYANT': 'Varyant',
+    'ALT_PARCA': 'Alt parça',
+}
+
+
+def _katalog_disa_aktarim_satirlari(filtre):
+    """Sayfalamasız katalog satırları; QuerySet önbelleği oluşturmadan akar."""
+    urunler = filtre.uygula(AktifUrun.objects.using('metaks').all())
+    alanlar = (
+        'stok_kodu', 'kategori_adi', 'urun_tipi', 'parent_stok_kodu',
+        'varyant_adi', 'olcu_mm', 'boy_ligne', 'gramaj_gr', 'hammadde_adi',
+        'aciklama', 'ana_gorsel_dosya_adi',
+    )
+    for satir in urunler.values_list(*alanlar).iterator(chunk_size=2000):
+        (
+            stok_kodu, kategori, urun_tipi, parent_stok_kodu, varyant, olcu,
+            boy, gramaj, hammadde, aciklama, gorsel_dosya_adi,
+        ) = satir
+        yield (
+            stok_kodu,
+            kategori,
+            _URUN_TIPI_DISA_AKTARIM_ETIKETLERI.get(urun_tipi, urun_tipi),
+            parent_stok_kodu,
+            varyant,
+            olcu,
+            boy,
+            gramaj,
+            hammadde,
+            aciklama,
+            settings.GORSEL_SUNUCU_BASE_URL + gorsel_dosya_adi
+            if gorsel_dosya_adi else '',
+        )
+
+
+def _stok_disa_aktarim_satirlari(filtre):
+    """Stok üçlüsünü (sayılmadı/sıfır/var) tek sorguda koruyan satırlar.
+
+    Kayıt kümesi ekranla aynı olsun diye `_stok_liste_sorgusu()` üzerinden geliyor;
+    toplamların otoritesi migration 008 sonrası `v_stok_urun_ozet` (eski
+    `v_toplam_stok` değil, bkz. veritabani/docs/INFO.md). Kategori adı ve toplamlar
+    alt sorguyla annotate ediliyor — satır başına ek sorgu yok.
+    """
+    ozetler = StokUrunOzet.objects.using('metaks').filter(
+        urun_kodu=OuterRef('stok_kodu')
+    ).order_by()
+    kategori_adlari = Kategori.objects.using('metaks').filter(
+        kategori_id=OuterRef('kategori_id')
+    ).order_by().values('kategori_adi')[:1]
+    urunler = _stok_liste_sorgusu(filtre).annotate(
+        disa_kategori_adi=Subquery(kategori_adlari),
+        disa_satisa_hazir=Subquery(
+            ozetler.values('satisa_hazir_toplam')[:1], output_field=IntegerField()
+        ),
+        disa_sahip_olunan=Subquery(
+            ozetler.values('sahip_olunan_toplam')[:1], output_field=IntegerField()
+        ),
+    )
+    for stok_kodu, kategori, satisa_hazir, sahip_olunan in (
+        urunler.values_list(
+            'stok_kodu', 'disa_kategori_adi', 'disa_satisa_hazir', 'disa_sahip_olunan'
+        ).iterator(chunk_size=2000)
+    ):
+        # "Hiç sayılmadı" (özet satırı yok) ile "sayıldı, sıfır" ayrımı ekranla aynı
+        # kuralla kuruluyor (bkz. _stok_liste_context).
+        durum = (
+            'Sayılmadı' if satisa_hazir is None
+            else ('Stok var' if satisa_hazir > 0 else 'Stok yok')
+        )
+        yield stok_kodu, kategori, satisa_hazir, sahip_olunan, durum
+
+
+def urun_disa_aktar(request, dosya_turu):
+    """Aktif katalog filtrelerinin tamamını CSV/XLSX olarak indirir."""
+    filtre = ListeFiltresi(request, reverse('katalog:urun_listesi'))
+    tarih = timezone.localdate().isoformat()
+    return disa_aktarim.dosya_yaniti(
+        dosya_turu=dosya_turu,
+        dosya_koku=f'urun-katalogu-{tarih}',
+        calisma_sayfasi='Ürün kataloğu',
+        kapsam=filtre.kapsam_ozeti(stok_goster=False),
+        sutunlar=KATALOG_DISA_AKTARIM_SUTUNLARI,
+        satirlar=_katalog_disa_aktarim_satirlari(filtre),
+    )
+
+
+def stok_disa_aktar(request, dosya_turu):
+    """Aktif stok filtrelerinin tamamını, sayfalama olmadan indirir."""
+    filtre = ListeFiltresi(request, reverse('katalog:stok_listesi'))
+    tarih = timezone.localdate().isoformat()
+    return disa_aktarim.dosya_yaniti(
+        dosya_turu=dosya_turu,
+        dosya_koku=f'stok-durumu-{tarih}',
+        calisma_sayfasi='Stok durumu',
+        kapsam=filtre.kapsam_ozeti(stok_goster=True),
+        sutunlar=STOK_DISA_AKTARIM_SUTUNLARI,
+        satirlar=_stok_disa_aktarim_satirlari(filtre),
+    )
 
 
 # --------------------------------------------------------------------------------------
@@ -710,6 +934,129 @@ def _sku_ozetlerini_ekle(hareketler):
         hareket.varyant_ozeti = ' · '.join(p for p in parcalar if p)
 
 
+class HareketFiltresi:
+    """Hareket ekranı ve dosyaları için tek filtre/URL sözleşmesi."""
+
+    def __init__(self, request):
+        self.arama = request.GET.get('q', '').strip()
+        self.tip = request.GET.get('tip', '').strip()
+        self.amac = request.GET.get('amac', '').strip()
+        self.lokasyon = _tam_sayi(request.GET.get('lokasyon', ''))
+        self.kullanici = request.GET.get('kullanici', '').strip()
+        self.baslangic = _tarih_cozumle(request.GET.get('baslangic', ''))
+        self.bitis = _tarih_cozumle(request.GET.get('bitis', ''))
+
+    @property
+    def filtre_var(self):
+        return bool(
+            self.arama or self.tip or self.amac or self.lokasyon
+            or self.kullanici or self.baslangic or self.bitis
+        )
+
+    @property
+    def secili(self):
+        return {
+            'q': self.arama,
+            'tip': self.tip,
+            'amac': self.amac,
+            'lokasyon': self.lokasyon,
+            'kullanici': self.kullanici,
+            'baslangic': self.baslangic.isoformat() if self.baslangic else '',
+            'bitis': self.bitis.isoformat() if self.bitis else '',
+        }
+
+    def parametreler(self):
+        parametreler = QueryDict(mutable=True)
+        for anahtar, deger in (
+            ('q', self.arama),
+            ('tip', self.tip),
+            ('amac', self.amac),
+            ('lokasyon', self.lokasyon or ''),
+            ('kullanici', self.kullanici),
+            ('baslangic', self.baslangic.isoformat() if self.baslangic else ''),
+            ('bitis', self.bitis.isoformat() if self.bitis else ''),
+        ):
+            if deger:
+                parametreler[anahtar] = deger
+        return parametreler
+
+    def url(self, yol):
+        sorgu = self.parametreler().urlencode()
+        return f'{yol}?{sorgu}' if sorgu else yol
+
+    def uygula(self, queryset):
+        if self.arama:
+            eslesen_islemler = StokIslemi.objects.using('metaks').filter(
+                Q(belge_no__icontains=self.arama)
+                | Q(aciklama__icontains=self.arama)
+                | Q(islem_nedeni__icontains=self.arama)
+            ).values('stok_islem_id')
+            queryset = queryset.filter(
+                Q(stok_kodu__icontains=self.arama)
+                | Q(aciklama__icontains=self.arama)
+                | Q(stok_islem_id__in=Subquery(eslesen_islemler))
+            )
+        if self.tip in stok_servisi.ISLEM_TIPI_DEGERLERI:
+            queryset = queryset.filter(islem_tipi=self.tip)
+        # İş amacı belge BAŞLIĞINDA (`stok_islemleri.islem_nedeni`), hareket satırında
+        # değil: aynı belgenin satırları farklı teknik tiplerde olabiliyor (fason
+        # dönüşü bir CIKIS + bir GIRIS üretiyor). Bu yüzden filtre başlık üzerinden
+        # alt sorguyla kuruluyor — "Fason dönüşü" seçildiğinde o belgenin İKİ satırı
+        # da listede kalıyor, teknik tip filtresi ise yalnız birini bırakırdı.
+        if self.amac in stok_servisi.ISLEM_AMACI_ETIKETLERI:
+            amac_islemleri = StokIslemi.objects.using('metaks').filter(
+                islem_nedeni=self.amac
+            ).values('stok_islem_id')
+            queryset = queryset.filter(stok_islem_id__in=Subquery(amac_islemleri))
+        if self.lokasyon:
+            queryset = queryset.filter(
+                Q(kaynak_lokasyon_id=self.lokasyon)
+                | Q(hedef_lokasyon_id=self.lokasyon)
+            )
+        if self.kullanici:
+            queryset = queryset.filter(yapan_kullanici=self.kullanici)
+        if self.baslangic:
+            queryset = queryset.filter(tarih__date__gte=self.baslangic)
+        if self.bitis:
+            queryset = queryset.filter(tarih__date__lte=self.bitis)
+        return queryset
+
+    def kapsam_ozeti(self, *, lokasyon_adi=''):
+        parcalar = ['Stok hareketleri']
+        if self.arama:
+            parcalar.append(f'Arama: {self.arama}')
+        if self.tip in stok_servisi.ISLEM_TIPI_DEGERLERI:
+            parcalar.append(
+                'İşlem: '
+                + stok_servisi.ISLEM_TIPI_ETIKETLERI.get(self.tip, self.tip)
+            )
+        if self.amac in stok_servisi.ISLEM_AMACI_ETIKETLERI:
+            parcalar.append(
+                'Amaç: ' + stok_servisi.ISLEM_AMACI_ETIKETLERI[self.amac]
+            )
+        if self.lokasyon:
+            parcalar.append(f'Lokasyon: {lokasyon_adi or self.lokasyon}')
+        if self.kullanici:
+            parcalar.append(f'Yapan: {self.kullanici}')
+        if self.baslangic:
+            parcalar.append(f'Başlangıç: {self.baslangic.isoformat()}')
+        if self.bitis:
+            parcalar.append(f'Bitiş: {self.bitis.isoformat()}')
+        if len(parcalar) == 1:
+            parcalar.append('Tüm kayıtlar')
+        return ' · '.join(parcalar)
+
+
+def _hareket_sorgusu(filtre):
+    """HTML ve dışa aktarımın paylaştığı yerel-tarihli hareket queryset'i."""
+    temel = (
+        StokHareketi.objects.using('metaks')
+        .annotate(tarih=yerel_tarih())
+        .select_related('kaynak_lokasyon', 'hedef_lokasyon')
+    )
+    return filtre.uygula(temel)
+
+
 @izin_gerekli('hareket')
 def hareket_gecmisi(request):
     """stok_hareketleri dökümü: kim, ne zaman, hangi üründe, nereden nereye.
@@ -720,52 +1067,8 @@ def hareket_gecmisi(request):
     aralığı filtresi bunun üzerinden çalışıyor. Ham naive UTC kolonuna göre filtrelemek
     gün sınırlarında 3 saatlik kaymaya yol açardı (bkz. models.py::StokHareketi).
     """
-    arama = request.GET.get('q', '').strip()
-    tip = request.GET.get('tip', '').strip()
-    amac = request.GET.get('amac', '').strip()
-    lokasyon = _tam_sayi(request.GET.get('lokasyon', ''))
-    kullanici = request.GET.get('kullanici', '').strip()
-    baslangic = _tarih_cozumle(request.GET.get('baslangic', ''))
-    bitis = _tarih_cozumle(request.GET.get('bitis', ''))
-
-    hareketler = (
-        StokHareketi.objects.using('metaks')
-        .annotate(tarih=yerel_tarih())
-        .select_related('kaynak_lokasyon', 'hedef_lokasyon')
-    )
-
-    if arama:
-        eslesen_islemler = StokIslemi.objects.using('metaks').filter(
-            Q(belge_no__icontains=arama)
-            | Q(aciklama__icontains=arama)
-            | Q(islem_nedeni__icontains=arama)
-        ).values('stok_islem_id')
-        hareketler = hareketler.filter(
-            Q(stok_kodu__icontains=arama) | Q(aciklama__icontains=arama)
-            | Q(stok_islem_id__in=Subquery(eslesen_islemler))
-        )
-    if tip in stok_servisi.ISLEM_TIPI_DEGERLERI:
-        hareketler = hareketler.filter(islem_tipi=tip)
-    # İş amacı belge BAŞLIĞINDA (`stok_islemleri.islem_nedeni`), hareket satırında
-    # değil: aynı belgenin satırları farklı teknik tiplerde olabiliyor (fason
-    # dönüşü bir CIKIS + bir GIRIS üretiyor). Bu yüzden filtre başlık üzerinden
-    # alt sorguyla kuruluyor — "Fason dönüşü" seçildiğinde o belgenin İKİ satırı
-    # da listede kalıyor, teknik tip filtresi ise yalnız birini bırakırdı.
-    if amac in stok_servisi.ISLEM_AMACI_ETIKETLERI:
-        amac_islemleri = StokIslemi.objects.using('metaks').filter(
-            islem_nedeni=amac
-        ).values('stok_islem_id')
-        hareketler = hareketler.filter(stok_islem_id__in=Subquery(amac_islemleri))
-    if lokasyon:
-        hareketler = hareketler.filter(
-            Q(kaynak_lokasyon_id=lokasyon) | Q(hedef_lokasyon_id=lokasyon)
-        )
-    if kullanici:
-        hareketler = hareketler.filter(yapan_kullanici=kullanici)
-    if baslangic:
-        hareketler = hareketler.filter(tarih__date__gte=baslangic)
-    if bitis:
-        hareketler = hareketler.filter(tarih__date__lte=bitis)
+    filtre = HareketFiltresi(request)
+    hareketler = _hareket_sorgusu(filtre)
 
     sayfalayici = Paginator(hareketler, HAREKET_SAYFA_BOYUTU)
     sayfa = sayfalayici.get_page(request.GET.get('sayfa'))
@@ -802,15 +1105,7 @@ def hareket_gecmisi(request):
             hareket.is_ortagi_adi = ortak_adlari.get(hareket.belge.is_ortagi_id)
     _sku_ozetlerini_ekle(sayfa.object_list)
 
-    parametreler = QueryDict(mutable=True)
-    for anahtar, deger in [
-        ('q', arama), ('tip', tip), ('amac', amac), ('lokasyon', lokasyon or ''),
-        ('kullanici', kullanici),
-        ('baslangic', baslangic.isoformat() if baslangic else ''),
-        ('bitis', bitis.isoformat() if bitis else ''),
-    ]:
-        if deger:
-            parametreler[anahtar] = deger
+    parametreler = filtre.parametreler()
 
     context = {
         'sayfa': sayfa,
@@ -834,15 +1129,19 @@ def hareket_gecmisi(request):
             .values_list('yapan_kullanici', flat=True)
             .distinct()
         ),
-        'secili': {
-            'q': arama, 'tip': tip, 'amac': amac, 'lokasyon': lokasyon,
-            'kullanici': kullanici,
-            'baslangic': baslangic.isoformat() if baslangic else '',
-            'bitis': bitis.isoformat() if bitis else '',
+        'secili': filtre.secili,
+        'filtre_var': filtre.filtre_var,
+        'disa_aktar': {
+            'filtre_formu': 'hareket-filtreleri',
+            'xlsx_yol': reverse(
+                'katalog:hareket_disa_aktar',
+                kwargs={'dosya_turu': 'xlsx'},
+            ),
+            'csv_yol': reverse(
+                'katalog:hareket_disa_aktar',
+                kwargs={'dosya_turu': 'csv'},
+            ),
         },
-        'filtre_var': bool(
-            arama or tip or amac or lokasyon or kullanici or baslangic or bitis
-        ),
         'sonraki_url': None,
     }
     if sayfa.has_next():
@@ -857,6 +1156,108 @@ def hareket_gecmisi(request):
             return render(request, 'katalog/_hareket_satirlari.html', context)
         return render(request, 'katalog/_hareket_govde.html', context)
     return render(request, 'katalog/hareketler.html', context)
+
+
+HAREKET_DISA_AKTARIM_SUTUNLARI = (
+    ('Tarih ve saat', 20),
+    ('Stok kodu', 18),
+    ('Kategori', 24),
+    ('İşlem tipi', 16),
+    ('Miktar', 12),
+    ('Nereden', 30),
+    ('Nereye', 30),
+    ('Yapan kullanıcı', 24),
+    ('Açıklama', 42),
+)
+
+
+def _hareket_disa_aktarim_satirlari(filtre):
+    """Filtreli hareketleri yerel tarih ve okunur ilişkilerle satır satır üretir."""
+    kategori_adi = (
+        Kategori.objects.using('metaks')
+        .filter(kategori_id=OuterRef('kategori_id'))
+        .order_by()
+        .values('kategori_adi')[:1]
+    )
+    urun_kategorisi = (
+        Urun.objects.using('metaks')
+        .filter(stok_kodu=OuterRef('stok_kodu'))
+        .order_by()
+        .annotate(disa_kategori_adi=Subquery(kategori_adi))
+        .values('disa_kategori_adi')[:1]
+    )
+    kaynak_adi = (
+        LokasyonDetay.objects.using('metaks')
+        .filter(lokasyon_id=OuterRef('kaynak_lokasyon_id'))
+        .order_by()
+        .values('tam_ad')[:1]
+    )
+    hedef_adi = (
+        LokasyonDetay.objects.using('metaks')
+        .filter(lokasyon_id=OuterRef('hedef_lokasyon_id'))
+        .order_by()
+        .values('tam_ad')[:1]
+    )
+
+    hareketler = _hareket_sorgusu(filtre).annotate(
+        disa_kategori_adi=Subquery(urun_kategorisi),
+        disa_kaynak_adi=Subquery(kaynak_adi),
+        disa_hedef_adi=Subquery(hedef_adi),
+    )
+    alanlar = (
+        'tarih', 'stok_kodu', 'disa_kategori_adi', 'islem_tipi', 'miktar',
+        'disa_kaynak_adi', 'disa_hedef_adi', 'yapan_kullanici', 'aciklama',
+    )
+    for satir in hareketler.values_list(*alanlar).iterator(chunk_size=2000):
+        (
+            tarih, stok_kodu, kategori, islem_tipi, miktar,
+            kaynak, hedef, yapan, aciklama,
+        ) = satir
+        yield (
+            tarih,
+            stok_kodu,
+            kategori,
+            stok_servisi.ISLEM_TIPI_ETIKETLERI.get(islem_tipi, islem_tipi),
+            miktar,
+            kaynak,
+            hedef,
+            yapan,
+            aciklama,
+        )
+
+
+def _hareket_dosya_koku(filtre):
+    if filtre.baslangic and filtre.bitis:
+        tarih_bolumu = f'{filtre.baslangic.isoformat()}_{filtre.bitis.isoformat()}'
+    elif filtre.baslangic:
+        tarih_bolumu = f'{filtre.baslangic.isoformat()}_itibaren'
+    elif filtre.bitis:
+        tarih_bolumu = f'{filtre.bitis.isoformat()}_kadar'
+    else:
+        tarih_bolumu = timezone.localdate().isoformat()
+    return f'stok-hareketleri-{tarih_bolumu}'
+
+
+def hareket_disa_aktar(request, dosya_turu):
+    """Aktif hareket filtrelerinin tamamını, sonsuz kaydırmadan bağımsız indirir."""
+    filtre = HareketFiltresi(request)
+    lokasyon_adi = ''
+    if filtre.lokasyon:
+        lokasyon_adi = (
+            LokasyonDetay.objects.using('metaks')
+            .filter(lokasyon_id=filtre.lokasyon)
+            .values_list('tam_ad', flat=True)
+            .first()
+            or ''
+        )
+    return disa_aktarim.dosya_yaniti(
+        dosya_turu=dosya_turu,
+        dosya_koku=_hareket_dosya_koku(filtre),
+        calisma_sayfasi='Stok hareketleri',
+        kapsam=filtre.kapsam_ozeti(lokasyon_adi=lokasyon_adi),
+        sutunlar=HAREKET_DISA_AKTARIM_SUTUNLARI,
+        satirlar=_hareket_disa_aktarim_satirlari(filtre),
+    )
 
 
 def _sayi(deger, birim):

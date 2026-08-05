@@ -6,6 +6,10 @@ sıralama) bunun dışında kalıyor ve durumu buradaki #filtre-durumu üzerinde
 {% endcomment %}
 <div id="katalog-govde">
 
+    {# Sticky başlıktaki kontroller bu forma HTML form= özniteliğiyle bağlıdır. #}
+    <form id="katalog-disa-aktar-filtreleri" class="hidden"
+          onsubmit="event.preventDefault()"></form>
+
     {% comment %}
     Sticky başlıktaki arama kutusu ve sıralama seçimi, güncel kategori/stok durumunu
     buradan hx-include ile okuyor. Bu blok her takasta sunucudan yeniden basıldığı için
@@ -14,9 +18,12 @@ sıralama) bunun dışında kalıyor ve durumu buradaki #filtre-durumu üzerinde
     {% endcomment %}
     <div id="filtre-durumu" class="hidden">
         {% for kategori in filtre.kategoriler %}
-        <input type="hidden" name="kategori" value="{{ kategori }}">
+        <input type="hidden" name="kategori" value="{{ kategori }}"
+               form="katalog-disa-aktar-filtreleri">
         {% endfor %}
-        {% if filtre.sadece_stok %}<input type="hidden" name="stok" value="1">{% endif %}
+        {% if filtre.sadece_stok %}
+        <input type="hidden" name="stok" value="1" form="katalog-disa-aktar-filtreleri">
+        {% endif %}
     </div>
 
     {% if stok_goster %}
@@ -173,12 +180,15 @@ sıralama) bunun dışında kalıyor ve durumu buradaki #filtre-durumu üzerinde
     {% endif %}
 
     <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <p id="sonuc-ozeti" class="text-sm text-slate-500">
-            {% if toplam %}
-                <span class="font-medium text-slate-900">{{ toplam|intcomma }}</span> ürün
-                {% if filtre.arama %}<span class="text-slate-400">·</span> “{{ filtre.arama }}” için{% endif %}
-            {% endif %}
-        </p>
+        <div class="flex flex-wrap items-center gap-3">
+            <p id="sonuc-ozeti" class="text-sm text-slate-500">
+                {% if toplam %}
+                    <span class="font-medium text-slate-900">{{ toplam|intcomma }}</span> ürün
+                    {% if filtre.arama %}<span class="text-slate-400">·</span> “{{ filtre.arama }}” için{% endif %}
+                {% endif %}
+            </p>
+            {% include "katalog/_disa_aktar.html" %}
+        </div>
 
         <div class="flex items-center gap-4">
             {% comment %}
