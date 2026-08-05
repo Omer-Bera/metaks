@@ -1,3 +1,12 @@
+-- DİKKAT — bu test yalnız 008/009 seviyesindeki bir kopyada geçerlidir.
+-- Migration 010 uygulanmış bir kopyada BEKLENDİĞİ GİBİ hata verir: aşağıda
+-- `stok_kalemi_kaydet()` eski altı parametreli imzasıyla çağrılıyor (010 imzayı
+-- üç BOOLEAN ile değiştirdi) ve montaj hali 'HAM' olarak veriliyor (010 bu
+-- değeri 'DEMONTE' yaptı). Bu bir bozukluk değil, tarihsel bir kabul kaydıdır;
+-- gövdesi bilerek değiştirilmiyor. 010 ve sonrası için
+-- `010_sku_nitelikleri_test.sql` ve `011_stok_islemi_kurallari_test.sql`
+-- dosyalarını kullanın.
+--
 -- Migration 008 hedefli kabul testi. Yalnız disposable/restored veritabanında,
 -- migration uygulandıktan sonra çalıştırılır. Bütün örnek hareketler geri alınır.
 \set ON_ERROR_STOP on
