@@ -455,14 +455,92 @@ class LokasyonSecici(forms.Select):
         return secenek
 
 
+class IsOrtagiSecici(forms.Select):
+    """Karşı taraf `<option>`'larına `data-roller` basar.
+
+    `LokasyonSecici` ile aynı desen ve aynı gerekçe: satış sevkiyatında yalnız
+    müşteri, satın alma kabulünde yalnız tedarikçi rollü ortak geçerli
+    (migration 008) ve iadeler de aynı zorunluluğa bağlandı (migration 011).
+    Rol bilgisi seçenekte durmazsa JS listeyi amaca göre süzemez, kullanıcı da
+    reddi ancak POST'tan sonra görür.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # is_ortagi_id -> "MUSTERI,TEDARIKCI" gibi virgülle ayrılmış rol listesi.
+        self.roller = {}
+
+    def create_option(self, name, value, *args, **kwargs):
+        secenek = super().create_option(name, value, *args, **kwargs)
+        secenek['attrs']['data-roller'] = self.roller.get(str(value), '')
+        return secenek
+
+
+class FasonIsEmriSecici(forms.Select):
+    """İş emri `<option>`'larına fason lokasyonunu ve hedef SKU'yu basar.
+
+    Bu üçünün uyumunu `stok_islemi_kaydet()` zaten zorunlu tutuyor: fason sevkin
+    hedefi, dönüşün kaynağı ve firenin kaynağı iş emrindeki fason lokasyonu olmak
+    ZORUNDA, dönüşte oluşan SKU da iş emrindeki hedef SKU. Kullanıcının bunları elle
+    seçmesi, yanlış seçildiğinde POST'tan sonra reddedilen bir kayıt demekti;
+    öznitelikler seçimi otomatik doldurup kilitlemek için.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # fason_is_emri_id -> {'lokasyon': '10', 'hedef_sku': '1001013-V02'}
+        self.emirler = {}
+
+    def create_option(self, name, value, *args, **kwargs):
+        secenek = super().create_option(name, value, *args, **kwargs)
+        emir = self.emirler.get(str(value))
+        if emir:
+            secenek['attrs']['data-fason-lokasyon'] = emir['lokasyon']
+            secenek['attrs']['data-hedef-sku'] = emir['hedef_sku']
+        return secenek
+
+
+# Lokasyon açılır listelerinin görünüm gruplaması. Şemada TEK bir `tip` kolonu var
+# (`DAHILI` / `FASON` / `NUMUNE`) ve bu kod DEĞİŞMİYOR; müşteri ve tedarikçi de
+# lokasyon değil, `is_ortaklari` satırı. Buradaki tek şey etiket: fason atölyesi
+# fiziksel olarak tesis dışında olduğu için ayrı grupta ve açıkça "Dış atölye"
+# diye yazıyor, dahili raflarla numune rafları da kendi gruplarında.
+LOKASYON_GRUP_ETIKETLERI = [
+    ('DAHILI', 'Dahili'),
+    ('NUMUNE', 'Numune'),
+    ('FASON', 'Dış atölye (fason)'),
+]
+
+
+def lokasyon_gruplu_secenekler(lokasyonlar):
+    """LokasyonDetay listesini `<optgroup>`'lu seçeneklere çevirir.
+
+    Boş grup basılmaz. Bu bugün teorik bir incelik değil: canlı veritabanında henüz
+    hiç `NUMUNE` lokasyonu yok (bkz. YAPILACAKLAR madde 4), yani "Numune" grubu
+    gerçekten boş kalıyor. Tip destekleniyor, eksik olan yalnız veri.
+    """
+    gruplar = []
+    for tip, etiket in LOKASYON_GRUP_ETIKETLERI:
+        secenekler = [
+            (l.lokasyon_id, l.tam_ad) for l in lokasyonlar if l.tip == tip
+        ]
+        if secenekler:
+            gruplar.append((etiket, secenekler))
+    return gruplar
+
+
 class StokIslemFormu(forms.Form):
     """Tek stok merkezi: kullanıcı teknik hareketi değil iş amacını seçer."""
 
     amac = forms.ChoiceField(label='Ne yapıyorsunuz?', choices=stok_servisi.ISLEM_AMACLARI)
     sku_kodu = forms.CharField(label='Ürün veya SKU kodu', max_length=100)
+    # Elle yazılan alan olmaktan ÇIKTI: iş emri seçilince kutu o emrin hedef
+    # SKU'suyla dolup salt-okunur oluyor. `stok_islemi_kaydet()` fason dönüşünün
+    # çıktısını zaten iş emrindeki hedef SKU ile karşılaştırıp reddediyordu; elle
+    # yazma yalnızca o reddi POST'a kadar erteliyordu.
     hedef_sku_kodu = forms.CharField(
         label='Dönüşte oluşan SKU', max_length=100, required=False,
-        help_text='Fason dönüşünde ürün değişiyorsa doldurun; aynı kalıyorsa boş bırakın.',
+        help_text='İş emri seçilince otomatik dolar; iş emrindeki dönecek SKU’dur.',
     )
     miktar = forms.IntegerField(label='Miktar', min_value=0)
     # Fason dönüşünde fasoncunun bildirdiği fire, sağlam miktarla AYNI formda
@@ -482,8 +560,11 @@ class StokIslemFormu(forms.Form):
         label='Hedef lokasyon', coerce=int, choices=(), required=False, empty_value=None,
         widget=LokasyonSecici,
     )
+    # Etiketten "Kaynak / normal" ibaresi kalktı: alan artık gelişmiş bölümde değil
+    # formun görünür kısmında, üç düğmeli bir segment olarak basılıyor ve yanında
+    # başka bir durum alanı yok (dönüş durumu gelişmişte kaldı).
     stok_durumu_kodu = forms.ChoiceField(
-        label='Kaynak / normal stok durumu', choices=stok_servisi.STOK_DURUMLARI,
+        label='Stok durumu', choices=stok_servisi.STOK_DURUMLARI,
         initial='SERBEST',
     )
     hedef_stok_durumu_kodu = forms.ChoiceField(
@@ -492,9 +573,11 @@ class StokIslemFormu(forms.Form):
     )
     is_ortagi_id = forms.TypedChoiceField(
         label='Müşteri / tedarikçi', coerce=int, choices=(), required=False, empty_value=None,
+        widget=IsOrtagiSecici,
     )
     fason_is_emri_id = forms.TypedChoiceField(
         label='Fason iş emri', coerce=int, choices=(), required=False, empty_value=None,
+        widget=FasonIsEmriSecici,
     )
     belge_no = forms.CharField(label='Belge / referans no', max_length=100, required=False)
     parti_no = forms.CharField(
@@ -519,13 +602,13 @@ class StokIslemFormu(forms.Form):
         lokasyonlar = list(
             LokasyonDetay.objects.using('metaks').filter(aktif_mi=True, yaprak_mi=True)
         )
-        lokasyon_secenekleri = [
-            (l.lokasyon_id, f'{l.tam_ad} ({l.tip})') for l in lokasyonlar
-        ]
         lokasyon_tipleri = {str(l.lokasyon_id): l.tip for l in lokasyonlar}
         bos = [('', '— seçilmedi —')]
         for ad in ('kaynak_lokasyon_id', 'hedef_lokasyon_id'):
-            self.fields[ad].choices = bos + lokasyon_secenekleri
+            # Gruplu seçenekler: tip artık her satırın sonunda parantez içinde değil,
+            # `<optgroup>` başlığında. Boş grup basılmıyor (bkz.
+            # `lokasyon_gruplu_secenekler`).
+            self.fields[ad].choices = bos + lokasyon_gruplu_secenekler(lokasyonlar)
             # Süzme yalnızca sunum: hangi lokasyonun hangi amaçta geçerli olduğunun
             # otoritesi `stok_islemi_kaydet()`. Burada kopyalanan tek şey tip etiketi.
             self.fields[ad].widget.tipler = lokasyon_tipleri
@@ -538,13 +621,24 @@ class StokIslemFormu(forms.Form):
             (o.is_ortagi_id, f"{o.unvan} ({', '.join(roller.get(o.is_ortagi_id, []))})")
             for o in IsOrtagi.objects.using('metaks').filter(aktif_mi=True)
         ]
+        self.fields['is_ortagi_id'].widget.roller = {
+            str(ortak_id): ','.join(rol_listesi) for ortak_id, rol_listesi in roller.items()
+        }
+        emirler = list(FasonIsEmriOzet.objects.using('metaks').filter(durum='ACIK'))
         self.fields['fason_is_emri_id'].choices = bos + [
             (
                 e.fason_is_emri_id,
                 f'{e.emir_no} · {e.fasoncu_adi} · {e.kaynak_sku_kodu} → {e.hedef_sku_kodu}',
             )
-            for e in FasonIsEmriOzet.objects.using('metaks').filter(durum='ACIK')
+            for e in emirler
         ]
+        self.fields['fason_is_emri_id'].widget.emirler = {
+            str(e.fason_is_emri_id): {
+                'lokasyon': str(e.fason_lokasyon_id),
+                'hedef_sku': e.hedef_sku_kodu,
+            }
+            for e in emirler
+        }
         _girdileri_bicimlendir(self)
 
     def clean(self):
@@ -553,10 +647,13 @@ class StokIslemFormu(forms.Form):
         miktar = veri.get('miktar')
         if amac != 'SAYIM' and miktar is not None and miktar <= 0:
             self.add_error('miktar', 'Miktar sıfırdan büyük olmalıdır.')
-        if amac in ('SATIN_ALMA_KABUL', 'URETIM_GIRIS') and not veri.get('hedef_lokasyon_id'):
+        if (
+            amac in ('SATIN_ALMA_KABUL', 'URETIM_GIRIS', 'MUSTERI_IADE')
+            and not veri.get('hedef_lokasyon_id')
+        ):
             self.add_error('hedef_lokasyon_id', 'Bu işlem için hedef lokasyon zorunludur.')
-        if amac == 'SATIS_SEVKI' and not veri.get('kaynak_lokasyon_id'):
-            self.add_error('kaynak_lokasyon_id', 'Satış sevki için kaynak lokasyon zorunludur.')
+        if amac in ('SATIS_SEVKI', 'TEDARIKCI_IADE') and not veri.get('kaynak_lokasyon_id'):
+            self.add_error('kaynak_lokasyon_id', 'Bu işlem için kaynak lokasyon zorunludur.')
         if amac == 'IC_TRANSFER':
             if not veri.get('kaynak_lokasyon_id'):
                 self.add_error('kaynak_lokasyon_id', 'Transfer için kaynak zorunludur.')
@@ -564,8 +661,13 @@ class StokIslemFormu(forms.Form):
                 self.add_error('hedef_lokasyon_id', 'Transfer için hedef zorunludur.')
         if amac == 'SAYIM' and not veri.get('hedef_lokasyon_id'):
             self.add_error('hedef_lokasyon_id', 'Sayımın yapıldığı lokasyon zorunludur.')
-        if amac in ('SATIN_ALMA_KABUL', 'SATIS_SEVKI') and not veri.get('is_ortagi_id'):
-            self.add_error('is_ortagi_id', 'Müşteri / tedarikçi seçimi zorunludur.')
+        # Karşı taraf zorunluluğu: migration 008 (alış/satış) ve 011 (iadeler)
+        # kontrollerinin aynası. ROLÜN doğruluğunu veritabanı denetliyor; burada
+        # yalnız alanın boş bırakılması yakalanıyor ki kullanıcı POST'a gitmeden
+        # görsün. Tablo: stok_servisi.AMAC_KARSI_TARAF.
+        if amac in stok_servisi.AMAC_KARSI_TARAF and not veri.get('is_ortagi_id'):
+            etiket = stok_servisi.AMAC_KARSI_TARAF[amac]['etiket']
+            self.add_error('is_ortagi_id', f'{etiket} seçimi zorunludur.')
         if amac in ('FASON_SEVK', 'FASON_DONUS', 'FIRE') and not veri.get('fason_is_emri_id'):
             self.add_error('fason_is_emri_id', 'Fason iş emri zorunludur.')
         if amac in ('FASON_SEVK', 'FASON_DONUS'):

@@ -199,6 +199,16 @@ def stok_merkezi(request):
                 }, izinli_amaclar=izinli_amaclar)
                 istemci_kimligi = stok_servisi.yeni_islem_kimligi()
 
+    # İki kademeli amaç seçiminin açılışta hangi üst kademeyi göstereceği. `?amac=`
+    # derin bağlantısı (ve POST sonrası formun kendi değeri) doğru sekmeyi seçili
+    # getirmeli; amaç izne takılıp listeden düştüyse ilk görünür gruba düşülüyor.
+    amac_gruplari = stok_servisi.amac_gruplari(izinli_amaclar)
+    grup_kodlari = [kod for kod, _, _ in amac_gruplari]
+    secili_amac = form['amac'].value()
+    secili_grup = stok_servisi.AMACIN_GRUBU.get(secili_amac)
+    if secili_grup not in grup_kodlari:
+        secili_grup = grup_kodlari[0] if grup_kodlari else ''
+
     girilen_kod = form['sku_kodu'].value()
     secili_sku = _sku_bul(girilen_kod)
     bakiyeler = []
@@ -228,6 +238,13 @@ def stok_merkezi(request):
         'bakiyeler': bakiyeler,
         'varyant_urun_kodu': varyant_urun_kodu,
         'miras_sku': miras_sku,
+        'amac_gruplari': amac_gruplari,
+        'secili_grup': secili_grup,
+        # Etiket ve karşı taraf tabloları şablona gömülmüyor, veri olarak geçiyor:
+        # ikisinin de tek tanımı `stok_servisi`'nde (bkz. oradaki yorumlar).
+        'lokasyon_etiketleri': stok_servisi.AMAC_LOKASYON_ETIKETLERI,
+        'karsi_taraf_tablosu': stok_servisi.AMAC_KARSI_TARAF,
+        'belge_gorunur_amaclar': stok_servisi.BELGE_NO_GORUNUR_AMACLAR,
         'aktif_sekme': 'stok',
     })
 

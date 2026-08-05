@@ -116,6 +116,99 @@ class LokasyonSeciciTestleri(SimpleTestCase):
         self.assertIn('data-tip=""', bos_secenek)
 
 
+class AmacGruplariTestleri(SimpleTestCase):
+    """İki kademeli amaç seçiminin veri tarafı. Veritabanı gerekmiyor."""
+
+    def test_her_amac_tam_olarak_bir_gruba_ait(self):
+        # Bir amaç gruplardan düşerse menüde HİÇ görünmez; iki grupta olursa
+        # `AMACIN_GRUBU` sessizce sonuncuyu seçer ve derin bağlantı yanlış açar.
+        gruplanan = [
+            amac for _, _, amaclar in stok_servisi.AMAC_GRUPLARI for amac in amaclar
+        ]
+        self.assertCountEqual(gruplanan, [kod for kod, _ in stok_servisi.ISLEM_AMACLARI])
+        self.assertEqual(len(gruplanan), len(set(gruplanan)))
+
+    def test_iadeler_menude_ve_dogru_yonde(self):
+        self.assertEqual(stok_servisi.AMACIN_GRUBU['MUSTERI_IADE'], 'GIRIS')
+        self.assertEqual(stok_servisi.AMACIN_GRUBU['TEDARIKCI_IADE'], 'CIKIS')
+
+    def test_menu_disi_nedenler_gruplarda_yok(self):
+        # İkisi de veritabanında geçerli `islem_nedeni` ama kullanıcı menüsüne
+        # girmiyor: biri 008'in miras kaydı, diğeri henüz akışı olmayan adım.
+        self.assertNotIn('MIRAS_HAREKET', stok_servisi.AMACIN_GRUBU)
+        self.assertNotIn('STOK_SINIFLANDIRMA', stok_servisi.AMACIN_GRUBU)
+
+    def test_butun_alt_secenekleri_izne_takilan_ust_kademe_basilmaz(self):
+        # Yalnız sayım yetkisi olan kullanıcıda "Mal çıkıyor" grubunun bütün
+        # seçenekleri düşüyor; boş açılan bir sekme hiç olmayandan kötüdür.
+        yalniz_sayim = {'SAYIM'}
+        gruplar = stok_servisi.amac_gruplari(yalniz_sayim)
+        self.assertEqual([kod for kod, _, _ in gruplar], ['DIGER'])
+        self.assertEqual(gruplar[0][2], [('SAYIM', 'Sayım')])
+
+    def test_izin_verilmeyen_amac_kendi_grubundan_dusuyor(self):
+        gruplar = dict(
+            (kod, [a for a, _ in secenekler])
+            for kod, _, secenekler in stok_servisi.amac_gruplari(
+                {'SATIN_ALMA_KABUL', 'URETIM_GIRIS', 'SATIS_SEVKI', 'MUSTERI_IADE'}
+            )
+        )
+        self.assertNotIn('FASON_DONUS', gruplar['GIRIS'])
+        self.assertIn('MUSTERI_IADE', gruplar['GIRIS'])
+        self.assertEqual(gruplar['CIKIS'], ['SATIS_SEVKI'])
+
+    def test_karsi_taraf_tablosu_011_kurallarinin_aynasi(self):
+        # 008: alış -> TEDARIKCI, satış -> MUSTERI. 011: iadeler aynı zorunluluğa
+        # bağlandı. Tablo ayrışırsa arayüz olmayan bir kuralı gösterir.
+        self.assertEqual(
+            {amac: kural['rol'] for amac, kural in stok_servisi.AMAC_KARSI_TARAF.items()},
+            {
+                'SATIN_ALMA_KABUL': 'TEDARIKCI',
+                'TEDARIKCI_IADE': 'TEDARIKCI',
+                'SATIS_SEVKI': 'MUSTERI',
+                'MUSTERI_IADE': 'MUSTERI',
+            },
+        )
+
+    def test_lokasyon_etiketleri_hedef_lokasyon_ifadesini_kullanmiyor(self):
+        for amac, etiketler in stok_servisi.AMAC_LOKASYON_ETIKETLERI.items():
+            for uc, etiket in etiketler.items():
+                self.assertNotIn('Hedef lokasyon', etiket, amac)
+                self.assertNotIn('Kaynak lokasyon', etiket, amac)
+
+
+class LokasyonGruplamaTestleri(SimpleTestCase):
+    """`<optgroup>` gruplaması: boş grup basılmamalı."""
+
+    class _Lokasyon:
+        def __init__(self, lokasyon_id, tam_ad, tip):
+            self.lokasyon_id = lokasyon_id
+            self.tam_ad = tam_ad
+            self.tip = tip
+
+    def test_gruplar_tip_sirasinda_ve_etiketli(self):
+        from .forms import lokasyon_gruplu_secenekler
+
+        gruplar = lokasyon_gruplu_secenekler([
+            self._Lokasyon(10, 'Skor', 'FASON'),
+            self._Lokasyon(8, 'Fabrika', 'DAHILI'),
+            self._Lokasyon(50, 'Dolap · Raf 1', 'NUMUNE'),
+        ])
+        self.assertEqual(
+            [etiket for etiket, _ in gruplar],
+            ['Dahili', 'Numune', 'Dış atölye (fason)'],
+        )
+        self.assertEqual(gruplar[2][1], [(10, 'Skor')])
+
+    def test_bos_grup_hic_basilmaz(self):
+        # Canlıda bugün hiç NUMUNE lokasyonu yok; boş bir <optgroup> basmak
+        # kullanıcıya var olmayan bir seçim vaat ederdi.
+        from .forms import lokasyon_gruplu_secenekler
+
+        gruplar = lokasyon_gruplu_secenekler([self._Lokasyon(8, 'Fabrika', 'DAHILI')])
+        self.assertEqual([etiket for etiket, _ in gruplar], ['Dahili'])
+
+
 class TuretilmisIslemKimligiTestleri(SimpleTestCase):
     """Fason dönüşünün yanında yazılan fire belgesinin kimliği.
 

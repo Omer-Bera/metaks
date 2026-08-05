@@ -138,16 +138,105 @@ ISLEM_TIPI_ETIKETLERI = {tip['deger']: tip['etiket'] for tip in ISLEM_TIPLERI}
 ISLEM_AMACLARI = [
     ('SATIN_ALMA_KABUL', 'Satın alma kabulü'),
     ('URETIM_GIRIS', 'Üretimden giriş'),
-    ('SATIS_SEVKI', 'Satış sevkiyatı'),
-    ('IC_TRANSFER', 'Yer değiştir'),
-    ('FASON_SEVK', 'Fasona gönder'),
     ('FASON_DONUS', 'Fasondan al'),
-    ('FIRE', 'Fason fire kaydı'),
+    ('MUSTERI_IADE', 'Müşteri iadesi'),
+    ('SATIS_SEVKI', 'Satış sevkiyatı'),
+    ('FASON_SEVK', 'Fasona gönder'),
+    ('TEDARIKCI_IADE', 'Tedarikçiye iade'),
+    ('IC_TRANSFER', 'Yer değiştir'),
     ('SAYIM', 'Sayım'),
     ('DUZELTME', 'Düzeltme'),
+    ('FIRE', 'Fason fire kaydı'),
 ]
 
 ISLEM_AMACI_ETIKETLERI = dict(ISLEM_AMACLARI)
+
+# --------------------------------------------------------------------------------------
+# İki kademeli amaç seçimi
+#
+# Onbir amacın tek sırada dizilmesi, "ne yapıyorsunuz?" sorusunu on bir seçenekli
+# bir okuma işine çeviriyordu. Üst kademe malın YÖNÜNÜ soruyor (giriyor / çıkıyor /
+# ikisi de değil), alt kademe o yöndeki amacı. Gruplama yalnız SUNUM: POST'a giden
+# alan hâlâ tek `amac` değeri ve view'ın satır üretimi değişmiyor.
+#
+# `MIRAS_HAREKET` ve `STOK_SINIFLANDIRMA` bilerek burada YOK. İkisi de veritabanında
+# geçerli birer `islem_nedeni` ama kullanıcı menüsüne girmiyorlar: ilki migration
+# 008'in geçmiş hareketleri bağladığı kayıt, ikincisi henüz akışı yazılmamış
+# sınıflandırma adımı.
+# --------------------------------------------------------------------------------------
+AMAC_GRUPLARI = [
+    ('GIRIS', 'Mal giriyor', ['SATIN_ALMA_KABUL', 'URETIM_GIRIS', 'FASON_DONUS', 'MUSTERI_IADE']),
+    ('CIKIS', 'Mal çıkıyor', ['SATIS_SEVKI', 'FASON_SEVK', 'TEDARIKCI_IADE']),
+    ('DIGER', 'Diğer', ['IC_TRANSFER', 'SAYIM', 'DUZELTME', 'FIRE']),
+]
+
+# amaç -> üst kademe kodu. `?amac=` derin bağlantısı doğru sekmeyi açık getirsin diye.
+AMACIN_GRUBU = {
+    amac: grup_kodu for grup_kodu, _, amaclar in AMAC_GRUPLARI for amac in amaclar
+}
+
+
+def amac_gruplari(izinli_amaclar=None):
+    """Şablonun basacağı iki kademeli yapı: [(kod, etiket, [(amac, etiket), ...]), ...].
+
+    İzin süzmesi burada yapılıyor, şablonda değil: bir üst kademenin BÜTÜN alt
+    seçenekleri kullanıcının iznine takılıyorsa (ör. yalnız sayım yetkisi olan
+    birinde "Mal çıkıyor") o üst kademe hiç gösterilmez — tıklandığında boş açılan
+    bir sekme, olmayan bir sekmeden daha kafa karıştırıcı.
+    """
+    gruplar = []
+    for kod, etiket, amaclar in AMAC_GRUPLARI:
+        secenekler = [
+            (amac, ISLEM_AMACI_ETIKETLERI[amac])
+            for amac in amaclar
+            if izinli_amaclar is None or amac in izinli_amaclar
+        ]
+        if secenekler:
+            gruplar.append((kod, etiket, secenekler))
+    return gruplar
+
+
+# --------------------------------------------------------------------------------------
+# Amaca göre lokasyon etiketleri
+#
+# "Hedef lokasyon" depocuya hiçbir şey anlatmıyor; sorulan şey her amaçta farklı bir
+# fiziksel soru. Tablo burada VERİ olarak duruyor, şablona gömülmüyor: aynı tabloyu
+# hem sunucu tarafı (form etiketi) hem JS (amaç değişince güncelleme) okuyor.
+#
+# Fason amaçlarında etiket ÖZELLEŞTİRİLMİYOR: iş emri seçilince iki uç da otomatik
+# doluyor ve kilitleniyor, yani kullanıcıya sorulan bir soru kalmıyor.
+# --------------------------------------------------------------------------------------
+AMAC_LOKASYON_ETIKETLERI = {
+    'SATIN_ALMA_KABUL': {'hedef': 'Mal nereye konuldu?'},
+    'URETIM_GIRIS': {'hedef': 'Üretim nereye teslim edildi?'},
+    'MUSTERI_IADE': {'hedef': 'İade nereye alındı?'},
+    'SATIS_SEVKI': {'kaynak': 'Mal nereden çıktı?'},
+    'TEDARIKCI_IADE': {'kaynak': 'Mal nereden çıktı?'},
+    'IC_TRANSFER': {'kaynak': 'Nereden', 'hedef': 'Nereye'},
+    'SAYIM': {'hedef': 'Sayımın yapıldığı yer'},
+    'DUZELTME': {'kaynak': 'Azaltılacak yer', 'hedef': 'Artırılacak yer'},
+}
+
+# --------------------------------------------------------------------------------------
+# Amaca göre karşı taraf
+#
+# Bu tablo YENİ bir kural değil: migration 008 (`SATIN_ALMA_KABUL` -> TEDARIKCI,
+# `SATIS_SEVKI` -> MUSTERI) ve migration 011 (`MUSTERI_IADE` -> MUSTERI,
+# `TEDARIKCI_IADE` -> TEDARIKCI) kontrollerinin AYNASI. `stok_islemi_kaydet()` aynı
+# şartı zaten uyguluyor ve reddediyor; buradaki tek fark, reddin POST'tan ÖNCE
+# görünmesi. Otorite hâlâ veritabanı — burada kopyalanan bir iş kuralı yok.
+# --------------------------------------------------------------------------------------
+AMAC_KARSI_TARAF = {
+    'SATIN_ALMA_KABUL': {'rol': 'TEDARIKCI', 'etiket': 'Tedarikçi'},
+    'TEDARIKCI_IADE': {'rol': 'TEDARIKCI', 'etiket': 'Tedarikçi'},
+    'SATIS_SEVKI': {'rol': 'MUSTERI', 'etiket': 'Müşteri'},
+    'MUSTERI_IADE': {'rol': 'MUSTERI', 'etiket': 'Müşteri'},
+}
+
+# Belge numarası bu iki amaçta GÖRÜNÜR kalıyor: mükerrer belge kilidinin anahtarı
+# (`islem_nedeni` + karşı taraf + `belge_no`) tam olarak burada işliyor. Diğer
+# amaçlarda alan gelişmiş bölüme iniyor — DOM'dan silinmiyor, taşınıyor.
+BELGE_NO_GORUNUR_AMACLAR = ['SATIN_ALMA_KABUL', 'SATIS_SEVKI']
 STOK_DURUMLARI = [
     ('SERBEST', 'Serbest'),
     ('KALITE_BEKLIYOR', 'Kalite bekliyor'),

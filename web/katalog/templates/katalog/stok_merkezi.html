@@ -39,18 +39,38 @@
         <input type="hidden" name="istemci_kimligi" value="{{ istemci_kimligi }}">
         {% if form.non_field_errors %}<div class="mb-4 text-sm text-rose-700">{{ form.non_field_errors }}</div>{% endif %}
 
+        {% comment %}
+        İki kademeli amaç seçimi, AYNI SAYFADA — yeni URL/view yok. Üst kademe malın
+        yönünü soruyor, alt kademe o yöndeki amacı. POST'a giden alan hâlâ tek gizli
+        `amac` radio'su, yani view'ın satır üretimi ve derin bağlantılar değişmedi.
+
+        Gruplar ve içerikleri `stok_servisi.AMAC_GRUPLARI`'nden geliyor; bütün alt
+        seçenekleri kullanıcının iznine takılan bir üst kademe hiç basılmıyor
+        (`stok_servisi.amac_gruplari`).
+        {% endcomment %}
         <fieldset class="mb-6">
             <legend class="mb-2 text-sm font-medium text-slate-700">{{ form.amac.label }}</legend>
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-                {% for deger, etiket in form.fields.amac.choices %}
+            <div class="inline-flex rounded-lg border border-slate-300 p-1 bg-slate-100" role="tablist">
+                {% for kod, etiket, secenekler in amac_gruplari %}
+                <button type="button" role="tab" data-amac-grubu="{{ kod }}"
+                        class="amac-grup-dugmesi rounded-md px-4 py-1.5 text-sm font-medium text-slate-600"
+                        onclick="grupSec('{{ kod }}')">{{ etiket }}</button>
+                {% endfor %}
+            </div>
+
+            {% for kod, etiket, secenekler in amac_gruplari %}
+            <div data-amac-secenekleri="{{ kod }}" class="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
+                {% for deger, amac_etiketi in secenekler %}
                 <label class="cursor-pointer">
                     <input class="peer sr-only" type="radio" name="amac" value="{{ deger }}"
                            {% if form.amac.value == deger %}checked{% endif %} onchange="amacDegisti()">
                     <span class="block rounded-lg border border-slate-300 px-3 py-2 text-center text-sm
-                                 peer-checked:bg-slate-900 peer-checked:text-white peer-checked:border-slate-900">{{ etiket }}</span>
+                                 peer-checked:bg-slate-900 peer-checked:text-white peer-checked:border-slate-900">{{ amac_etiketi }}</span>
                 </label>
                 {% endfor %}
             </div>
+            {% endfor %}
+            {% for e in form.amac.errors %}<p class="mt-1 text-xs text-rose-700">{{ e }}</p>{% endfor %}
         </fieldset>
 
         <div class="grid md:grid-cols-2 gap-4 mb-5">
@@ -110,33 +130,82 @@
             <div data-alan="hedef">{% include "katalog/_form_alani.html" with alan=form.hedef_lokasyon_id %}</div>
             <div data-alan="is-ortagi">{% include "katalog/_form_alani.html" with alan=form.is_ortagi_id %}</div>
             <div data-alan="fason-emri">{% include "katalog/_form_alani.html" with alan=form.fason_is_emri_id %}</div>
-            <div data-alan="belge">{% include "katalog/_form_alani.html" with alan=form.belge_no %}</div>
             <div data-alan="duzeltme-baglantisi">{% include "katalog/_form_alani.html" with alan=form.duzelttigi_stok_islem_id %}</div>
+            {% comment %}
+            Belge numarasının ÜST yuvası. Alan tek bir DOM düğümü (`#belge-alani`) ve
+            JS onu amaca göre bu yuva ile gelişmiş bölümdeki yuva arasında TAŞIYOR —
+            kopyalamıyor. İki kopya basılsaydı aynı ad iki kez POST edilirdi.
+            {% endcomment %}
+            <div id="belge-yuvasi-ust"></div>
         </div>
 
         {% comment %}
-        Stok durumu ve parti bilinçli olarak katlanmış: ikisi de günlük depo işinde
-        neredeyse hep varsayılanda kalıyor (durum SERBEST, parti boş) ve her formda
-        görünmeleri, asıl doldurulması gereken alanların yanında eşit ağırlıkta bir
-        seçim gibi duruyordu. Katlanmışlık yalnız görünüm: alanlar DOM'da ve POST'ta.
+        Stok durumu artık gelişmiş bölümde DEĞİL — bu, madde 6'daki "durumu katla"
+        kararının bilinçli geri alınması. Katlandığı dönemde alan gerçekten hep
+        varsayılanda kalıyordu, ama sebebinin bir kısmı görünmemesiydi: kalite
+        bekleyen veya bloke mal girişi yapan personel alanı hiç fark etmiyordu.
+        Üç değerli bir seçim için üç düğme, açılır listeden hem daha hızlı hem daha
+        okunur; varsayılan SERBEST seçili geliyor, yani tek tıklık iş artmıyor.
+
+        Fason dönüşündeki İKİNCİ durum alanı ("Dönüşte hedef stok durumu") gelişmişte
+        KALDI: yalnız tek bir amaçta anlamlı ve orada da çoğu zaman kaynakla aynı.
+        {% endcomment %}
+        <fieldset class="mb-5">
+            <legend class="mb-1.5 text-sm font-medium text-slate-800">{{ form.stok_durumu_kodu.label }}</legend>
+            <div class="inline-flex flex-wrap gap-2">
+                {% for deger, etiket in form.fields.stok_durumu_kodu.choices %}
+                <label class="cursor-pointer">
+                    <input class="peer sr-only" type="radio" name="stok_durumu_kodu" value="{{ deger }}"
+                           {% if form.stok_durumu_kodu.value == deger %}checked{% endif %}>
+                    <span class="block rounded-lg border border-slate-300 px-4 py-2 text-sm
+                                 peer-checked:bg-slate-900 peer-checked:text-white peer-checked:border-slate-900">{{ etiket }}</span>
+                </label>
+                {% endfor %}
+            </div>
+            {% for e in form.stok_durumu_kodu.errors %}<p class="mt-1 text-xs text-rose-700">{{ e }}</p>{% endfor %}
+        </fieldset>
+
+        {% comment %}
+        Parti ve dönüş durumu katlanmış kalıyor: ikisi de günlük depo işinde
+        neredeyse hep varsayılanda (parti boş, dönüş durumu kaynakla aynı).
+        Katlanmışlık yalnız görünüm: alanlar DOM'da ve POST'ta.
+
+        Belge numarası buraya JS ile TAŞINIYOR — satın alma kabulü ve satış
+        sevkiyatı dışındaki amaçlarda. O iki amaçta üstte kalıyor çünkü mükerrer
+        belge kilidinin (`islem_nedeni` + karşı taraf + `belge_no`) anahtarı orada.
 
         İçeride hata varsa bölüm açık başlıyor — aksi hâlde kullanıcı formun neden
-        reddedildiğini göremezdi.
+        reddedildiğini göremezdi. Taşınan belge alanının hatası da aynı şekilde
+        bölümü açıyor (bkz. `belgeyiYerlestir`).
         {% endcomment %}
-        <details class="mb-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
-                 {% if form.stok_durumu_kodu.errors or form.hedef_stok_durumu_kodu.errors or form.parti_no.errors %}open{% endif %}>
+        <details id="gelismis-secenekler" class="mb-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+                 {% if form.hedef_stok_durumu_kodu.errors or form.parti_no.errors %}open{% endif %}>
             <summary class="cursor-pointer text-sm font-medium text-slate-600">Gelişmiş seçenekler</summary>
             <div class="mt-3 grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {% include "katalog/_form_alani.html" with alan=form.stok_durumu_kodu %}
                 <div data-alan="hedef-durum">{% include "katalog/_form_alani.html" with alan=form.hedef_stok_durumu_kodu %}</div>
                 <div data-alan="parti">{% include "katalog/_form_alani.html" with alan=form.parti_no %}</div>
+                <div id="belge-yuvasi-gelismis"></div>
             </div>
         </details>
+
+        {% comment %}
+        Belge alanının kendisi: yuvaların dışında bir kez basılıyor, JS açılışta ve
+        her amaç değişiminde doğru yuvaya taşıyor.
+        {% endcomment %}
+        <div id="belge-alani">{% include "katalog/_form_alani.html" with alan=form.belge_no %}</div>
 
         {% include "katalog/_form_alani.html" with alan=form.aciklama %}
 
         <button type="submit" class="mt-6 rounded-lg bg-slate-900 px-6 py-2.5 text-sm font-medium text-white hover:bg-slate-700">Kaydet</button>
     </form>
+
+    {% comment %}
+    Amaca göre lokasyon etiketi ve belge yerleşimi tabloları JS'e `json_script` ile
+    geçiyor — şablona gömülmüyorlar. Tek tanımları `stok_servisi.py`'de.
+    {% endcomment %}
+    {{ lokasyon_etiketleri|json_script:"lokasyon-etiketleri" }}
+    {{ karsi_taraf_tablosu|json_script:"karsi-taraf-tablosu" }}
+    {{ belge_gorunur_amaclar|json_script:"belge-gorunur-amaclar" }}
 </main>
 {% endblock %}
 
@@ -159,55 +228,198 @@
     }
 
     // ---------------------------------------------------------------------------
-    // Lokasyon süzme
+    // Lokasyon süzme — migration 011'in AYNASI
     //
-    // Kaynak ve hedef listeleri bütün aktif yaprak lokasyonları içeriyor; "Fasona
-    // gönder" seçiliyken hedefte dahili rafların, kaynakta fason atölyelerinin
-    // görünmesi kullanıcıyı ancak POST'tan SONRA reddedilecek bir seçime davet
-    // ediyordu. Aşağıdaki tablo `stok_islemi_kaydet()`'in KENDİ kontrollerinin
-    // aynası (migration 008): fason sevkte kaynak `tip='DAHILI'`, dönüşte hedef
-    // `tip='DAHILI'` ve iki uçtan biri iş emrindeki fason lokasyonu olmak zorunda.
-    // Burada kopyalanan bir iş kuralı YOK, yalnız aynı kısıt önceden gösteriliyor;
-    // otorite hâlâ veritabanı.
+    // Aşağıdaki iki tablo `stok_islemi_kaydet()`'in kendi kontrollerinin birebir
+    // kopyasıdır (migration 008 fason kontrolleri + migration 011 amaç ↔ lokasyon
+    // tipi kuralı). Burada TANIMLANAN bir iş kuralı YOK: aynı kısıt yalnız POST'tan
+    // önce gösteriliyor, otorite hâlâ veritabanı. Bir satırı değiştirmek gerekirse
+    // önce migration'a yazılır, sonra buraya.
     //
-    // Yer değiştirmede NUMUNE de listede kalıyor: numune rafı fiziksel olarak tesis
-    // içi ve depo↔numune transferi projenin bilinçli akışı (bkz. YAPILACAKLAR.md
-    // madde 4). Yalnız DAHILI'ya indirmek o yolu sessizce kapatırdı.
+    //   SATIN_ALMA_KABUL / URETIM_GIRIS / MUSTERI_IADE -> hedef DAHILI
+    //   SATIS_SEVKI / TEDARIKCI_IADE                   -> kaynak DAHILI
+    //   SAYIM                                          -> hedef DAHILI|NUMUNE
+    //   IC_TRANSFER                                    -> iki uç da DAHILI|NUMUNE
+    //   FASON_SEVK                                     -> kaynak DAHILI, hedef FASON
+    //   FASON_DONUS                                    -> kaynak FASON, hedef DAHILI
+    //   FIRE                                           -> kaynak FASON
+    //
+    // DUZELTME tablolarda BİLEREK yok ve bu bir eksik değil: migration 011 düzeltmeye
+    // kısıt koymuyor, çünkü fason lokasyonundaki bir hatanın da düzeltilebilmesi
+    // gerekiyor ve düzeltme oradan çıkışın tek yolu. Buraya "tutarlılık olsun" diye
+    // tesis-içi süzgeci eklemek o yolu sessizce kapatır. Düzeltmede bütün lokasyonlar
+    // listede kalır.
+    //
+    // Yer değiştirme ve sayımda NUMUNE listede: numune rafı fiziksel olarak tesis içi
+    // ve depo↔numune transferi projenin bilinçli akışı (YAPILACAKLAR madde 4).
+    // Canlı veritabanında henüz hiç NUMUNE lokasyonu OLMADIĞI için "Numune" grubu şu
+    // an boş kalıyor ve hiç basılmıyor — tip destekleniyor, eksik olan yalnız veri.
     // ---------------------------------------------------------------------------
     const TESIS_ICI = ['DAHILI', 'NUMUNE'];
     const KAYNAK_TIPLERI = {
-        FASON_SEVK: ['DAHILI'], FASON_DONUS: ['FASON'], FIRE: ['FASON'], IC_TRANSFER: TESIS_ICI,
+        SATIS_SEVKI: ['DAHILI'], TEDARIKCI_IADE: ['DAHILI'],
+        IC_TRANSFER: TESIS_ICI,
+        FASON_SEVK: ['DAHILI'], FASON_DONUS: ['FASON'], FIRE: ['FASON'],
     };
     const HEDEF_TIPLERI = {
-        FASON_SEVK: ['FASON'], FASON_DONUS: ['DAHILI'], IC_TRANSFER: TESIS_ICI,
+        SATIN_ALMA_KABUL: ['DAHILI'], URETIM_GIRIS: ['DAHILI'], MUSTERI_IADE: ['DAHILI'],
+        SAYIM: TESIS_ICI, IC_TRANSFER: TESIS_ICI,
+        FASON_SEVK: ['FASON'], FASON_DONUS: ['DAHILI'],
     };
 
     // Seçenekler bir kez saklanıyor: süzme DOM'dan eleman söktüğü için kaynak liste
     // canlı <select>'ten okunamaz, ikinci süzmede geri getirilecek seçenek kalmazdı.
+    // Yapı artık gruplu (<optgroup>), o yüzden düz seçenek listesi değil grup
+    // ağacı saklanıyor.
     const lokasyonKutulari = {};
     for (const ad of ['kaynak_lokasyon_id', 'hedef_lokasyon_id']) {
         const kutu = document.querySelector(`[name="${ad}"]`);
-        if (kutu) lokasyonKutulari[ad] = { kutu, secenekler: Array.from(kutu.options) };
+        if (!kutu) continue;
+        const yapi = [];
+        for (const dugum of Array.from(kutu.children)) {
+            if (dugum.tagName === 'OPTGROUP') {
+                yapi.push({ etiket: dugum.label, secenekler: Array.from(dugum.children) });
+            } else {
+                yapi.push({ etiket: null, secenekler: [dugum] });
+            }
+        }
+        lokasyonKutulari[ad] = { kutu, yapi };
     }
 
-    function lokasyonlariSuz(ad, tipler) {
+    // `sadeceId` verilirse liste tek bir lokasyona iner (fason iş emrinden gelen
+    // kilit); boş seçenek de düşer, çünkü seçim artık kullanıcıya ait değil.
+    function lokasyonlariSuz(ad, tipler, sadeceId) {
         const kayit = lokasyonKutulari[ad];
         if (!kayit) return;
         const oncekiDeger = kayit.kutu.value;
-        // Boş seçenek ("— seçilmedi —") tipsiz; her amaçta kalmalı.
-        kayit.kutu.replaceChildren(
-            ...kayit.secenekler.filter(o => !o.value || !tipler || tipler.includes(o.dataset.tip))
-        );
+        const gecer = (o) => {
+            if (sadeceId) return o.value === String(sadeceId);
+            if (!o.value) return true;  // "— seçilmedi —" tipsiz, her amaçta kalır
+            return !tipler || tipler.includes(o.dataset.tip);
+        };
+        const dugumler = [];
+        for (const grup of kayit.yapi) {
+            const kalanlar = grup.secenekler.filter(gecer);
+            if (!kalanlar.length) continue;          // boş <optgroup> hiç basılmaz
+            if (grup.etiket === null) {
+                dugumler.push(...kalanlar);
+            } else {
+                const optgroup = document.createElement('optgroup');
+                optgroup.label = grup.etiket;
+                optgroup.append(...kalanlar);
+                dugumler.push(optgroup);
+            }
+        }
+        kayit.kutu.replaceChildren(...dugumler);
         kayit.kutu.value = oncekiDeger;
         // Seçili lokasyon süzgeçten geçmediyse tarayıcı value'yu boşaltır (selectedIndex
         // -1 olur); görünür bir seçim kalmadığı için ilk seçeneğe düşürülüyor.
         if (kayit.kutu.value !== oncekiDeger) kayit.kutu.selectedIndex = 0;
+        // Kilitliyken tek seçenek var; kullanıcıya bunun bir seçim olmadığını göster.
+        kayit.kutu.classList.toggle('bg-slate-100', Boolean(sadeceId));
+        kayit.kutu.classList.toggle('pointer-events-none', Boolean(sadeceId));
+        kayit.kutu.setAttribute('tabindex', sadeceId ? '-1' : '0');
+    }
+
+    // ---------------------------------------------------------------------------
+    // Karşı taraf süzme — 008 + 011'in aynası
+    //
+    // Satın alma kabulü ve tedarikçi iadesi aktif TEDARIKCI rollü, satış sevkiyatı
+    // ve müşteri iadesi aktif MUSTERI rollü iş ortağı ister. Kural veritabanında;
+    // burada yalnız listeden rolü tutmayanlar düşüyor ve etiket amaca göre
+    // "Tedarikçi"/"Müşteri" oluyor. Tablo BURADA TANIMLI DEĞİL —
+    // `stok_servisi.AMAC_KARSI_TARAF`'tan json_script ile geliyor.
+    // ---------------------------------------------------------------------------
+    const KARSI_TARAF = JSON.parse(
+        document.getElementById('karsi-taraf-tablosu').textContent
+    );
+    const ortakKutusu = document.querySelector('[name="is_ortagi_id"]');
+    const ortakSecenekleri = ortakKutusu ? Array.from(ortakKutusu.options) : [];
+
+    function karsiTarafiAyarla(amac) {
+        if (!ortakKutusu) return;
+        const kural = KARSI_TARAF[amac];
+        const oncekiDeger = ortakKutusu.value;
+        ortakKutusu.replaceChildren(
+            ...ortakSecenekleri.filter(o => {
+                if (!o.value) return true;
+                if (!kural) return true;
+                return (o.dataset.roller || '').split(',').includes(kural.rol);
+            })
+        );
+        ortakKutusu.value = oncekiDeger;
+        if (ortakKutusu.value !== oncekiDeger) ortakKutusu.selectedIndex = 0;
+        const etiket = document.querySelector(`label[for="${ortakKutusu.id}"]`);
+        if (etiket && kural) etiket.textContent = kural.etiket;
+    }
+
+    // ---------------------------------------------------------------------------
+    // Amaca göre lokasyon etiketleri
+    // Tablo `stok_servisi.AMAC_LOKASYON_ETIKETLERI`; şablona json_script ile geliyor.
+    // ---------------------------------------------------------------------------
+    const LOKASYON_ETIKET_TABLOSU = JSON.parse(
+        document.getElementById('lokasyon-etiketleri').textContent
+    );
+    const VARSAYILAN_LOKASYON_ETIKETLERI = {
+        kaynak: '{{ form.kaynak_lokasyon_id.label|escapejs }}',
+        hedef: '{{ form.hedef_lokasyon_id.label|escapejs }}',
+    };
+
+    function lokasyonEtiketleriniAyarla(amac) {
+        const tablo = LOKASYON_ETIKET_TABLOSU[amac] || {};
+        for (const [uc, alanAdi] of [['kaynak', 'kaynak_lokasyon_id'], ['hedef', 'hedef_lokasyon_id']]) {
+            const kutu = document.querySelector(`[name="${alanAdi}"]`);
+            if (!kutu) continue;
+            const etiket = document.querySelector(`label[for="${kutu.id}"]`);
+            if (etiket) etiket.textContent = tablo[uc] || VARSAYILAN_LOKASYON_ETIKETLERI[uc];
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Belge numarasının yeri
+    //
+    // Alan TAŞINIYOR, kopyalanmıyor: iki kopya basılsaydı aynı ad iki kez POST
+    // edilirdi. Satın alma kabulü ve satış sevkiyatında üstte, diğerlerinde
+    // gelişmiş bölümde. Taşındığı yerde hata varsa bölüm açılıyor.
+    // ---------------------------------------------------------------------------
+    const BELGE_UST_AMACLAR = JSON.parse(
+        document.getElementById('belge-gorunur-amaclar').textContent
+    );
+    const belgeAlani = document.getElementById('belge-alani');
+    const gelismisBolum = document.getElementById('gelismis-secenekler');
+
+    function belgeyiYerlestir(amac) {
+        const ust = BELGE_UST_AMACLAR.includes(amac);
+        const yuva = document.getElementById(ust ? 'belge-yuvasi-ust' : 'belge-yuvasi-gelismis');
+        if (yuva && belgeAlani.parentElement !== yuva) yuva.append(belgeAlani);
+        if (!ust && belgeAlani.querySelector('.text-rose-700')) gelismisBolum.open = true;
+    }
+
+    // ---------------------------------------------------------------------------
+    // Fason iş emrinden otomatik doldurma
+    //
+    // `stok_islemi_kaydet()` üçünün uyumunu ZATEN zorunlu tutuyor: sevkin hedefi,
+    // dönüşün kaynağı ve firenin kaynağı iş emrindeki fason lokasyonu, dönüşte
+    // oluşan SKU da iş emrindeki hedef SKU olmak zorunda. Elle seçim yalnızca
+    // POST'tan sonra reddedilen kayıtlar üretiyordu.
+    // ---------------------------------------------------------------------------
+    const emirKutusu = document.querySelector('[name="fason_is_emri_id"]');
+    const hedefSkuKutusu = document.querySelector('[name="hedef_sku_kodu"]');
+
+    function secilenEmir() {
+        if (!emirKutusu || !emirKutusu.value) return null;
+        const secenek = emirKutusu.selectedOptions[0];
+        if (!secenek || !secenek.dataset.fasonLokasyon) return null;
+        return {
+            lokasyon: secenek.dataset.fasonLokasyon,
+            hedefSku: secenek.dataset.hedefSku || '',
+        };
     }
 
     function amacDegisti() {
         const amac = document.querySelector('[name="amac"]:checked')?.value;
-        const giris = ['SATIN_ALMA_KABUL', 'URETIM_GIRIS'].includes(amac);
-        const cikis = ['SATIS_SEVKI', 'FIRE'].includes(amac);
+        const giris = ['SATIN_ALMA_KABUL', 'URETIM_GIRIS', 'MUSTERI_IADE'].includes(amac);
+        const cikis = ['SATIS_SEVKI', 'TEDARIKCI_IADE', 'FIRE'].includes(amac);
         const transfer = ['IC_TRANSFER', 'FASON_SEVK', 'FASON_DONUS'].includes(amac);
         alanGoster('kaynak', cikis || transfer || amac === 'DUZELTME');
         alanGoster('hedef', giris || transfer || amac === 'SAYIM' || amac === 'DUZELTME');
@@ -215,13 +427,57 @@
         alanGoster('hedef-durum', amac === 'FASON_DONUS');
         alanGoster('fire', amac === 'FASON_DONUS');
         alanGoster('fason-emri', ['FASON_SEVK', 'FASON_DONUS', 'FIRE'].includes(amac));
-        alanGoster('is-ortagi', ['SATIN_ALMA_KABUL', 'SATIS_SEVKI'].includes(amac));
-        alanGoster('belge', ['SATIN_ALMA_KABUL', 'URETIM_GIRIS', 'SATIS_SEVKI'].includes(amac));
+        alanGoster('is-ortagi', amac in KARSI_TARAF);
         alanGoster('duzeltme-baglantisi', amac === 'DUZELTME');
-        lokasyonlariSuz('kaynak_lokasyon_id', KAYNAK_TIPLERI[amac] || null);
-        lokasyonlariSuz('hedef_lokasyon_id', HEDEF_TIPLERI[amac] || null);
+
+        const emir = secilenEmir();
+        // Kilit yalnız iş emri seçiliyken; seçilmemişken normal tip süzgeci kalır.
+        lokasyonlariSuz(
+            'kaynak_lokasyon_id', KAYNAK_TIPLERI[amac] || null,
+            emir && ['FASON_DONUS', 'FIRE'].includes(amac) ? emir.lokasyon : null,
+        );
+        lokasyonlariSuz(
+            'hedef_lokasyon_id', HEDEF_TIPLERI[amac] || null,
+            emir && amac === 'FASON_SEVK' ? emir.lokasyon : null,
+        );
+        if (hedefSkuKutusu) {
+            const kilitli = Boolean(emir) && amac === 'FASON_DONUS';
+            if (kilitli) hedefSkuKutusu.value = emir.hedefSku;
+            hedefSkuKutusu.readOnly = kilitli;
+            hedefSkuKutusu.classList.toggle('bg-slate-100', kilitli);
+        }
+
+        karsiTarafiAyarla(amac);
+        lokasyonEtiketleriniAyarla(amac);
+        belgeyiYerlestir(amac);
     }
-    amacDegisti();
+
+    // ---------------------------------------------------------------------------
+    // Üst kademe (yön) seçimi
+    // ---------------------------------------------------------------------------
+    function grupSec(kod) {
+        document.querySelectorAll('[data-amac-grubu]').forEach(dugme => {
+            const secili = dugme.dataset.amacGrubu === kod;
+            dugme.classList.toggle('bg-white', secili);
+            dugme.classList.toggle('shadow-sm', secili);
+            dugme.classList.toggle('text-slate-900', secili);
+            dugme.setAttribute('aria-selected', secili ? 'true' : 'false');
+        });
+        document.querySelectorAll('[data-amac-secenekleri]').forEach(blok => {
+            blok.classList.toggle('hidden', blok.dataset.amacSecenekleri !== kod);
+        });
+        // Görünür grupta seçili amaç yoksa ilkine düş: gizli bir radio seçili
+        // kalırsa kullanıcı hangi amacı gönderdiğini göremez.
+        const gorunur = document.querySelector(`[data-amac-secenekleri="${kod}"]`);
+        if (gorunur && !gorunur.querySelector('[name="amac"]:checked')) {
+            const ilk = gorunur.querySelector('[name="amac"]');
+            if (ilk) ilk.checked = true;
+        }
+        amacDegisti();
+    }
+
+    if (emirKutusu) emirKutusu.addEventListener('change', amacDegisti);
+    grupSec('{{ secili_grup|escapejs }}');
     if (!skuKutusu.value) skuKutusu.focus();
 </script>
 {% endblock %}
