@@ -114,10 +114,15 @@ def ana_ekran(request):
     # yalnız şablonda rakam gizlemekten farklıdır: HTML/HTMX yanında sorgu tarafında
     # da yetki sınırı aynı yerde uygulanır.
     if stok_gorebilir:
-        hareketli_urun = StokUrunOzet.objects.using('metaks').count()
-        stogu_olan = StokUrunOzet.objects.using('metaks').filter(
-            sahip_olunan_toplam__gt=0
-        ).count()
+        try:
+            hareketli_urun = StokUrunOzet.objects.using('metaks').count()
+            stogu_olan = StokUrunOzet.objects.using('metaks').filter(
+                sahip_olunan_toplam__gt=0
+            ).count()
+        except Exception:
+            # 008 migration'ı henüz uygulanmadıysa v_stok_urun_ozet yoktur;
+            # sayfa yine de açılsın, rakamlar 0 kalsın.
+            pass
         aktif_lokasyon = (
             LokasyonDetay.objects.using('metaks')
             .filter(aktif_mi=True, yaprak_mi=True)

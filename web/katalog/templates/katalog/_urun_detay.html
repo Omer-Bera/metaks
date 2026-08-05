@@ -83,12 +83,16 @@
 
                 {% if stok_goster %}
                 <div data-sekme="stok" class="hidden">
+                    {% if stok_ozeti %}
                     <div class="grid grid-cols-2 lg:grid-cols-4 gap-2">
                         <div class="rounded-xl bg-slate-50 p-3"><p class="text-xs text-slate-500">Sahip olunan</p><strong class="text-xl">{{ stok_ozeti.sahip_olunan_toplam|default:0|intcomma }}</strong></div>
                         <div class="rounded-xl bg-emerald-50 p-3"><p class="text-xs text-emerald-700">Satışa hazır</p><strong class="text-xl text-emerald-800">{{ stok_ozeti.satisa_hazir_toplam|default:0|intcomma }}</strong></div>
                         <div class="rounded-xl bg-sky-50 p-3"><p class="text-xs text-sky-700">Fasonda</p><strong class="text-xl text-sky-800">{{ stok_ozeti.fasonda_toplam|default:0|intcomma }}</strong></div>
                         <div class="rounded-xl bg-amber-50 p-3"><p class="text-xs text-amber-700">Kalite / bloke</p><strong class="text-xl text-amber-800">{{ stok_ozeti.kalite_bekleyen_toplam|default:0|add:stok_ozeti.bloke_toplam|default:0|intcomma }}</strong></div>
                     </div>
+                    {% else %}
+                    <p class="py-4 text-center text-slate-400">Henüz stok verisi yok.</p>
+                    {% endif %}
                     {% if stok_kalemleri %}<div class="mt-5 flex flex-wrap gap-2">{% for sku in stok_kalemleri %}
                         <span class="rounded-full border border-slate-200 px-2.5 py-1 font-mono text-xs">{{ sku.sku_kodu }}</span>{% endfor %}</div>{% endif %}
                     <div class="mt-5 overflow-x-auto rounded-xl border border-slate-200">
