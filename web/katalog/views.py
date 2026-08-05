@@ -1,10 +1,10 @@
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.db.models import Count, Q, Subquery
+from django.db.models import Count, F, OuterRef, Q, Subquery
 from django.http import QueryDict
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -12,15 +12,24 @@ from django.urls import reverse
 from . import forms, stok_servisi
 from .models import (
     AktifUrun,
+    FasonIsEmriOzet,
+    Hammadde,
+    IsOrtagi,
+    IsOrtagiRolu,
     Kategori,
     Lokasyon,
     LokasyonDetay,
     LokasyonStok,
+    StokBakiye,
     StokHareketi,
-    ToplamStok,
+    StokIslemi,
+    StokKalemi,
+    Renk,
+    StokUrunOzet,
     Urun,
     yerel_tarih,
 )
+from .yetkiler import izin_gerekli, izni_var_mi
 
 # Kart ızgarasının bir "sayfası". 2/3/4/6 kolona tam bölünüyor (bkz. _urun_kartlari.html
 # breakpoint'leri) — son satır yarım kalmıyor.
@@ -66,7 +75,7 @@ def ana_ekran(request):
 
     Sayılar bilinçli olarak grafiksiz: hepsi tek anlık değer, yani doğru biçim stat
     tile / meter — tek çubuklu grafik değil. Uydurma metrik yok, hepsi doğrudan
-    v_aktif_urunler / v_toplam_stok / lokasyonlar'dan sayılıyor.
+    v_aktif_urunler / v_stok_urun_ozet / lokasyonlardan sayılıyor.
     """
     if not request.user.is_authenticated and not request.session.get(MISAFIR_ANAHTARI):
         return redirect('katalog:giris')
@@ -74,23 +83,35 @@ def ana_ekran(request):
     urunler = AktifUrun.objects.using('metaks')
     aktif_urun = urunler.count()
 
-    # Hareket görmüş ürün sayısı: v_toplam_stok'ta satırı olanlar. Sayım ilerlemesinin
-    # bugünkü tek dürüst ölçüsü — "stoğu >0 olan" değil, çünkü sayılıp boş çıkan da
-    # sayılmış sayılır (bkz. stok verisinin üç durumu).
-    hareketli_urun = ToplamStok.objects.using('metaks').count()
-    stogu_olan = ToplamStok.objects.using('metaks').filter(toplam_miktar__gt=0).count()
+    stok_gorebilir = izni_var_mi(request.user, 'goruntule')
+    hareket_gorebilir = izni_var_mi(request.user, 'hareket')
+    hareketli_urun = stogu_olan = aktif_lokasyon = 0
+    son_hareketler = []
 
-    # yerel_tarih(): stok_hareketleri'ndeki naive UTC damgasını aware hâle getiriyor,
-    # yoksa şablon onu yerel saat sanıp 3 saat geri gösteriyor (bkz. models.py).
-    son_hareketler = list(
-        StokHareketi.objects.using('metaks')
-        .annotate(tarih=yerel_tarih())
-        .select_related('kaynak_lokasyon', 'hedef_lokasyon')[:5]
-    )
-    for hareket in son_hareketler:
-        hareket.islem_etiketi = stok_servisi.ISLEM_TIPI_ETIKETLERI.get(
-            hareket.islem_tipi, hareket.islem_tipi
+    # Misafir ve yetkisiz kullanıcı için stok tablolarına hiç sorgu atılmaz. Bu,
+    # yalnız şablonda rakam gizlemekten farklıdır: HTML/HTMX yanında sorgu tarafında
+    # da yetki sınırı aynı yerde uygulanır.
+    if stok_gorebilir:
+        hareketli_urun = StokUrunOzet.objects.using('metaks').count()
+        stogu_olan = StokUrunOzet.objects.using('metaks').filter(
+            sahip_olunan_toplam__gt=0
+        ).count()
+        aktif_lokasyon = (
+            LokasyonDetay.objects.using('metaks')
+            .filter(aktif_mi=True, yaprak_mi=True)
+            .count()
         )
+
+    if hareket_gorebilir:
+        son_hareketler = list(
+            StokHareketi.objects.using('metaks')
+            .annotate(tarih=yerel_tarih())
+            .select_related('kaynak_lokasyon', 'hedef_lokasyon')[:5]
+        )
+        for hareket in son_hareketler:
+            hareket.islem_etiketi = stok_servisi.ISLEM_TIPI_ETIKETLERI.get(
+                hareket.islem_tipi, hareket.islem_tipi
+            )
 
     return render(
         request,
@@ -109,13 +130,14 @@ def ana_ekran(request):
             # stok tutmaz) depo/dolap gibi sayılır ve bu tile "5 aktif lokasyon"
             # yerine "23" gibi yanıltıcı bir sayı gösterir. Doğru sayı: gerçekten stok
             # yazılabilen (yaprak) ve aktif lokasyon sayısı.
-            'aktif_lokasyon': LokasyonDetay.objects.using('metaks')
-            .filter(aktif_mi=True, yaprak_mi=True)
-            .count(),
+            'aktif_lokasyon': aktif_lokasyon,
             'hareketli_urun': hareketli_urun,
             'stogu_olan': stogu_olan,
             'sayim_yuzdesi': round(100 * hareketli_urun / aktif_urun, 1) if aktif_urun else 0,
             'son_hareketler': son_hareketler,
+            'stok_gorebilir': stok_gorebilir,
+            'hareket_gorebilir': hareket_gorebilir,
+            'stok_yazabilir': izni_var_mi(request.user, 'islem'),
         },
     )
 
@@ -140,14 +162,37 @@ class ListeFiltresi:
         self.kategoriler = [k for k in request.GET.getlist('kategori') if k]
         self.sadece_stok = request.GET.get('stok') == '1'
         self.sirala = request.GET.get('sirala', VARSAYILAN_SIRALAMA)
+        self.yer = request.GET.get('yer', '').strip()
+        self.lokasyon = _tam_sayi(request.GET.get('lokasyon', ''))
+        self.kaplama = _tam_sayi(request.GET.get('kaplama', ''))
+        self.montaj = request.GET.get('montaj', '').strip()
+        self.durum = request.GET.get('durum', '').strip()
+        self.boya = _tam_sayi(request.GET.get('boya', ''))
+        self.mine = _tam_sayi(request.GET.get('mine', ''))
+        self.stok_turu = request.GET.get('stok_turu', '').strip()
+        self.seviye = request.GET.get('seviye', '').strip()
+        self.fasoncu = _tam_sayi(request.GET.get('fasoncu', ''))
+        self.fason_durum = request.GET.get('fason_durum', '').strip()
+        self.parti = request.GET.get('parti', '').strip()
+        self.olcu = request.GET.get('olcu', '').strip()
         if self.sirala not in SIRALAMALAR:
             self.sirala = VARSAYILAN_SIRALAMA
 
     @property
     def filtre_var(self):
-        return bool(self.arama or self.kategoriler or self.sadece_stok)
+        return bool(
+            self.arama or self.kategoriler or self.sadece_stok or self.yer
+            or self.lokasyon or self.kaplama or self.montaj or self.durum
+            or self.boya or self.mine or self.stok_turu or self.seviye
+            or self.fasoncu or self.fason_durum or self.parti or self.olcu
+        )
 
-    def url(self, *, kategoriler=None, arama=None, sadece_stok=None, **ekstra):
+    def url(
+        self, *, kategoriler=None, arama=None, sadece_stok=None,
+        yer=None, lokasyon=None, kaplama=None, montaj=None, durum=None,
+        boya=None, mine=None, stok_turu=None, seviye=None, fasoncu=None,
+        fason_durum=None, parti=None, olcu=None, **ekstra
+    ):
         """Bu filtrenin URL'ini üretir; verilen alanlar geçersiz kılınır.
 
         Varsayılan değerler dışarıda bırakılıyor, böylece URL'ler temiz kalıyor
@@ -157,6 +202,19 @@ class ListeFiltresi:
         arama = self.arama if arama is None else arama
         kategoriler = self.kategoriler if kategoriler is None else kategoriler
         sadece_stok = self.sadece_stok if sadece_stok is None else sadece_stok
+        yer = self.yer if yer is None else yer
+        lokasyon = self.lokasyon if lokasyon is None else lokasyon
+        kaplama = self.kaplama if kaplama is None else kaplama
+        montaj = self.montaj if montaj is None else montaj
+        durum = self.durum if durum is None else durum
+        boya = self.boya if boya is None else boya
+        mine = self.mine if mine is None else mine
+        stok_turu = self.stok_turu if stok_turu is None else stok_turu
+        seviye = self.seviye if seviye is None else seviye
+        fasoncu = self.fasoncu if fasoncu is None else fasoncu
+        fason_durum = self.fason_durum if fason_durum is None else fason_durum
+        parti = self.parti if parti is None else parti
+        olcu = self.olcu if olcu is None else olcu
 
         if arama:
             parametreler['q'] = arama
@@ -164,6 +222,15 @@ class ListeFiltresi:
             parametreler.setlist('kategori', kategoriler)
         if sadece_stok:
             parametreler['stok'] = '1'
+        for anahtar, deger in [
+            ('yer', yer), ('lokasyon', lokasyon), ('kaplama', kaplama),
+            ('montaj', montaj), ('durum', durum),
+            ('boya', boya), ('mine', mine), ('stok_turu', stok_turu),
+            ('seviye', seviye), ('fasoncu', fasoncu),
+            ('fason_durum', fason_durum), ('parti', parti), ('olcu', olcu),
+        ]:
+            if deger:
+                parametreler[anahtar] = str(deger)
         if self.sirala != VARSAYILAN_SIRALAMA:
             parametreler['sirala'] = self.sirala
         for anahtar, deger in ekstra.items():
@@ -205,12 +272,12 @@ class ListeFiltresi:
             queryset = queryset.filter(kosul)
 
         if self.sadece_stok:
-            # v_toplam_stok'ta satırı olmayan ürün "hiç sayılmadı" demek; buradaki filtre
-            # yalnızca gerçekten stoğu olanları (>0) bırakıyor.
+            # Yeni özet içinde yalnız şirketin sahip olduğu pozitif bakiyesi bulunan
+            # ürünler; FASON ve NUMUNE de mülkiyet toplamına dahildir.
             stoklu = (
-                ToplamStok.objects.using('metaks')
-                .filter(toplam_miktar__gt=0)
-                .values('stok_kodu')
+                StokUrunOzet.objects.using('metaks')
+                .filter(sahip_olunan_toplam__gt=0)
+                .values('urun_kodu')
             )
             queryset = queryset.filter(stok_kodu__in=Subquery(stoklu))
 
@@ -228,7 +295,9 @@ def _kategori_secenekleri(filtre):
     temel = filtre.aramaya_uygula(AktifUrun.objects.using('metaks').all())
     if filtre.sadece_stok:
         stoklu = (
-            ToplamStok.objects.using('metaks').filter(toplam_miktar__gt=0).values('stok_kodu')
+            StokUrunOzet.objects.using('metaks')
+            .filter(sahip_olunan_toplam__gt=0)
+            .values('urun_kodu')
         )
         temel = temel.filter(stok_kodu__in=Subquery(stoklu))
 
@@ -280,22 +349,23 @@ def _secili_kategori_seritleri(filtre):
 
 
 def _stok_bilgisini_ekle(urunler):
-    """Sayfadaki ürünlere toplam stoğu iliştirir (tek ek sorgu, N+1 yok).
+    """Sayfadaki ürünlere satışa hazır stoğu iliştirir (tek ek sorgu, N+1 yok).
 
-    `toplam_stok` None kalırsa o ürün v_toplam_stok'ta yok demektir: hiç sayılmamış.
-    0 ise sayılmış ama boş çıkmış. Şablon bu ikisini ayrı gösteriyor.
+    Özet satırı yoksa ürün hiç hareket görmemiştir; satır var ve satışa hazır miktar
+    sıfırsa ürün fasonda/numunede/bloke olabilir veya gerçekten boş olabilir.
     """
     kodlar = [urun.stok_kodu for urun in urunler]
     if not kodlar:
         return urunler
-    stoklar = dict(
-        ToplamStok.objects.using('metaks')
-        .filter(stok_kodu__in=kodlar)
-        .values_list('stok_kodu', 'toplam_miktar')
-    )
+    ozetler = {
+        o.urun_kodu: o
+        for o in StokUrunOzet.objects.using('metaks').filter(urun_kodu__in=kodlar)
+    }
     for urun in urunler:
-        miktar = stoklar.get(urun.stok_kodu)
+        ozet = ozetler.get(urun.stok_kodu)
+        miktar = ozet.satisa_hazir_toplam if ozet else None
         urun.toplam_stok = miktar
+        urun.stok_ozeti = ozet
         # Durum şablonda değil burada belirleniyor: Django şablon dilinde None
         # karşılaştırması yok, ayrıca "hiç sayılmadı" ile "sayıldı, sıfır" ayrımı
         # tek yerde tanımlı kalsın.
@@ -332,6 +402,184 @@ def _liste_context(request, filtre, *, stok_goster):
     }
 
 
+def _stok_kategori_secenekleri(filtre):
+    dagilim = {
+        satir['kategori_id']: satir['adet']
+        for satir in Urun.objects.using('metaks').filter(stok_takip_edilsin_mi=True)
+        .values('kategori_id').annotate(adet=Count('stok_kodu'))
+    }
+    kategoriler = list(Kategori.objects.using('metaks').filter(aktif_mi=True))
+    sonuc = [
+        {
+            'deger': k.kategori_adi,
+            'etiket': k.kategori_adi,
+            'adet': dagilim.get(k.kategori_id, 0),
+            'secili': k.kategori_adi in filtre.kategoriler,
+            'url': filtre.kategori_degistir(k.kategori_adi),
+        }
+        for k in kategoriler if dagilim.get(k.kategori_id, 0)
+    ]
+    if dagilim.get(None):
+        sonuc.append({
+            'deger': KATEGORISIZ, 'etiket': 'Kategorisiz', 'adet': dagilim[None],
+            'secili': KATEGORISIZ in filtre.kategoriler,
+            'url': filtre.kategori_degistir(KATEGORISIZ),
+        })
+    return sonuc
+
+
+def _stok_liste_context(request, filtre):
+    """Aktif görsel şartı olmadan bütün stok takipli ürünleri SKU bakiyesiyle listeler."""
+    urunler = Urun.objects.using('metaks').filter(stok_takip_edilsin_mi=True)
+    if filtre.arama:
+        sku_urunleri = StokKalemi.objects.using('metaks').filter(
+            sku_kodu__icontains=filtre.arama
+        ).values('urun_kodu')
+        urunler = urunler.filter(
+            Q(stok_kodu__icontains=filtre.arama)
+            | Q(aciklama__icontains=filtre.arama)
+            | Q(stok_kodu__in=Subquery(sku_urunleri))
+        )
+    if filtre.kategoriler:
+        adlar = [k for k in filtre.kategoriler if k != KATEGORISIZ]
+        kategori_idleri = Kategori.objects.using('metaks').filter(
+            kategori_adi__in=adlar
+        ).values('kategori_id')
+        kosul = Q(kategori_id__in=Subquery(kategori_idleri))
+        if KATEGORISIZ in filtre.kategoriler:
+            kosul |= Q(kategori_id__isnull=True)
+        urunler = urunler.filter(kosul)
+    if filtre.olcu:
+        try:
+            urunler = urunler.filter(olcu_mm=Decimal(filtre.olcu.replace(',', '.')))
+        except InvalidOperation:
+            urunler = urunler.none()
+
+    bakiyeler = StokBakiye.objects.using('metaks')
+    bakiye_filtresi_var = bool(
+        filtre.sadece_stok or filtre.yer or filtre.lokasyon
+        or filtre.kaplama or filtre.montaj or filtre.durum or filtre.boya
+        or filtre.mine or filtre.stok_turu or filtre.fasoncu or filtre.parti
+    )
+    if filtre.sadece_stok:
+        bakiyeler = bakiyeler.filter(mevcut_miktar__gt=0)
+    if filtre.yer in ('DAHILI', 'FASON', 'NUMUNE'):
+        bakiyeler = bakiyeler.filter(lokasyon_tipi=filtre.yer)
+    if filtre.lokasyon:
+        bakiyeler = bakiyeler.filter(lokasyon_id=filtre.lokasyon)
+    if filtre.kaplama:
+        bakiyeler = bakiyeler.filter(kaplama_id=filtre.kaplama)
+    if filtre.montaj in ('BELIRSIZ', 'HAM', 'YARI_MONTE', 'MONTE'):
+        bakiyeler = bakiyeler.filter(montaj_durumu=filtre.montaj)
+    if filtre.durum in ('SERBEST', 'KALITE_BEKLIYOR', 'BLOKE'):
+        bakiyeler = bakiyeler.filter(stok_durumu_kodu=filtre.durum)
+    if filtre.boya:
+        bakiyeler = bakiyeler.filter(boya_renk_id=filtre.boya)
+    if filtre.mine:
+        bakiyeler = bakiyeler.filter(mine_renk_id=filtre.mine)
+    if filtre.fasoncu:
+        bakiyeler = bakiyeler.filter(is_ortagi_id=filtre.fasoncu)
+    if filtre.parti:
+        bakiyeler = bakiyeler.filter(parti_no__icontains=filtre.parti)
+    if filtre.stok_turu == 'SATISA_HAZIR':
+        bakiyeler = bakiyeler.filter(
+            lokasyon_tipi='DAHILI', stok_durumu_kodu='SERBEST',
+            satilabilir_mi=True, mevcut_miktar__gt=0,
+        )
+    elif filtre.stok_turu == 'FASONDA':
+        bakiyeler = bakiyeler.filter(lokasyon_tipi='FASON', mevcut_miktar__gt=0)
+    elif filtre.stok_turu == 'KALITE':
+        bakiyeler = bakiyeler.filter(stok_durumu_kodu='KALITE_BEKLIYOR', mevcut_miktar__gt=0)
+    elif filtre.stok_turu == 'BLOKE':
+        bakiyeler = bakiyeler.filter(stok_durumu_kodu='BLOKE', mevcut_miktar__gt=0)
+    if bakiye_filtresi_var:
+        urunler = urunler.filter(stok_kodu__in=Subquery(bakiyeler.values('urun_kodu')))
+
+    ozet_urunleri = StokUrunOzet.objects.using('metaks')
+    if filtre.seviye == 'STOKLU':
+        urunler = urunler.filter(
+            stok_kodu__in=Subquery(ozet_urunleri.filter(sahip_olunan_toplam__gt=0).values('urun_kodu'))
+        )
+    elif filtre.seviye == 'SIFIR':
+        urunler = urunler.filter(
+            stok_kodu__in=Subquery(ozet_urunleri.filter(sahip_olunan_toplam=0).values('urun_kodu'))
+        )
+    elif filtre.seviye == 'SAYILMAMIS':
+        urunler = urunler.exclude(stok_kodu__in=Subquery(ozet_urunleri.values('urun_kodu')))
+    elif filtre.seviye == 'KRITIK':
+        satisa_hazir_alt_sorgu = ozet_urunleri.filter(
+            urun_kodu=OuterRef('stok_kodu')
+        ).values('satisa_hazir_toplam')[:1]
+        urunler = urunler.annotate(
+            filtre_satisa_hazir=Subquery(satisa_hazir_alt_sorgu)
+        ).filter(
+            kritik_stok_esigi__gt=0,
+            filtre_satisa_hazir__lte=F('kritik_stok_esigi'),
+        )
+
+    if filtre.fason_durum in ('ACIK', 'GECIKMIS'):
+        emirler = FasonIsEmriOzet.objects.using('metaks').filter(durum='ACIK', acik_miktar__gt=0)
+        if filtre.fason_durum == 'GECIKMIS':
+            emirler = emirler.filter(beklenen_donus_tarihi__lt=date.today())
+        ilgili_sku = StokKalemi.objects.using('metaks').filter(
+            Q(stok_kalemi_id__in=Subquery(emirler.values('kaynak_stok_kalemi_id')))
+            | Q(stok_kalemi_id__in=Subquery(emirler.values('hedef_stok_kalemi_id')))
+        ).values('urun_kodu')
+        urunler = urunler.filter(stok_kodu__in=Subquery(ilgili_sku))
+
+    urunler = urunler.order_by(SIRALAMALAR[filtre.sirala][0])
+    sayfalayici = Paginator(urunler, SAYFA_BOYUTU)
+    sayfa = sayfalayici.get_page(request.GET.get('sayfa'))
+    kodlar = [u.stok_kodu for u in sayfa.object_list]
+    kategori_adlari = dict(
+        Kategori.objects.using('metaks').filter(
+            kategori_id__in={u.kategori_id for u in sayfa.object_list if u.kategori_id}
+        ).values_list('kategori_id', 'kategori_adi')
+    )
+    gorseller = dict(
+        AktifUrun.objects.using('metaks').filter(stok_kodu__in=kodlar)
+        .values_list('stok_kodu', 'ana_gorsel_dosya_adi')
+    )
+    ozetler = {
+        o.urun_kodu: o for o in StokUrunOzet.objects.using('metaks').filter(urun_kodu__in=kodlar)
+    }
+    for urun in sayfa.object_list:
+        urun.kategori_adi = kategori_adlari.get(urun.kategori_id)
+        dosya = gorseller.get(urun.stok_kodu)
+        urun.gorsel_url = settings.GORSEL_SUNUCU_BASE_URL + dosya if dosya else None
+        ozet = ozetler.get(urun.stok_kodu)
+        urun.toplam_stok = ozet.satisa_hazir_toplam if ozet else None
+        urun.stok_durumu = (
+            'sayilmadi' if ozet is None else ('var' if ozet.satisa_hazir_toplam > 0 else 'sifir')
+        )
+        urun.stok_ozeti = ozet
+
+    return {
+        'sayfa': sayfa, 'filtre': filtre, 'stok_goster': True,
+        'siralamalar': [(k, e) for k, (_, e) in SIRALAMALAR.items()],
+        'kategori_secenekleri': _stok_kategori_secenekleri(filtre),
+        'secili_seritler': _secili_kategori_seritleri(filtre),
+        'toplam': sayfalayici.count,
+        'temiz_url': filtre.url(
+            arama='', kategoriler=[], sadece_stok=False, yer='', lokasyon='',
+            kaplama='', montaj='', durum='', boya='', mine='', stok_turu='',
+            seviye='', fasoncu='', fason_durum='', parti='', olcu='',
+        ),
+        'stok_ac_url': filtre.url(sadece_stok=True),
+        'stok_kapat_url': filtre.url(sadece_stok=False),
+        'sonraki_url': filtre.url(sayfa=sayfa.next_page_number()) if sayfa.has_next() else None,
+        'lokasyonlar': list(LokasyonDetay.objects.using('metaks').filter(aktif_mi=True, yaprak_mi=True)),
+        'kaplamalar': stok_servisi.kaplama_secenekleri(),
+        'renkler': list(Renk.objects.using('metaks').filter(aktif_mi=True)),
+        'fasoncular': list(IsOrtagi.objects.using('metaks').filter(
+            aktif_mi=True,
+            is_ortagi_id__in=Subquery(
+                IsOrtagiRolu.objects.using('metaks').filter(rol='FASONCU').values('is_ortagi_id')
+            ),
+        )),
+    }
+
+
 def _liste_yanit(request, context):
     """Aynı URL'den üç farklı yanıt: sayfalama parçası, filtre bloğu veya tam sayfa."""
     if request.headers.get('HX-Request'):
@@ -357,10 +605,11 @@ def urun_listesi(request):
     return _liste_yanit(request, context)
 
 
+@izin_gerekli('goruntule')
 def stok_listesi(request):
     """Stok görünümü: aynı galeri + stok miktarı + "sadece stokta olanlar" filtresi."""
     filtre = ListeFiltresi(request, reverse('katalog:stok_listesi'))
-    context = _liste_context(request, filtre, stok_goster=True)
+    context = _stok_liste_context(request, filtre)
     context.update({
         'sayfa_basligi': 'Stok Durumu',
         'aktif_sekme': 'stok',
@@ -389,10 +638,11 @@ def _tarih_cozumle(metin):
         return None
 
 
+@izin_gerekli('hareket')
 def hareket_gecmisi(request):
     """stok_hareketleri dökümü: kim, ne zaman, hangi üründe, nereden nereye.
 
-    Salt-okunur — yazmanın tek yolu stok_hareketi_kaydet() (bkz. stok_servisi).
+    Salt-okunur — yazmanın tek yolu stok_islemi_kaydet() (bkz. stok_servisi).
 
     Tarihler `yerel_tarih()` ile aware hâle getiriliyor; hem gösterim hem de tarih
     aralığı filtresi bunun üzerinden çalışıyor. Ham naive UTC kolonuna göre filtrelemek
@@ -412,8 +662,14 @@ def hareket_gecmisi(request):
     )
 
     if arama:
+        eslesen_islemler = StokIslemi.objects.using('metaks').filter(
+            Q(belge_no__icontains=arama)
+            | Q(aciklama__icontains=arama)
+            | Q(islem_nedeni__icontains=arama)
+        ).values('stok_islem_id')
         hareketler = hareketler.filter(
             Q(stok_kodu__icontains=arama) | Q(aciklama__icontains=arama)
+            | Q(stok_islem_id__in=Subquery(eslesen_islemler))
         )
     if tip in stok_servisi.ISLEM_TIPI_DEGERLERI:
         hareketler = hareketler.filter(islem_tipi=tip)
@@ -438,6 +694,16 @@ def hareket_gecmisi(request):
         urun.stok_kodu: urun
         for urun in AktifUrun.objects.using('metaks').filter(stok_kodu__in=kodlar)
     }
+    islem_idleri = {h.stok_islem_id for h in sayfa.object_list if h.stok_islem_id}
+    islem_basliklari = {
+        i.stok_islem_id: i
+        for i in StokIslemi.objects.using('metaks').filter(stok_islem_id__in=islem_idleri)
+    }
+    ortak_idleri = {i.is_ortagi_id for i in islem_basliklari.values() if i.is_ortagi_id}
+    ortak_adlari = dict(
+        IsOrtagi.objects.using('metaks').filter(is_ortagi_id__in=ortak_idleri)
+        .values_list('is_ortagi_id', 'unvan')
+    )
     for hareket in sayfa.object_list:
         hareket.urun = urunler.get(hareket.stok_kodu)
         # Ham değer ('SAYIM_DEVRI') yerine okunur etiket. Şablonda sözlük araması
@@ -445,6 +711,12 @@ def hareket_gecmisi(request):
         hareket.islem_etiketi = stok_servisi.ISLEM_TIPI_ETIKETLERI.get(
             hareket.islem_tipi, hareket.islem_tipi
         )
+        hareket.belge = islem_basliklari.get(hareket.stok_islem_id)
+        if hareket.belge:
+            hareket.islem_amaci = stok_servisi.ISLEM_AMACI_ETIKETLERI.get(
+                hareket.belge.islem_nedeni, hareket.belge.islem_nedeni
+            )
+            hareket.is_ortagi_adi = ortak_adlari.get(hareket.belge.is_ortagi_id)
 
     parametreler = QueryDict(mutable=True)
     for anahtar, deger in [
@@ -550,8 +822,35 @@ URUN_TIPI_ETIKETLERI = {
 }
 
 
-def _urun_detay(request, stok_kodu, *, stok_goster):
-    urun = get_object_or_404(AktifUrun.objects.using('metaks'), pk=stok_kodu)
+def _detay_urunu(stok_kodu, *, pasif_dahil=False):
+    """Katalogda görünmeyen/görselsiz stok kalemini de ortak karta hazırlar."""
+    urun = AktifUrun.objects.using('metaks').filter(pk=stok_kodu).first()
+    if urun:
+        return urun
+
+    if not pasif_dahil:
+        return get_object_or_404(AktifUrun.objects.using('metaks'), pk=stok_kodu)
+
+    urun = get_object_or_404(Urun.objects.using('metaks'), pk=stok_kodu)
+    urun.kategori_adi = next(iter(
+        Kategori.objects.using('metaks').filter(pk=urun.kategori_id)
+        .values_list('kategori_adi', flat=True)
+    ), None)
+    urun.hammadde_adi = next(iter(
+        Hammadde.objects.using('metaks').filter(pk=urun.hammadde_id)
+        .values_list('hammadde_adi', flat=True)
+    ), None)
+    urun.ana_gorsel_dosya_adi = None
+    urun.gorsel_url = None
+    urun.arama_metni = ''
+    return urun
+
+
+def _urun_detay(request, stok_kodu, *, pasif_dahil=False):
+    urun = _detay_urunu(stok_kodu, pasif_dahil=pasif_dahil)
+    stok_goster = izni_var_mi(request.user, 'goruntule')
+    hareket_goster = izni_var_mi(request.user, 'hareket')
+    fason_goster = izni_var_mi(request.user, 'fason')
 
     # parent_stok_kodu, v_aktif_urunler'da olmayan bir ürünü de gösterebilir: ana ürün
     # PASİF olabilir (geçerli ana görseli yoksa katalog dışında kalıyor). 2026-07-30
@@ -569,31 +868,60 @@ def _urun_detay(request, stok_kodu, *, stok_goster):
         'tip_etiketi': URUN_TIPI_ETIKETLERI.get(urun.urun_tipi),
         'ana_urun_katalogda': ana_urun_katalogda,
         'stok_goster': stok_goster,
-        'detay_url_adi': 'katalog:stok_urun_detay' if stok_goster else 'katalog:urun_detay',
+        'hareket_goster': hareket_goster,
+        'fason_goster': fason_goster,
+        'stok_yazabilir': izni_var_mi(request.user, 'islem'),
+        'detay_url_adi': 'katalog:urun_detay',
     }
 
     if stok_goster:
-        context['lokasyonlar'] = _lokasyon_stok(stok_kodu)
-        context['toplam_stok'] = next(
-            iter(
-                ToplamStok.objects.using('metaks')
-                .filter(pk=stok_kodu)
-                .values_list('toplam_miktar', flat=True)
-            ),
-            None,
+        context['lokasyonlar'] = list(
+            StokBakiye.objects.using('metaks')
+            .filter(urun_kodu=stok_kodu)
+            .order_by('sku_kodu', 'lokasyon_tam_adi', 'stok_durumu_kodu')
+        )
+        context['stok_ozeti'] = (
+            StokUrunOzet.objects.using('metaks').filter(pk=stok_kodu).first()
+        )
+        context['stok_kalemleri'] = list(
+            StokKalemi.objects.using('metaks').filter(urun_kodu=stok_kodu, aktif_mi=True)
+        )
+
+    if hareket_goster:
+        context['hareketler'] = list(
+            StokHareketi.objects.using('metaks')
+            .filter(stok_kodu=stok_kodu)
+            .annotate(tarih=yerel_tarih())
+            .select_related('kaynak_lokasyon', 'hedef_lokasyon')[:25]
+        )
+        for hareket in context['hareketler']:
+            hareket.islem_etiketi = stok_servisi.ISLEM_TIPI_ETIKETLERI.get(
+                hareket.islem_tipi, hareket.islem_tipi
+            )
+
+    if fason_goster:
+        sku_idleri = StokKalemi.objects.using('metaks').filter(
+            urun_kodu=stok_kodu
+        ).values('stok_kalemi_id')
+        context['fason_isleri'] = list(
+            FasonIsEmriOzet.objects.using('metaks').filter(
+                Q(kaynak_stok_kalemi_id__in=Subquery(sku_idleri))
+                | Q(hedef_stok_kalemi_id__in=Subquery(sku_idleri))
+            )[:25]
         )
 
     return render(request, 'katalog/_urun_detay.html', context)
 
 
 def urun_detay(request, stok_kodu):
-    """Katalog sayfasından açılan detay paneli — stok bilgisi içermez."""
-    return _urun_detay(request, stok_kodu, stok_goster=False)
+    """Yetkiye göre sekmeleri açılan ortak ürün detay paneli."""
+    return _urun_detay(request, stok_kodu)
 
 
+@izin_gerekli('goruntule')
 def stok_urun_detay(request, stok_kodu):
-    """Stok sayfasından açılan detay paneli — lokasyon bazlı stok dökümü de gösterir."""
-    return _urun_detay(request, stok_kodu, stok_goster=True)
+    """Eski stok kartı adresi de aynı ortak ürün detayını döndürür."""
+    return _urun_detay(request, stok_kodu, pasif_dahil=True)
 
 
 # --------------------------------------------------------------------------------------
@@ -781,11 +1109,8 @@ def stok_islem(request, stok_kodu):
     paylaşılan `depo_admin` kullanıcısıyla bağlanıldığı için current_user'a güvenilemez —
     "kim yaptı" bilgisi uygulamadan açıkça geçirilmek zorunda.
     """
-    urun = _islem_urunu(stok_kodu)
-    # Bu yol ürün detay panelinden geliyor ve bugünkü asıl kullanımı devam eden depo
-    # sayımı — varsayılan SAYIM. Hızlı ekranın varsayılanı GİRİŞ (bkz. hizli_islem).
-    baglam = _islem_baglami(request, urun, varsayilan_tip='SAYIM_DEVRI')
-    return render(request, 'katalog/stok_islem.html', baglam)
+    # Eski derin bağlantı korunur; yeni ekran teknik hareket yerine iş amacı sorar.
+    return redirect(f"{reverse('katalog:stok_merkezi')}?kod={stok_kodu}")
 
 
 @login_required

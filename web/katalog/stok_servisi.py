@@ -1,16 +1,16 @@
-"""Stok hareketi yazma katmanı.
+"""Stok işlemlerinin PostgreSQL yazma kapılarına ince Django adaptörü.
 
-Tek kural: `stok_hareketleri`'ne **asla doğrudan INSERT yok**, sadece
-`stok_hareketi_kaydet()` çağrısı (bkz. veritabani/CLAUDE.md).
-Bunun sebebi iş kurallarının tek bir yerde, veritabanında yaşaması: yeterli stok
-kontrolü, işlem tipine göre lokasyon zorunlulukları, SAYIM_DEVRI'nin fark hesabı ve
-mükerrer gönderim koruması hep o fonksiyonun içinde.
+Migration 008 sonrasında yeni kayıtlar `stok_islemi_kaydet()` üzerinden yazılır;
+`stok_hareketi_kaydet()` yalnız geçiş uyumluluğu içindir. Yeterli stok, amaç/defter
+uyumu, SKU/parti/durum, sayım farkı, fason iş emri ve idempotency kuralları
+veritabanında yaşar.
 
 Bu modül bilinçli olarak o kuralları **tekrar etmiyor** — sadece parametreleri geçiriyor
 ve fonksiyonun döndürdüğü Türkçe mesajı taşıyor. Kuralları burada da doğrulasaydık iki
 kopya zamanla birbirinden ayrışırdı; tek otorite veritabanı.
 """
 
+import json
 import uuid
 
 from django.db import DatabaseError, connections
@@ -133,9 +133,35 @@ def kaplama_secenekleri():
 # Hareket geçmişinde ham değerleri ('SAYIM_DEVRI') değil okunur etiketleri göstermek için.
 ISLEM_TIPI_ETIKETLERI = {tip['deger']: tip['etiket'] for tip in ISLEM_TIPLERI}
 
+# Kullanıcı teknik GIRIS/CIKIS seçmez; iş amacını seçer. View bu amaçtan gereken
+# defter satırlarını üretir, veritabanı da nedeni başlıkta saklar.
+ISLEM_AMACLARI = [
+    ('SATIN_ALMA_KABUL', 'Satın alma kabulü'),
+    ('URETIM_GIRIS', 'Üretimden giriş'),
+    ('SATIS_SEVKI', 'Satış sevkiyatı'),
+    ('IC_TRANSFER', 'Yer değiştir'),
+    ('FASON_SEVK', 'Fasona gönder'),
+    ('FASON_DONUS', 'Fasondan al'),
+    ('FIRE', 'Fason fire kaydı'),
+    ('SAYIM', 'Sayım'),
+    ('DUZELTME', 'Düzeltme'),
+]
+
+ISLEM_AMACI_ETIKETLERI = dict(ISLEM_AMACLARI)
+STOK_DURUMLARI = [
+    ('SERBEST', 'Serbest'),
+    ('KALITE_BEKLIYOR', 'Kalite bekliyor'),
+    ('BLOKE', 'Bloke'),
+]
+MONTAJ_DURUMLARI = [
+    ('HAM', 'Ham'),
+    ('YARI_MONTE', 'Yarı monte'),
+    ('MONTE', 'Monte'),
+]
+
 
 class StokIslemHatasi(Exception):
-    """stok_hareketi_kaydet()'in RAISE EXCEPTION ile döndürdüğü iş kuralı hatası.
+    """PostgreSQL yazma kapılarının RAISE EXCEPTION ile döndürdüğü iş kuralı hatası.
 
     Mesaj zaten Türkçe ve kullanıcıya gösterilmeye uygun (ör. "Yetersiz stok: bu
     lokasyonda 5 adet var, 10 adet çıkış isteniyor.").
@@ -147,7 +173,7 @@ def yeni_islem_kimligi():
 
     Form her basıldığında yeni bir UUID gömülüyor; kullanıcı çift tıklarsa ya da ağ
     isteği tekrarlanırsa aynı kimlik gider ve fonksiyon ikinci satırı yazmaz
-    (uq_stok_hareketleri_istemci_kimligi). Asıl güvence veritabanındaki UNIQUE kısıt —
+    (`stok_islemleri.istemci_islem_kimligi`). Asıl güvence veritabanındaki UNIQUE kısıt —
     butonu pasifleştirmek tek başına yeterli değil, ağ tekrarı onu atlayabilir.
     """
     return str(uuid.uuid4())
@@ -220,3 +246,121 @@ def hareket_kaydet(
         'atlandi': atlandi,
         'mesaj': mesaj,
     }
+
+
+def stok_islemi_kaydet(
+    *,
+    istemci_kimligi,
+    islem_nedeni,
+    satirlar,
+    yapan_kullanici,
+    is_ortagi_id=None,
+    belge_no='',
+    fason_is_emri_id=None,
+    duzelttigi_stok_islem_id=None,
+    aciklama='',
+):
+    """Migration 008'in çok satırlı, atomik stok belgesi yazma kapısı."""
+    with connections['metaks'].cursor() as imlec:
+        try:
+            imlec.execute(
+                'SELECT stok_islem_id, hareket_sayisi, atlandi, mesaj '
+                'FROM stok_islemi_kaydet(%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)',
+                [
+                    istemci_kimligi,
+                    islem_nedeni,
+                    is_ortagi_id,
+                    belge_no or None,
+                    fason_is_emri_id,
+                    duzelttigi_stok_islem_id,
+                    aciklama or None,
+                    yapan_kullanici,
+                    json.dumps(satirlar),
+                ],
+            )
+        except DatabaseError as hata:
+            raise StokIslemHatasi(_hata_mesaji(hata)) from hata
+
+        stok_islem_id, hareket_sayisi, atlandi, mesaj = imlec.fetchone()
+    return {
+        'stok_islem_id': stok_islem_id,
+        'hareket_sayisi': hareket_sayisi,
+        'atlandi': atlandi,
+        'mesaj': mesaj,
+    }
+
+
+def stok_kalemi_kaydet(
+    *, urun_kodu, kaplama_id, boya_renk, mine_renk, montaj_durumu, yapan_kullanici
+):
+    """Gerçekten kullanılan tek bir ürün varyantı için SKU üretir."""
+    with connections['metaks'].cursor() as imlec:
+        try:
+            imlec.execute(
+                'SELECT stok_kalemi_id, sku_kodu, atlandi, mesaj '
+                'FROM stok_kalemi_kaydet(%s, %s, %s, %s, %s, %s)',
+                [
+                    urun_kodu, kaplama_id, boya_renk or None, mine_renk or None,
+                    montaj_durumu, yapan_kullanici,
+                ],
+            )
+        except DatabaseError as hata:
+            raise StokIslemHatasi(_hata_mesaji(hata)) from hata
+        stok_kalemi_id, sku_kodu, atlandi, mesaj = imlec.fetchone()
+    return {
+        'stok_kalemi_id': stok_kalemi_id,
+        'sku_kodu': sku_kodu,
+        'atlandi': atlandi,
+        'mesaj': mesaj,
+    }
+
+
+def fason_is_emri_kaydet(
+    *,
+    istemci_kimligi,
+    is_ortagi_id,
+    fason_lokasyon_id,
+    kaynak_stok_kalemi_id,
+    hedef_stok_kalemi_id,
+    islem_turu,
+    planlanan_miktar,
+    beklenen_donus_tarihi,
+    kaplama_cesidi,
+    aciklama,
+    yapan_kullanici,
+):
+    with connections['metaks'].cursor() as imlec:
+        try:
+            imlec.execute(
+                'SELECT fason_is_emri_id, emir_no, atlandi, mesaj '
+                'FROM fason_is_emri_kaydet(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)',
+                [
+                    istemci_kimligi, is_ortagi_id, fason_lokasyon_id,
+                    kaynak_stok_kalemi_id, hedef_stok_kalemi_id, islem_turu,
+                    planlanan_miktar, beklenen_donus_tarihi, kaplama_cesidi or None,
+                    aciklama or None, yapan_kullanici,
+                ],
+            )
+        except DatabaseError as hata:
+            raise StokIslemHatasi(_hata_mesaji(hata)) from hata
+        fason_is_emri_id, emir_no, atlandi, mesaj = imlec.fetchone()
+    return {
+        'fason_is_emri_id': fason_is_emri_id,
+        'emir_no': emir_no,
+        'atlandi': atlandi,
+        'mesaj': mesaj,
+    }
+
+
+def is_ortagi_kaydet(*, kod, unvan, roller, yapan_kullanici):
+    with connections['metaks'].cursor() as imlec:
+        try:
+            imlec.execute(
+                'SELECT is_ortagi_id, atlandi, mesaj '
+                'FROM is_ortagi_kaydet(%s, %s, %s::jsonb, %s)',
+                [kod, unvan, json.dumps(roller), yapan_kullanici],
+            )
+        except DatabaseError as hata:
+            raise StokIslemHatasi(_hata_mesaji(hata)) from hata
+        is_ortagi_id, atlandi, mesaj = imlec.fetchone()
+    return {'is_ortagi_id': is_ortagi_id, 'atlandi': atlandi, 'mesaj': mesaj}

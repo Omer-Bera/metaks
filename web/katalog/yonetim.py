@@ -22,7 +22,13 @@ from django.db.models import Count
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
-from .forms import KullaniciDuzenlemeFormu, KullaniciEklemeFormu, ParolaBelirlemeFormu
+from .forms import (
+    STOK_ROLLERI,
+    KullaniciDuzenlemeFormu,
+    KullaniciEklemeFormu,
+    ParolaBelirlemeFormu,
+    kullanicinin_stok_rolu,
+)
 from .models import LokasyonDetay, StokHareketi
 
 
@@ -91,6 +97,8 @@ def kullanicilar(request):
         kayit.hareket_sayisi = sayimlar.get(kayit.email, 0) + sayimlar.get(
             kayit.get_username(), 0
         )
+        rol = kullanicinin_stok_rolu(kayit)
+        kayit.stok_rolu_etiketi = dict(STOK_ROLLERI)[rol]
 
     return render(
         request,

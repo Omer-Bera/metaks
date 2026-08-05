@@ -114,6 +114,7 @@ class Lokasyon(models.Model):
         null=True, blank=True, related_name='alt_lokasyonlar',
     )
     kod = models.CharField(max_length=20, null=True, blank=True)
+    is_ortagi_id = models.BigIntegerField(null=True, blank=True)
 
     class Meta:
         managed = False
@@ -172,7 +173,11 @@ class StokHareketi(models.Model):
     """
 
     hareket_id = models.BigAutoField(primary_key=True)
+    stok_islem_id = models.BigIntegerField(null=True)
+    stok_kalemi_id = models.BigIntegerField(null=True)
     stok_kodu = models.CharField(max_length=100)
+    parti_id = models.BigIntegerField(null=True)
+    stok_durumu_kodu = models.CharField(max_length=30, default='SERBEST')
     miktar = models.IntegerField()
     kaynak_lokasyon = models.ForeignKey(
         'Lokasyon', models.DO_NOTHING, db_column='kaynak_lokasyon_id',
@@ -202,6 +207,194 @@ class StokHareketi(models.Model):
 
     def __str__(self):
         return f'{self.hareket_id}: {self.islem_tipi} {self.stok_kodu} x{self.miktar}'
+
+
+class StokIslemi(models.Model):
+    """Çok satırlı stok belgesi başlığı; hareket satırları değiştirilemez detaydır."""
+
+    stok_islem_id = models.BigAutoField(primary_key=True)
+    istemci_islem_kimligi = models.UUIDField()
+    islem_nedeni = models.CharField(max_length=30)
+    is_ortagi_id = models.BigIntegerField(null=True)
+    belge_no = models.CharField(max_length=100, null=True)
+    fason_is_emri_id = models.BigIntegerField(null=True)
+    duzelttigi_stok_islem_id = models.BigIntegerField(null=True)
+    aciklama = models.TextField(null=True)
+    yapan_kullanici = models.CharField(max_length=255)
+    miras_hareket_id = models.BigIntegerField(null=True)
+    islem_tarihi = models.DateTimeField()
+
+    class Meta:
+        managed = False
+        db_table = 'stok_islemleri'
+        ordering = ['-islem_tarihi', '-stok_islem_id']
+
+
+class Renk(models.Model):
+    renk_id = models.AutoField(primary_key=True)
+    renk_adi = models.CharField(max_length=100)
+    aktif_mi = models.BooleanField(default=True)
+
+    class Meta:
+        managed = False
+        db_table = 'renkler'
+        ordering = ['renk_adi']
+
+
+class IsOrtagi(models.Model):
+    is_ortagi_id = models.BigAutoField(primary_key=True)
+    kod = models.CharField(max_length=50)
+    unvan = models.CharField(max_length=255)
+    aktif_mi = models.BooleanField(default=True)
+
+    class Meta:
+        managed = False
+        db_table = 'is_ortaklari'
+        ordering = ['unvan']
+
+    def __str__(self):
+        return self.unvan
+
+
+class IsOrtagiRolu(models.Model):
+    """İş ortağı rolleri; yalnız liste/filtre okumasında kullanılır."""
+
+    is_ortagi_id = models.BigIntegerField(primary_key=True)
+    rol = models.CharField(max_length=20)
+
+    class Meta:
+        managed = False
+        db_table = 'is_ortagi_rolleri'
+        unique_together = (('is_ortagi_id', 'rol'),)
+
+
+class StokKalemi(models.Model):
+    """Stokta işlem gören SKU; `urunler` katalog/model kimliği olarak kalır."""
+
+    stok_kalemi_id = models.BigAutoField(primary_key=True)
+    sku_kodu = models.CharField(max_length=100)
+    urun_kodu = models.CharField(max_length=100)
+    nitelik_durumu = models.CharField(max_length=20)
+    kaplama_id = models.IntegerField(null=True)
+    boya_renk_id = models.IntegerField(null=True)
+    mine_renk_id = models.IntegerField(null=True)
+    montaj_durumu = models.CharField(max_length=20)
+    satilabilir_mi = models.BooleanField()
+    stoklanabilir_mi = models.BooleanField()
+    kritik_stok_esigi = models.IntegerField()
+    aktif_mi = models.BooleanField()
+
+    class Meta:
+        managed = False
+        db_table = 'stok_kalemleri'
+        ordering = ['sku_kodu']
+
+    def __str__(self):
+        return self.sku_kodu
+
+
+class StokParti(models.Model):
+    parti_id = models.BigAutoField(primary_key=True)
+    stok_kalemi_id = models.BigIntegerField()
+    parti_no = models.CharField(max_length=100)
+    aktif_mi = models.BooleanField()
+
+    class Meta:
+        managed = False
+        db_table = 'stok_partileri'
+        ordering = ['parti_no']
+
+
+class StokBakiye(models.Model):
+    """`v_stok_bakiye`: SKU × lokasyon × durum × parti bakiyesi."""
+
+    bakiye_anahtari = models.CharField(max_length=32, primary_key=True)
+    stok_kalemi_id = models.BigIntegerField()
+    sku_kodu = models.CharField(max_length=100)
+    urun_kodu = models.CharField(max_length=100)
+    nitelik_durumu = models.CharField(max_length=20)
+    kaplama_id = models.IntegerField(null=True)
+    kaplama_adi = models.CharField(max_length=100, null=True)
+    boya_renk_id = models.IntegerField(null=True)
+    boya_renk_adi = models.CharField(max_length=100, null=True)
+    mine_renk_id = models.IntegerField(null=True)
+    mine_renk_adi = models.CharField(max_length=100, null=True)
+    montaj_durumu = models.CharField(max_length=20)
+    satilabilir_mi = models.BooleanField()
+    kritik_stok_esigi = models.IntegerField()
+    lokasyon_id = models.IntegerField()
+    lokasyon_adi = models.CharField(max_length=255)
+    lokasyon_tam_adi = models.CharField(max_length=511)
+    lokasyon_tipi = models.CharField(max_length=50)
+    is_ortagi_id = models.BigIntegerField(null=True)
+    stok_durumu_kodu = models.CharField(max_length=30)
+    stok_durumu_adi = models.CharField(max_length=100)
+    kullanilabilir_mi = models.BooleanField()
+    parti_id = models.BigIntegerField(null=True)
+    parti_no = models.CharField(max_length=100, null=True)
+    mevcut_miktar = models.IntegerField()
+
+    class Meta:
+        managed = False
+        db_table = 'v_stok_bakiye'
+        ordering = ['sku_kodu', 'lokasyon_tam_adi']
+
+    @property
+    def varyant_adi(self):
+        parcalar = [
+            self.kaplama_adi,
+            self.boya_renk_adi and f'boya: {self.boya_renk_adi}',
+            self.mine_renk_adi and f'mine: {self.mine_renk_adi}',
+            {
+                'HAM': 'ham', 'YARI_MONTE': 'yarı monte', 'MONTE': 'monte',
+                'BELIRSIZ': 'eski/belirsiz varyant',
+            }.get(self.montaj_durumu),
+        ]
+        return ' · '.join(p for p in parcalar if p)
+
+
+class StokUrunOzet(models.Model):
+    urun_kodu = models.CharField(max_length=100, primary_key=True)
+    sahip_olunan_toplam = models.IntegerField()
+    tesis_ici_toplam = models.IntegerField()
+    satisa_hazir_toplam = models.IntegerField()
+    fasonda_toplam = models.IntegerField()
+    numunede_toplam = models.IntegerField()
+    kalite_bekleyen_toplam = models.IntegerField()
+    bloke_toplam = models.IntegerField()
+
+    class Meta:
+        managed = False
+        db_table = 'v_stok_urun_ozet'
+
+
+class FasonIsEmriOzet(models.Model):
+    fason_is_emri_id = models.BigIntegerField(primary_key=True)
+    emir_no = models.CharField(max_length=30)
+    is_ortagi_id = models.BigIntegerField()
+    fasoncu_adi = models.CharField(max_length=255)
+    fason_lokasyon_id = models.IntegerField()
+    fason_lokasyonu = models.CharField(max_length=511)
+    kaynak_stok_kalemi_id = models.BigIntegerField()
+    kaynak_sku_kodu = models.CharField(max_length=100)
+    hedef_stok_kalemi_id = models.BigIntegerField()
+    hedef_sku_kodu = models.CharField(max_length=100)
+    islem_turu = models.CharField(max_length=30)
+    kaplama_cesidi = models.CharField(max_length=20, null=True)
+    planlanan_miktar = models.IntegerField()
+    beklenen_donus_tarihi = models.DateField(null=True)
+    durum = models.CharField(max_length=20)
+    aciklama = models.TextField(null=True)
+    gonderilen_miktar = models.IntegerField()
+    donen_miktar = models.IntegerField()
+    fire_miktari = models.IntegerField()
+    fason_bakiye = models.IntegerField()
+    acik_miktar = models.IntegerField()
+
+    class Meta:
+        managed = False
+        db_table = 'v_fason_is_emri_ozet'
+        ordering = ['durum', 'beklenen_donus_tarihi', 'emir_no']
 
 
 class Kategori(models.Model):

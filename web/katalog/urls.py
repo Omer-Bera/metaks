@@ -1,7 +1,7 @@
 from django.contrib.auth import views as auth_views
 from django.urls import path
 
-from . import lokasyon_yonetimi, urun_yonetimi, views, yonetim
+from . import lokasyon_yonetimi, stok_yonetimi, urun_yonetimi, views, yonetim
 
 app_name = 'katalog'
 
@@ -15,17 +15,21 @@ urlpatterns = [
 
     path('stok/', views.stok_listesi, name='stok_listesi'),
     path('stok/urun/<str:stok_kodu>/', views.stok_urun_detay, name='stok_urun_detay'),
+    path('stok/islem/', stok_yonetimi.stok_merkezi, name='stok_merkezi'),
+    path('stok/islem/oneriler/', stok_yonetimi.stok_kodu_onerileri, name='stok_kodu_onerileri'),
+    # Sabit alt yollar dinamik ürün kodundan önce gelmeli; aksi halde "oneriler"
+    # bir stok kodu sanılıp eski yönlendirme view'ına düşer.
     path('stok/islem/<str:stok_kodu>/', views.stok_islem, name='stok_islem'),
     path('stok/hareketler/', views.hareket_gecmisi, name='hareket_gecmisi'),
 
-    # Depoya yeni stok girişi. Her zaman GİRİŞ hareketi yazar; işlem tipi sormaz.
-    # Kataloğun "+ Ürün ekle"sinin stok tarafındaki karşılığı (bkz. views.stok_ekle).
-    path('stok/ekle/', views.stok_ekle, name='stok_ekle'),
+    # Eski adresler kanonik amaç-temelli ekrana HTTP yönlendirmesi yapar.
+    path('stok/ekle/', stok_yonetimi.eski_stok_url_yonlendir, name='stok_ekle'),
 
-    # Hızlı giriş: depo sahası ekranı. Tek URL, üç iş — kod çözme (GET), canlı öneri
-    # (GET ?ara=1) ve hareket kaydı (POST). Üçü de aynı #islem-alani'nı tazelediği
-    # için ayrı uç noktalara bölmek gereksiz olurdu.
-    path('stok/hizli/', views.hizli_islem, name='hizli_islem'),
+    path('stok/hizli/', stok_yonetimi.eski_stok_url_yonlendir, name='hizli_islem'),
+    path('stok/varyant/yeni/', stok_yonetimi.stok_kalemi_yeni, name='stok_kalemi_yeni'),
+    path('stok/fason/', stok_yonetimi.fason_isleri, name='fason_isleri'),
+    path('stok/fason/yeni/', stok_yonetimi.fason_is_emri_yeni, name='fason_is_emri_yeni'),
+    path('stok/is-ortagi/yeni/', stok_yonetimi.is_ortagi_yeni, name='is_ortagi_yeni'),
 
     # Django'nun hazır giriş/çıkış view'ları; sadece şablonları bu app'ten.
     # Kök URL giriş yapılmamışken buraya yönlendiriyor (bkz. views.ana_ekran).

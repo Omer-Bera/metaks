@@ -16,10 +16,18 @@ docstring'lerinde anlatılıyor. `UrunFormu` bilerek `ModelForm` DEĞİL, düz
 
 from django import forms
 from django.contrib.auth.forms import AdminPasswordChangeForm, UserCreationForm
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Group, User
 
 from . import stok_servisi, urun_servisi
-from .models import Hammadde, Kategori, Lokasyon, LokasyonDetay
+from .models import (
+    FasonIsEmriOzet,
+    Hammadde,
+    IsOrtagi,
+    IsOrtagiRolu,
+    Kategori,
+    Lokasyon,
+    LokasyonDetay,
+)
 
 # Girdi kutularının ortak görünümü. Şablonlarda tek tek yazmak yerine burada:
 # form alanları Django tarafından basıldığı için sınıfın da Python tarafında
@@ -29,6 +37,36 @@ GIRDI_SINIFI = (
     'focus:outline-none focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5'
 )
 ONAY_KUTUSU_SINIFI = 'w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900/20'
+
+STOK_ROLLERI = [
+    ('YOK', 'Stok yetkisi yok'),
+    ('GORUNTULE', 'Stok görüntüleyici'),
+    ('OPERATOR', 'Stok operatörü'),
+    ('FASON', 'Fason sorumlusu'),
+    ('YONETICI', 'Stok yöneticisi'),
+]
+STOK_ROL_GRUPLARI = {
+    'GORUNTULE': 'Stok Görüntüleyicileri',
+    'OPERATOR': 'Stok Operatörleri',
+    'FASON': 'Fason Sorumluları',
+    'YONETICI': 'Stok Yöneticileri',
+}
+
+
+def kullanicinin_stok_rolu(kullanici):
+    grup_adlari = set(kullanici.groups.values_list('name', flat=True))
+    for kod in ('YONETICI', 'FASON', 'OPERATOR', 'GORUNTULE'):
+        if STOK_ROL_GRUPLARI[kod] in grup_adlari:
+            return kod
+    return 'YOK'
+
+
+def stok_rolunu_kaydet(kullanici, rol):
+    stok_gruplari = Group.objects.filter(name__in=STOK_ROL_GRUPLARI.values())
+    kullanici.groups.remove(*stok_gruplari)
+    grup_adi = STOK_ROL_GRUPLARI.get(rol)
+    if grup_adi:
+        kullanici.groups.add(Group.objects.get(name=grup_adi))
 
 
 def _girdileri_bicimlendir(form):
@@ -69,10 +107,14 @@ class KullaniciEklemeFormu(_EpostaTekilligi, UserCreationForm):
     # adıyla düşer, e-postası olanınki e-postayla — aynı sütunda iki farklı kimlik
     # biçimi karışır ve hareket geçmişindeki "Yapan" filtresi ikiye bölünür.
     email = forms.EmailField(label='E-posta', required=True)
+    stok_rolu = forms.ChoiceField(
+        label='Stok rolü', choices=STOK_ROLLERI,
+        help_text='Sayım, düzeltme ve fason yetkileri role göre ayrı verilir.',
+    )
 
     class Meta(UserCreationForm.Meta):
         model = User
-        fields = ('username', 'email', 'is_staff')
+        fields = ('username', 'email', 'stok_rolu', 'is_staff')
         labels = {'username': 'Kullanıcı adı', 'is_staff': 'Yönetici'}
         help_texts = {
             'username': 'Giriş için kullanılacak ad. Harf, rakam ve @ . + - _ karakterleri.',
@@ -82,6 +124,12 @@ class KullaniciEklemeFormu(_EpostaTekilligi, UserCreationForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         _girdileri_bicimlendir(self)
+
+    def save(self, commit=True):
+        kullanici = super().save(commit=commit)
+        if commit:
+            stok_rolunu_kaydet(kullanici, self.cleaned_data['stok_rolu'])
+        return kullanici
 
 
 class KullaniciDuzenlemeFormu(_EpostaTekilligi, forms.ModelForm):
@@ -96,10 +144,14 @@ class KullaniciDuzenlemeFormu(_EpostaTekilligi, forms.ModelForm):
     """
 
     email = forms.EmailField(label='E-posta', required=True)
+    stok_rolu = forms.ChoiceField(
+        label='Stok rolü', choices=STOK_ROLLERI,
+        help_text='Görüntüleme, işlem, sayım, düzeltme ve fason izinlerini belirler.',
+    )
 
     class Meta:
         model = User
-        fields = ('email', 'is_staff', 'is_active')
+        fields = ('email', 'stok_rolu', 'is_staff', 'is_active')
         labels = {'is_staff': 'Yönetici', 'is_active': 'Hesap aktif'}
         help_texts = {
             'is_staff': 'Yönetim paneline erişebilir: kullanıcı ve lokasyon yönetimi.',
@@ -109,7 +161,15 @@ class KullaniciDuzenlemeFormu(_EpostaTekilligi, forms.ModelForm):
     def __init__(self, *args, duzenleyen=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.duzenleyen = duzenleyen
+        if self.instance.pk:
+            self.initial['stok_rolu'] = kullanicinin_stok_rolu(self.instance)
         _girdileri_bicimlendir(self)
+
+    def save(self, commit=True):
+        kullanici = super().save(commit=commit)
+        if commit:
+            stok_rolunu_kaydet(kullanici, self.cleaned_data['stok_rolu'])
+        return kullanici
 
     def clean(self):
         """Yöneticinin kendini sistemden kilitlemesini engeller.
@@ -173,10 +233,14 @@ class LokasyonEklemeFormu(forms.ModelForm):
     """
 
     tip = forms.ChoiceField(choices=LOKASYON_TIPLERI, label='Tip')
+    is_ortagi_id = forms.TypedChoiceField(
+        label='Bağlı fasoncu', coerce=int, choices=(), required=False, empty_value=None,
+        help_text='Yalnız FASON tipinde zorunludur.',
+    )
 
     class Meta:
         model = Lokasyon
-        fields = ('lokasyon_adi', 'tip', 'ust_lokasyon', 'kod')
+        fields = ('lokasyon_adi', 'tip', 'ust_lokasyon', 'kod', 'is_ortagi_id')
         field_classes = {'ust_lokasyon': _UstLokasyonAlani}
         labels = {
             'lokasyon_adi': 'Ad',
@@ -201,7 +265,23 @@ class LokasyonEklemeFormu(forms.ModelForm):
         )
         self.fields['ust_lokasyon'].required = False
         self.fields['kod'].required = False
+        fasoncu_idleri = IsOrtagiRolu.objects.using('metaks').filter(rol='FASONCU').values_list(
+            'is_ortagi_id', flat=True
+        )
+        self.fields['is_ortagi_id'].choices = [('', '— seçilmedi —')] + list(
+            IsOrtagi.objects.using('metaks').filter(
+                aktif_mi=True, is_ortagi_id__in=fasoncu_idleri
+            ).values_list('is_ortagi_id', 'unvan')
+        )
         _girdileri_bicimlendir(self)
+
+    def clean(self):
+        veri = super().clean()
+        if veri.get('tip') == 'FASON' and not veri.get('is_ortagi_id'):
+            self.add_error('is_ortagi_id', 'Fason lokasyonu bir fasoncuya bağlanmalıdır.')
+        if veri.get('tip') != 'FASON':
+            veri['is_ortagi_id'] = None
+        return veri
 
 
 class UrunFormu(forms.Form):
@@ -261,11 +341,9 @@ class UrunFormu(forms.Form):
 
     # ---- Detay (katlanır bölüm) ----
     #
-    # Kaplama, boya/mine ve montaj durumu 2026-07-31'de buradan ÇIKARILDI:
-    # bunlar ürünün değil, o parti STOĞUN özellikleri. Aynı stok kodu farklı
-    # kaplamalarda üretilebiliyor, yani ürüne tek bir kaplama yazmak yanlış
-    # soruya cevap veriyordu. Yerleri artık `/stok/ekle/` ekranı ve
-    # `stok_hareketleri`'nin kaplama kolonları (veritabani migration 007).
+    # Kaplama, boya/mine ve montaj durumu ürün ana verisinden ÇIKARILDI: aynı ürün
+    # farklı ticari varyantlarda stoklanabilir. Migration 008 sonrasında bunların
+    # kontrollü kimliği `stok_kalemleri` (SKU), giriş noktası `/stok/islem/`dir.
     #
     # `urunler` tablosundaki kaplama_id/boya_mine/montaj_durumu kolonları
     # DÜŞÜRÜLMEDİ ama artık yazılmıyor — üçü de 2.974 satırın hepsinde zaten
@@ -355,78 +433,196 @@ class ParolaBelirlemeFormu(AdminPasswordChangeForm):
         _girdileri_bicimlendir(self)
 
 
-class StokEkleFormu(forms.Form):
-    """Depoya yeni stok girişi — `/stok/ekle/`.
+class StokIslemFormu(forms.Form):
+    """Tek stok merkezi: kullanıcı teknik hareketi değil iş amacını seçer."""
 
-    Bu ekran her zaman bir **GİRİŞ** hareketi yazıyor; işlem tipi seçimi yok. Bu
-    yüzden `stok_islem`/`hizli_islem`'in paylaştığı genel formdan (o beş işlem
-    tipini birden karşılıyor) ayrı duruyor: oradaki işlem-tipine-göre-alan-gizle
-    mantığının burada karşılığı yok, tek yönlü ve daha az soru soran bir ekran.
-
-    Ayrı olan yalnızca FORM; yazma yolu değil. Kayıt yine
-    `stok_servisi.hareket_kaydet()` -> `stok_hareketi_kaydet()` üzerinden gidiyor,
-    yani yeterli stok/lokasyon/mükerrer gönderim kuralları burada tekrarlanmıyor
-    (projenin "yazma tek kapıdan" kuralı).
-
-    Kova alanları (kaplama rengi + çeşidi + montaj) 2026-07-31'de ürün formundan
-    buraya taşındı: bunlar ürünün değil o parti stoğun özellikleri. Üçü birlikte
-    stoğun izlendiği kovayı tanımlıyor; boya/mine ise kovanın dışında, açıklayıcı
-    metin (gerekçe: stok_servisi.py'deki kova notu).
-    """
-
-    stok_kodu = forms.CharField(
-        label='Stok kodu', max_length=100,
-        help_text='Kataloğdaki kod. Barkod okuyucuyla da okutulabilir.',
+    amac = forms.ChoiceField(label='Ne yapıyorsunuz?', choices=stok_servisi.ISLEM_AMACLARI)
+    sku_kodu = forms.CharField(label='Ürün veya SKU kodu', max_length=100)
+    hedef_sku_kodu = forms.CharField(
+        label='Dönüşte oluşan SKU', max_length=100, required=False,
+        help_text='Fason dönüşünde ürün değişiyorsa doldurun; aynı kalıyorsa boş bırakın.',
     )
-    miktar = forms.IntegerField(
-        label='Stok sayısı', min_value=1,
-        help_text='Depoya giren adet.',
+    miktar = forms.IntegerField(label='Miktar', min_value=0)
+    kaynak_lokasyon_id = forms.TypedChoiceField(
+        label='Kaynak lokasyon', coerce=int, choices=(), required=False, empty_value=None,
     )
     hedef_lokasyon_id = forms.TypedChoiceField(
-        label='Lokasyon', coerce=int, choices=(),
-        help_text='Stoğun girdiği yer.',
+        label='Hedef lokasyon', coerce=int, choices=(), required=False, empty_value=None,
+    )
+    stok_durumu_kodu = forms.ChoiceField(
+        label='Kaynak / normal stok durumu', choices=stok_servisi.STOK_DURUMLARI,
+    )
+    hedef_stok_durumu_kodu = forms.ChoiceField(
+        label='Dönüşte hedef stok durumu', choices=stok_servisi.STOK_DURUMLARI,
+        required=False,
+    )
+    is_ortagi_id = forms.TypedChoiceField(
+        label='Müşteri / tedarikçi', coerce=int, choices=(), required=False, empty_value=None,
+    )
+    fason_is_emri_id = forms.TypedChoiceField(
+        label='Fason iş emri', coerce=int, choices=(), required=False, empty_value=None,
+    )
+    belge_no = forms.CharField(label='Belge / referans no', max_length=100, required=False)
+    parti_no = forms.CharField(
+        label='Parti / lot no', max_length=100, required=False,
+        help_text='İzlenmesi gereken kabul ve üretim partilerinde doldurun.',
+    )
+    duzelttigi_stok_islem_id = forms.IntegerField(
+        label='Tersine çevrilen işlem no', min_value=1, required=False,
+        help_text='Düzeltmede zorunludur; hareket geçmişindeki belge numarasını girin.',
+    )
+    aciklama = forms.CharField(
+        label='Açıklama', required=False, widget=forms.Textarea(attrs={'rows': 2}),
     )
 
+    def __init__(self, *args, izinli_amaclar=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if izinli_amaclar is not None:
+            self.fields['amac'].choices = [
+                secenek for secenek in stok_servisi.ISLEM_AMACLARI
+                if secenek[0] in izinli_amaclar
+            ]
+        lokasyonlar = list(
+            LokasyonDetay.objects.using('metaks').filter(aktif_mi=True, yaprak_mi=True)
+        )
+        lokasyon_secenekleri = [
+            (l.lokasyon_id, f'{l.tam_ad} ({l.tip})') for l in lokasyonlar
+        ]
+        bos = [('', '— seçilmedi —')]
+        self.fields['kaynak_lokasyon_id'].choices = bos + lokasyon_secenekleri
+        self.fields['hedef_lokasyon_id'].choices = bos + lokasyon_secenekleri
+        roller = {}
+        for ortak_id, rol in IsOrtagiRolu.objects.using('metaks').values_list(
+            'is_ortagi_id', 'rol'
+        ):
+            roller.setdefault(ortak_id, []).append(rol)
+        self.fields['is_ortagi_id'].choices = bos + [
+            (o.is_ortagi_id, f"{o.unvan} ({', '.join(roller.get(o.is_ortagi_id, []))})")
+            for o in IsOrtagi.objects.using('metaks').filter(aktif_mi=True)
+        ]
+        self.fields['fason_is_emri_id'].choices = bos + [
+            (
+                e.fason_is_emri_id,
+                f'{e.emir_no} · {e.fasoncu_adi} · {e.kaynak_sku_kodu} → {e.hedef_sku_kodu}',
+            )
+            for e in FasonIsEmriOzet.objects.using('metaks').filter(durum='ACIK')
+        ]
+        _girdileri_bicimlendir(self)
+
+    def clean(self):
+        veri = super().clean()
+        amac = veri.get('amac')
+        miktar = veri.get('miktar')
+        if amac != 'SAYIM' and miktar is not None and miktar <= 0:
+            self.add_error('miktar', 'Miktar sıfırdan büyük olmalıdır.')
+        if amac in ('SATIN_ALMA_KABUL', 'URETIM_GIRIS') and not veri.get('hedef_lokasyon_id'):
+            self.add_error('hedef_lokasyon_id', 'Bu işlem için hedef lokasyon zorunludur.')
+        if amac == 'SATIS_SEVKI' and not veri.get('kaynak_lokasyon_id'):
+            self.add_error('kaynak_lokasyon_id', 'Satış sevki için kaynak lokasyon zorunludur.')
+        if amac == 'IC_TRANSFER':
+            if not veri.get('kaynak_lokasyon_id'):
+                self.add_error('kaynak_lokasyon_id', 'Transfer için kaynak zorunludur.')
+            if not veri.get('hedef_lokasyon_id'):
+                self.add_error('hedef_lokasyon_id', 'Transfer için hedef zorunludur.')
+        if amac == 'SAYIM' and not veri.get('hedef_lokasyon_id'):
+            self.add_error('hedef_lokasyon_id', 'Sayımın yapıldığı lokasyon zorunludur.')
+        if amac in ('SATIN_ALMA_KABUL', 'SATIS_SEVKI') and not veri.get('is_ortagi_id'):
+            self.add_error('is_ortagi_id', 'Müşteri / tedarikçi seçimi zorunludur.')
+        if amac in ('FASON_SEVK', 'FASON_DONUS', 'FIRE') and not veri.get('fason_is_emri_id'):
+            self.add_error('fason_is_emri_id', 'Fason iş emri zorunludur.')
+        if amac in ('FASON_SEVK', 'FASON_DONUS'):
+            if not veri.get('kaynak_lokasyon_id'):
+                self.add_error('kaynak_lokasyon_id', 'Fason hareketinde kaynak zorunludur.')
+            if not veri.get('hedef_lokasyon_id'):
+                self.add_error('hedef_lokasyon_id', 'Fason hareketinde hedef zorunludur.')
+        if amac == 'FIRE' and not veri.get('kaynak_lokasyon_id'):
+            self.add_error('kaynak_lokasyon_id', 'Firenin bulunduğu fason lokasyonu zorunludur.')
+        if amac == 'DUZELTME':
+            if not veri.get('duzelttigi_stok_islem_id'):
+                self.add_error('duzelttigi_stok_islem_id', 'Düzeltilen işlem numarası zorunludur.')
+            if not (veri.get('aciklama') or '').strip():
+                self.add_error('aciklama', 'Düzeltme gerekçesi zorunludur.')
+            if not veri.get('kaynak_lokasyon_id') and not veri.get('hedef_lokasyon_id'):
+                self.add_error('kaynak_lokasyon_id', 'Kaynak veya hedef lokasyondan biri zorunludur.')
+        return veri
+
+
+class StokKalemiFormu(forms.Form):
+    urun_kodu = forms.CharField(label='Ürün kodu', max_length=100)
     kaplama_id = forms.TypedChoiceField(
-        label='Kaplama rengi', coerce=int, choices=(), required=False, empty_value=None,
+        label='Kaplama', coerce=int, choices=(), required=False, empty_value=None,
+    )
+    boya_renk = forms.CharField(label='Boya rengi', max_length=100, required=False)
+    mine_renk = forms.CharField(label='Mine rengi', max_length=100, required=False)
+    montaj_durumu = forms.ChoiceField(
+        label='Montaj hali', choices=stok_servisi.MONTAJ_DURUMLARI,
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['kaplama_id'].choices = [
+            ('', '— kaplama yok/belirsiz —'), *stok_servisi.kaplama_secenekleri()
+        ]
+        _girdileri_bicimlendir(self)
+
+
+class FasonIsEmriFormu(forms.Form):
+    is_ortagi_id = forms.TypedChoiceField(
+        label='Fasoncu', coerce=int, choices=(), empty_value=None,
+    )
+    fason_lokasyon_id = forms.TypedChoiceField(
+        label='Fason lokasyonu', coerce=int, choices=(), empty_value=None,
+    )
+    kaynak_sku_kodu = forms.CharField(label='Gönderilecek SKU', max_length=100)
+    hedef_sku_kodu = forms.CharField(label='Dönecek SKU', max_length=100)
+    islem_turu = forms.ChoiceField(
+        label='İşlem', choices=[
+            ('KAPLAMA', 'Kaplama'), ('MINE', 'Mine'), ('BOYA', 'Boya'),
+            ('MONTAJ', 'Montaj'), ('DIGER', 'Diğer'),
+        ],
     )
     kaplama_cesidi = forms.ChoiceField(
-        label='Kaplama çeşidi', choices=(), required=False,
+        label='Kaplama yöntemi', required=False,
+        choices=[('', '— uygulanmıyor/belirsiz —'), *stok_servisi.KAPLAMA_CESITLERI],
     )
-    montaj = forms.ChoiceField(
-        label='Montaj', choices=(), required=False,
+    planlanan_miktar = forms.IntegerField(label='Planlanan miktar', min_value=1)
+    beklenen_donus_tarihi = forms.DateField(
+        label='Beklenen dönüş', required=False, widget=forms.DateInput(attrs={'type': 'date'}),
     )
-
-    boya = forms.CharField(label='Boya', max_length=100, required=False)
-    mine = forms.CharField(label='Mine', max_length=100, required=False)
-
     aciklama = forms.CharField(
         label='Açıklama', required=False, widget=forms.Textarea(attrs={'rows': 2}),
     )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
-        # Seçenekler __init__'te: import anında `metaks` bağlantısına sorgu
-        # atılamaz ve using('metaks') gerekiyor — `UrunFormu`'ndaki queryset
-        # atamasının aynı gerekçesi (bkz. LokasyonEklemeFormu docstring'i:
-        # DATABASE_ROUTERS olmadığı için using() olmayan her sorgu SQLite'a gider).
-        #
-        # aktif_mi + yaprak_mi: dolap gibi ÜST lokasyonlar seçilebilir görünürse
-        # stok_hareketi_kaydet() onları reddediyor (migration 004) ve kullanıcı
-        # hatayı formu doldurup gönderdikten SONRA görürdü.
-        self.fields['hedef_lokasyon_id'].choices = [
-            (lok.lokasyon_id, lok.tam_ad or lok.lokasyon_adi)
-            for lok in LokasyonDetay.objects.using('metaks')
-            .filter(aktif_mi=True, yaprak_mi=True)
+        fasoncu_idleri = IsOrtagiRolu.objects.using('metaks').filter(rol='FASONCU').values_list(
+            'is_ortagi_id', flat=True
+        )
+        self.fields['is_ortagi_id'].choices = list(
+            IsOrtagi.objects.using('metaks').filter(
+                aktif_mi=True, is_ortagi_id__in=fasoncu_idleri
+            ).values_list('is_ortagi_id', 'unvan')
+        )
+        self.fields['fason_lokasyon_id'].choices = [
+            (l.lokasyon_id, l.tam_ad)
+            for l in LokasyonDetay.objects.using('metaks').filter(
+                aktif_mi=True, yaprak_mi=True, tip='FASON'
+            )
         ]
+        _girdileri_bicimlendir(self)
 
-        self.fields['kaplama_id'].choices = [
-            ('', '— belirtilmedi —'), *stok_servisi.kaplama_secenekleri()
-        ]
-        self.fields['kaplama_cesidi'].choices = [
-            ('', '— belirtilmedi —'), *stok_servisi.KAPLAMA_CESITLERI
-        ]
-        self.fields['montaj'].choices = stok_servisi.MONTAJ_SECENEKLERI
 
+class IsOrtagiFormu(forms.Form):
+    kod = forms.CharField(label='Kısa kod', max_length=50)
+    unvan = forms.CharField(label='Unvan', max_length=255)
+    roller = forms.MultipleChoiceField(
+        label='Roller',
+        choices=[
+            ('MUSTERI', 'Müşteri'), ('TEDARIKCI', 'Tedarikçi'), ('FASONCU', 'Fasoncu'),
+        ],
+        widget=forms.CheckboxSelectMultiple,
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         _girdileri_bicimlendir(self)
