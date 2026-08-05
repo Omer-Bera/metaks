@@ -197,6 +197,11 @@ class StokHareketi(models.Model):
     islem_etiketi: str       # ISLEM_TIPI_ETIKETLERI'nden okunur ("SAYIM_DEVRI" -> "Sayım")
     urun: AktifUrun | None   # listedeki hareketin ürünü; katalogda yoksa None
     tarih: datetime          # yerel_tarih() annotate'i (aware, Europe/Istanbul)
+    belge: 'StokIslemi | None'   # satırın bağlı olduğu belge başlığı
+    islem_amaci: str             # belge başlığındaki islem_nedeni'nin okunur etiketi
+    is_ortagi_adi: str | None    # belgedeki müşteri/tedarikçi/fasoncu unvanı
+    sku: 'StokKalemi | None'     # 008 öncesi hareketlerde NULL olabilir
+    varyant_ozeti: str           # "Nikel · monte"; SKU yoksa boş dizge
 
     class Meta:
         managed = False
@@ -523,6 +528,11 @@ class LokasyonStok(models.Model):
     okumak için kullanılıyor, pk ile tekil erişim yapılmıyor. Kova kırılımından
     sonra bu daha da önemli: aynı stok_kodu artık birden çok satırda görünüyor,
     ama .filter() satırları teklemediği için sonuç doğru kalıyor.
+
+    2026-08-05 itibarıyla bu modelin Django tarafında OKUYUCUSU YOK: onu kullanan
+    son yer silinen `views._lokasyon_stok()`'tu. Migration 008'den sonra lokasyon
+    kırılımının otoritesi `v_stok_bakiye` (`StokBakiye`); bu view canlı şemada
+    duruyor ama arayüz onu artık sormuyor.
     """
 
     stok_kodu = models.CharField(max_length=100, primary_key=True)
@@ -538,10 +548,6 @@ class LokasyonStok(models.Model):
     kaplama_adi = models.CharField(max_length=100, null=True)
     kaplama_cesidi = models.CharField(max_length=20, null=True)
     montaj = models.BooleanField(null=True)
-
-    # Çalışma anında iliştiriliyor (views._lokasyon_stok): lokasyon artık aktif mi.
-    # Sadece tip bildirimi, kolon değil — gerekçe için bkz. AktifUrun.
-    pasif: bool
 
     class Meta:
         managed = False

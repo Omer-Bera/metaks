@@ -1,8 +1,11 @@
 """Migration 008'in SKU, stok belgesi ve fason operasyon ekranları."""
 
+from collections import Counter
+
 from django.conf import settings
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
+from django.db import transaction
 from django.db.models import Q
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -23,6 +26,24 @@ def _sku_bul(kod):
     return (
         StokKalemi.objects.using('metaks').filter(sku_kodu=kod, aktif_mi=True).first()
         or StokKalemi.objects.using('metaks').filter(sku_kodu__iexact=kod, aktif_mi=True).first()
+    )
+
+
+def _urun_kodu_bul(kod):
+    """Yazılan kodu bir ürün koduna çevirir; ürün yoksa None.
+
+    Harf duyarlı eşleşme önce denenir — `_sku_bul` ile aynı duruş. `AktifUrun`
+    değil ham `Urun` sorgulanıyor: PASİF ürünlerin de SKU'su açılabilmeli
+    (`v_aktif_urunler` katalogda görünmeyenleri hiç göstermiyor).
+    """
+    kod = (kod or '').strip()
+    if not kod:
+        return None
+    return (
+        Urun.objects.using('metaks').filter(stok_kodu=kod)
+        .values_list('stok_kodu', flat=True).first()
+        or Urun.objects.using('metaks').filter(stok_kodu__iexact=kod)
+        .values_list('stok_kodu', flat=True).first()
     )
 
 
@@ -123,19 +144,47 @@ def stok_merkezi(request):
             else:  # DUZELTME
                 satirlar = [_satir(sku, 'DUZELTME', miktar, kaynak, hedef, durum, parti_no=parti_no)]
 
+            fire = veri.get('fire_miktari') or 0
             try:
-                sonuc = stok_servisi.stok_islemi_kaydet(
-                    istemci_kimligi=istemci_kimligi,
-                    islem_nedeni=amac,
-                    satirlar=satirlar,
-                    yapan_kullanici=_kullanici_adi(request),
-                    is_ortagi_id=veri.get('is_ortagi_id'),
-                    belge_no=veri.get('belge_no', ''),
-                    fason_is_emri_id=veri.get('fason_is_emri_id'),
-                    duzelttigi_stok_islem_id=veri.get('duzelttigi_stok_islem_id'),
-                    aciklama=veri.get('aciklama', ''),
-                )
+                # Fire girildiyse iki AYRI belge yazılıyor (veritabanı bir başlıkta
+                # tek `islem_nedeni` tutuyor), ama tek transaction içinde: fire
+                # reddedilirse dönüş de geri alınsın. Aksi hâlde fasoncunun
+                # teslimatı defterde yarım kalırdı.
+                with transaction.atomic(using='metaks'):
+                    sonuc = stok_servisi.stok_islemi_kaydet(
+                        istemci_kimligi=istemci_kimligi,
+                        islem_nedeni=amac,
+                        satirlar=satirlar,
+                        yapan_kullanici=_kullanici_adi(request),
+                        is_ortagi_id=veri.get('is_ortagi_id'),
+                        belge_no=veri.get('belge_no', ''),
+                        fason_is_emri_id=veri.get('fason_is_emri_id'),
+                        duzelttigi_stok_islem_id=veri.get('duzelttigi_stok_islem_id'),
+                        aciklama=veri.get('aciklama', ''),
+                    )
+                    if fire:
+                        fire_sonucu = stok_servisi.stok_islemi_kaydet(
+                            istemci_kimligi=stok_servisi.turetilmis_islem_kimligi(
+                                istemci_kimligi, 'fason-fire'
+                            ),
+                            islem_nedeni='FIRE',
+                            # Fire, sağlam malın DÖNDÜĞÜ SKU'dan değil fasondaki
+                            # kaynak SKU'dan düşer: fiziksel olarak hiç dönmeyen mal
+                            # hâlâ iş emrindeki gönderilen varyanttır.
+                            satirlar=[
+                                _satir(sku, 'CIKIS', fire, kaynak, None, durum, parti_no=parti_no)
+                            ],
+                            yapan_kullanici=_kullanici_adi(request),
+                            fason_is_emri_id=veri.get('fason_is_emri_id'),
+                            aciklama=veri.get('aciklama', ''),
+                        )
+                        sonuc = {
+                            **sonuc,
+                            'mesaj': f"{sonuc['mesaj']} Ayrıca {fire} adet fire düşüldü.",
+                            'atlandi': sonuc['atlandi'] and fire_sonucu['atlandi'],
+                        }
             except stok_servisi.StokIslemHatasi as istisna:
+                sonuc = None
                 hata = str(istisna)
 
             if sonuc and not sonuc['atlandi']:
@@ -150,14 +199,26 @@ def stok_merkezi(request):
                 }, izinli_amaclar=izinli_amaclar)
                 istemci_kimligi = stok_servisi.yeni_islem_kimligi()
 
-    secili_sku = _sku_bul(form['sku_kodu'].value())
+    girilen_kod = form['sku_kodu'].value()
+    secili_sku = _sku_bul(girilen_kod)
     bakiyeler = []
+    # Yazılan kod için "yeni varyant aç" kısayolunun gösterileceği ürün kodu. İki
+    # durumda dolu: kod bir ürüne karşılık geliyor ama henüz hiç SKU'su yok, ya da
+    # bulunan SKU migration 008'in miras (BELIRSIZ) varyantı — ikisi de gerçek bir
+    # kaplama/montaj kombinasyonu açılması gereken hâller.
+    varyant_urun_kodu = None
+    miras_sku = False
     if secili_sku:
         bakiyeler = list(
             StokBakiye.objects.using('metaks')
             .filter(stok_kalemi_id=secili_sku.stok_kalemi_id)
             .exclude(mevcut_miktar=0)
         )
+        miras_sku = secili_sku.nitelik_durumu == 'BELIRSIZ'
+        if miras_sku:
+            varyant_urun_kodu = secili_sku.urun_kodu
+    else:
+        varyant_urun_kodu = _urun_kodu_bul(girilen_kod)
     return render(request, 'katalog/stok_merkezi.html', {
         'form': form,
         'sonuc': sonuc,
@@ -165,6 +226,8 @@ def stok_merkezi(request):
         'istemci_kimligi': istemci_kimligi,
         'secili_sku': secili_sku,
         'bakiyeler': bakiyeler,
+        'varyant_urun_kodu': varyant_urun_kodu,
+        'miras_sku': miras_sku,
         'aktif_sekme': 'stok',
     })
 
@@ -198,6 +261,51 @@ def stok_kodu_onerileri(request):
             dosya = gorseller.get(kayit.urun_kodu)
             kayit.gorsel_url = settings.GORSEL_SUNUCU_BASE_URL + dosya if dosya else None
     return render(request, 'katalog/_stok_kodu_onerileri.html', {'kayitlar': kayitlar})
+
+
+@izin_gerekli('islem')
+def urun_kodu_onerileri(request):
+    """Yeni SKU ekranının ürün kodu önerileri.
+
+    `stok_kodu_onerileri`'nin ürün karşılığı ve bilerek AYRI bir uç nokta: orası
+    `stok_kalemleri` (var olan SKU'lar) içinde arıyor, burada aranan şey ise henüz
+    varyantı olmayabilecek ÜRÜN. İkisini tek uçta birleştirmek, "yeni varyant aç"
+    ekranında yalnızca zaten varyantı olan ürünleri önerirdi.
+
+    Kaynak ham `Urun`: PASİF ürünlerin de SKU'su açılabilmeli (`v_aktif_urunler`
+    onları hiç göstermiyor). Kategori ve görsel birer toplu sorguyla ekleniyor.
+    """
+    arama = request.GET.get('urun_kodu', '').strip()
+    kayitlar = []
+    if arama:
+        kayitlar = list(
+            Urun.objects.using('metaks')
+            .filter(stok_kodu__icontains=arama)
+            .order_by('stok_kodu')[:10]
+        )
+        kodlar = [u.stok_kodu for u in kayitlar]
+        kategoriler = dict(
+            Kategori.objects.using('metaks').filter(
+                kategori_id__in={u.kategori_id for u in kayitlar if u.kategori_id}
+            ).values_list('kategori_id', 'kategori_adi')
+        )
+        gorseller = dict(
+            AktifUrun.objects.using('metaks').filter(stok_kodu__in=kodlar)
+            .values_list('stok_kodu', 'ana_gorsel_dosya_adi')
+        )
+        # Ürün başına açık varyant sayısı: aynı kombinasyonu ikinci kez açmaya
+        # çalışmadan önce personelin görmesi gereken tek sayı.
+        varyant_sayilari = Counter(
+            StokKalemi.objects.using('metaks')
+            .filter(urun_kodu__in=kodlar, aktif_mi=True, nitelik_durumu='TANIMLI')
+            .values_list('urun_kodu', flat=True)
+        )
+        for kayit in kayitlar:
+            kayit.kategori_adi = kategoriler.get(kayit.kategori_id)
+            dosya = gorseller.get(kayit.stok_kodu)
+            kayit.gorsel_url = settings.GORSEL_SUNUCU_BASE_URL + dosya if dosya else None
+            kayit.varyant_sayisi = varyant_sayilari[kayit.stok_kodu]
+    return render(request, 'katalog/_urun_kodu_onerileri.html', {'kayitlar': kayitlar})
 
 
 @izin_gerekli('islem')

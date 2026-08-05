@@ -41,6 +41,12 @@
                     {% if stok_yazabilir %}
                     <a href="{% url 'katalog:stok_merkezi' %}?kod={{ urun.stok_kodu|urlencode }}"
                        class="rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white">Stok işlemi</a>
+                    {% comment %}
+                    Ürün kodu URL'e geçiyor: yeni SKU ekranı `?urun_kodu=` ile açıldığında
+                    kutuyu önceden dolduruyor, personel kodu ikinci kez yazmıyor.
+                    {% endcomment %}
+                    <a href="{% url 'katalog:stok_kalemi_yeni' %}?urun_kodu={{ urun.stok_kodu|urlencode }}"
+                       class="rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-700">+ Yeni varyant (SKU)</a>
                     {% endif %}
                 </div>
             </aside>

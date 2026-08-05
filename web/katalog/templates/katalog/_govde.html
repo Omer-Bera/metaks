@@ -20,6 +20,34 @@ sıralama) bunun dışında kalıyor ve durumu buradaki #filtre-durumu üzerinde
     </div>
 
     {% if stok_goster %}
+    {% comment %}
+    Stok modülünün üç yazma eylemi filtre barının ÜSTÜNDE ve buton olarak duruyor.
+    Önceden yalnız "+ Stok işlemi" vardı, sonuç sayısının yanında küçük bir alt
+    çizgili bağlantı olarak; "Yeni SKU" ve "Fason işler" ise sadece /stok/islem/
+    sayfasının sağ üst köşesindeydi — yani stok sayfasından ikisine de ancak araya
+    bir ekran girerek ulaşılıyordu.
+
+    Her biri kendi izninin arkasında: stok yazma yetkisi olmayan görüntüleyici
+    bunları hiç görmüyor (sunucu tarafındaki kapı yine `izin_gerekli`).
+    {% endcomment %}
+    {% if user.is_authenticated %}
+    <div class="mb-4 flex flex-wrap items-center gap-2">
+        {% if perms.katalog.stok_islem_yap or user.is_staff %}
+        <a href="{% url 'katalog:stok_merkezi' %}"
+           class="rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-medium text-white
+                  transition hover:bg-slate-700">+ Stok işlemi</a>
+        <a href="{% url 'katalog:stok_kalemi_yeni' %}"
+           class="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium
+                  text-slate-700 transition hover:border-slate-400">+ Yeni varyant (SKU)</a>
+        {% endif %}
+        {% if perms.katalog.fason_yonet or user.is_staff %}
+        <a href="{% url 'katalog:fason_isleri' %}"
+           class="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium
+                  text-slate-700 transition hover:border-slate-400">🏭 Fason işleri</a>
+        {% endif %}
+    </div>
+    {% endif %}
+
     <section id="stok-filtreleri" class="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
         <div class="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
             <label class="text-xs text-slate-500">Bulunduğu yer
@@ -159,24 +187,21 @@ sıralama) bunun dışında kalıyor ve durumu buradaki #filtre-durumu üzerinde
             en baştaki ayrılma sebebinin devamı; katalog ürünün kendisiyle, stok
             deposuyla ilgileniyor.
 
-            "+ Ürün ekle" önce ikisinde birden çıkıyordu. Stok tarafından kaldırıldı:
-            depocunun kataloğa girmemiş bir ürünle karşılaşması zaten hızlı giriş
-            ekranının "bulunamadı → bu kodla ürün oluştur" dalıyla karşılanıyor, yani
-            yol kapanmıyor, yalnızca her sayfa kendi işini anlatıyor.
+            "+ Ürün ekle" önce ikisinde birden çıkıyordu; stok tarafından kaldırıldı.
+            Depocunun kataloğa girmemiş bir kodla karşılaşması aşağıdaki boş sonuç
+            dalıyla ("… koduyla ürün ekle") karşılanıyor, yani yol kapanmıyor.
 
-            İkisi de yalnızca giriş yapmış kullanıcıya: katalog ön büroda müşteri
-            karşısında açılan bir ekran, orada bu butonların yeri yok.
+            Stok sayfasının kendi eylemleri 2026-08-05'te buradan filtre barının
+            ÜSTÜNDEKİ buton grubuna taşındı (bkz. yukarısı) — bu satır artık yalnız
+            katalog sayfasına ait.
+
+            Yalnızca giriş yapmış kullanıcıya: katalog ön büroda müşteri karşısında
+            açılan bir ekran, orada bu butonun yeri yok.
             {% endcomment %}
-            {% if user.is_authenticated %}
-                {% if stok_goster %}
-                {% if perms.katalog.stok_islem_yap or user.is_staff %}<a href="{% url 'katalog:stok_merkezi' %}"
-                   class="text-sm text-slate-500 underline underline-offset-4
-                          transition hover:text-slate-900">+ Stok işlemi</a>{% endif %}
-                {% else %}
-                <a href="{% url 'katalog:urun_ekle' %}"
-                   class="text-sm text-slate-500 underline underline-offset-4
-                          transition hover:text-slate-900">+ Ürün ekle</a>
-                {% endif %}
+            {% if user.is_authenticated and not stok_goster %}
+            <a href="{% url 'katalog:urun_ekle' %}"
+               class="text-sm text-slate-500 underline underline-offset-4
+                      transition hover:text-slate-900">+ Ürün ekle</a>
             {% endif %}
 
             {% if stok_goster %}

@@ -26,9 +26,21 @@ değer basılırsa saat 3 saat geri görünür (bkz. models.py::StokHareketi).
             <div class="w-8 h-8 shrink-0 rounded border border-slate-200 bg-slate-50"
                  title="Ürün aktif katalogda değil"></div>
             {% endif %}
-            <div>
+            {% comment %}
+            Ürün kodu tek başına yetmiyor: aynı kod altında farklı kaplama/montaj
+            varyantları var ve satırdan hangi malın hareket ettiği anlaşılmıyordu.
+            SKU kodu ile varyant özeti (bkz. views._sku_ozetlerini_ekle) kodun
+            altında; migration 008 öncesi hareketlerde SKU yok, o satırlar eskisi
+            gibi yalnız kodu ve kategoriyi gösteriyor.
+            {% endcomment %}
+            <div class="min-w-0">
                 <div class="font-mono text-[13px] text-slate-900">{{ hareket.stok_kodu }}</div>
-                {% if hareket.urun.kategori_adi %}
+                {% if hareket.sku %}
+                <div class="font-mono text-[11px] text-slate-500">{{ hareket.sku.sku_kodu }}</div>
+                {% endif %}
+                {% if hareket.varyant_ozeti %}
+                <div class="text-xs text-slate-400">{{ hareket.varyant_ozeti }}</div>
+                {% elif hareket.urun.kategori_adi %}
                 <div class="text-xs text-slate-400">{{ hareket.urun.kategori_adi }}</div>
                 {% endif %}
             </div>
@@ -47,7 +59,22 @@ değer basılırsa saat 3 saat geri görünür (bkz. models.py::StokHareketi).
 
     <td class="px-4 py-2.5 align-top">
         {% if hareket.belge %}
-        <div class="text-slate-700">{{ hareket.islem_amaci }}</div>
+        {% comment %}
+        Fason ve fire, defterde geri alınamayan ya da dışarıdaki malı ilgilendiren
+        hareketler; taranan bir listede düz metin olarak kayboluyorlardı. Rozet
+        yalnız bu üç nedende basılıyor — hepsine etiket koymak ayırt ediciliği
+        sıfırlardı.
+        {% endcomment %}
+        <div class="flex flex-wrap items-center gap-1.5">
+            <span class="text-slate-700">{{ hareket.islem_amaci }}</span>
+            {% if hareket.belge.islem_nedeni == 'FIRE' %}
+            <span class="rounded bg-rose-100 px-1.5 py-0.5 text-[11px] font-medium text-rose-800">fire</span>
+            {% elif hareket.belge.islem_nedeni == 'FASON_SEVK' %}
+            <span class="rounded bg-indigo-100 px-1.5 py-0.5 text-[11px] font-medium text-indigo-800">fasona</span>
+            {% elif hareket.belge.islem_nedeni == 'FASON_DONUS' %}
+            <span class="rounded bg-indigo-100 px-1.5 py-0.5 text-[11px] font-medium text-indigo-800">fasondan</span>
+            {% endif %}
+        </div>
         <div class="text-xs text-slate-400">
             #{{ hareket.belge.stok_islem_id }}
             {% if hareket.belge.belge_no %} · {{ hareket.belge.belge_no }}{% endif %}

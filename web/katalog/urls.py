@@ -27,6 +27,11 @@ urlpatterns = [
 
     path('stok/hizli/', stok_yonetimi.eski_stok_url_yonlendir, name='hizli_islem'),
     path('stok/varyant/yeni/', stok_yonetimi.stok_kalemi_yeni, name='stok_kalemi_yeni'),
+    path(
+        'stok/varyant/oneriler/',
+        stok_yonetimi.urun_kodu_onerileri,
+        name='urun_kodu_onerileri',
+    ),
     path('stok/fason/', stok_yonetimi.fason_isleri, name='fason_isleri'),
     path('stok/fason/yeni/', stok_yonetimi.fason_is_emri_yeni, name='fason_is_emri_yeni'),
     path('stok/is-ortagi/yeni/', stok_yonetimi.is_ortagi_yeni, name='is_ortagi_yeni'),

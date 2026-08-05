@@ -16,10 +16,9 @@ from .models import (
     Hammadde,
     IsOrtagi,
     IsOrtagiRolu,
+    Kaplama,
     Kategori,
-    Lokasyon,
     LokasyonDetay,
-    LokasyonStok,
     StokBakiye,
     StokHareketi,
     StokIslemi,
@@ -147,6 +146,14 @@ def ana_ekran(request):
 # davranışını kullanıyor. İki sayfa arasındaki tek fark stok bilgisinin gösterilmesi
 # ve "sadece stokta olanlar" filtresi (bkz. stok_listesi).
 # --------------------------------------------------------------------------------------
+
+
+def _tam_sayi(deger):
+    """Sorgu dizgesinden gelen metni int'e çevirir; boş/geçersizse None."""
+    try:
+        return int(str(deger).strip())
+    except (TypeError, ValueError):
+        return None
 
 
 class ListeFiltresi:
@@ -638,6 +645,71 @@ def _tarih_cozumle(metin):
         return None
 
 
+# StokBakiye.varyant_adi ile aynı etiketler; orası view'dan (adlar hazır) okuyor,
+# burası ham `stok_kalemleri`'nden kuruyor.
+MONTAJ_ETIKETLERI = {
+    'HAM': 'ham',
+    'YARI_MONTE': 'yarı monte',
+    'MONTE': 'monte',
+    'BELIRSIZ': 'eski/belirsiz varyant',
+}
+
+
+def _sku_ozetlerini_ekle(hareketler):
+    """Sayfadaki hareketlere SKU kodunu ve varyant özetini iliştirir.
+
+    Hareket satırı ürün kodunu taşıyor ama iki farklı kaplama/montaj varyantı aynı
+    ürün kodunda görünüyordu — "1005910 çıktı" satırından hangi malın çıktığı
+    anlaşılmıyordu. Kaplama ve renk ADLARI `stok_kalemleri`'nde değil ayrı referans
+    tablolarında; üçü de sayfa başına tek toplu sorgu (ürün başına sorgu yok).
+
+    Migration 008 öncesi yazılmış hareketlerde `stok_kalemi_id` NULL olabilir;
+    o satırlar özetsiz kalır ve şablon yalnız ürün kodunu basar.
+    """
+    for hareket in hareketler:
+        hareket.sku = None
+        hareket.varyant_ozeti = ''
+
+    sku_idleri = {h.stok_kalemi_id for h in hareketler if h.stok_kalemi_id}
+    if not sku_idleri:
+        return
+
+    skular = {
+        s.stok_kalemi_id: s
+        for s in StokKalemi.objects.using('metaks').filter(stok_kalemi_id__in=sku_idleri)
+    }
+    kaplama_adlari = dict(
+        Kaplama.objects.using('metaks')
+        .filter(kaplama_id__in={s.kaplama_id for s in skular.values() if s.kaplama_id})
+        .values_list('kaplama_id', 'kaplama_adi')
+    )
+    renk_idleri = {
+        renk_id
+        for s in skular.values()
+        for renk_id in (s.boya_renk_id, s.mine_renk_id)
+        if renk_id
+    }
+    renk_adlari = dict(
+        Renk.objects.using('metaks').filter(renk_id__in=renk_idleri)
+        .values_list('renk_id', 'renk_adi')
+    )
+
+    for hareket in hareketler:
+        sku = skular.get(hareket.stok_kalemi_id)
+        if sku is None:
+            continue
+        boya = renk_adlari.get(sku.boya_renk_id)
+        mine = renk_adlari.get(sku.mine_renk_id)
+        parcalar = [
+            kaplama_adlari.get(sku.kaplama_id),
+            f'boya: {boya}' if boya else None,
+            f'mine: {mine}' if mine else None,
+            MONTAJ_ETIKETLERI.get(sku.montaj_durumu),
+        ]
+        hareket.sku = sku
+        hareket.varyant_ozeti = ' · '.join(p for p in parcalar if p)
+
+
 @izin_gerekli('hareket')
 def hareket_gecmisi(request):
     """stok_hareketleri dökümü: kim, ne zaman, hangi üründe, nereden nereye.
@@ -650,6 +722,7 @@ def hareket_gecmisi(request):
     """
     arama = request.GET.get('q', '').strip()
     tip = request.GET.get('tip', '').strip()
+    amac = request.GET.get('amac', '').strip()
     lokasyon = _tam_sayi(request.GET.get('lokasyon', ''))
     kullanici = request.GET.get('kullanici', '').strip()
     baslangic = _tarih_cozumle(request.GET.get('baslangic', ''))
@@ -673,6 +746,16 @@ def hareket_gecmisi(request):
         )
     if tip in stok_servisi.ISLEM_TIPI_DEGERLERI:
         hareketler = hareketler.filter(islem_tipi=tip)
+    # İş amacı belge BAŞLIĞINDA (`stok_islemleri.islem_nedeni`), hareket satırında
+    # değil: aynı belgenin satırları farklı teknik tiplerde olabiliyor (fason
+    # dönüşü bir CIKIS + bir GIRIS üretiyor). Bu yüzden filtre başlık üzerinden
+    # alt sorguyla kuruluyor — "Fason dönüşü" seçildiğinde o belgenin İKİ satırı
+    # da listede kalıyor, teknik tip filtresi ise yalnız birini bırakırdı.
+    if amac in stok_servisi.ISLEM_AMACI_ETIKETLERI:
+        amac_islemleri = StokIslemi.objects.using('metaks').filter(
+            islem_nedeni=amac
+        ).values('stok_islem_id')
+        hareketler = hareketler.filter(stok_islem_id__in=Subquery(amac_islemleri))
     if lokasyon:
         hareketler = hareketler.filter(
             Q(kaynak_lokasyon_id=lokasyon) | Q(hedef_lokasyon_id=lokasyon)
@@ -717,10 +800,11 @@ def hareket_gecmisi(request):
                 hareket.belge.islem_nedeni, hareket.belge.islem_nedeni
             )
             hareket.is_ortagi_adi = ortak_adlari.get(hareket.belge.is_ortagi_id)
+    _sku_ozetlerini_ekle(sayfa.object_list)
 
     parametreler = QueryDict(mutable=True)
     for anahtar, deger in [
-        ('q', arama), ('tip', tip), ('lokasyon', lokasyon or ''),
+        ('q', arama), ('tip', tip), ('amac', amac), ('lokasyon', lokasyon or ''),
         ('kullanici', kullanici),
         ('baslangic', baslangic.isoformat() if baslangic else ''),
         ('bitis', bitis.isoformat() if bitis else ''),
@@ -733,6 +817,10 @@ def hareket_gecmisi(request):
         'toplam': sayfalayici.count,
         'aktif_sekme': 'hareketler',
         'islem_tipleri': stok_servisi.ISLEM_TIPLERI,
+        # Teknik tip (Giriş/Çıkış/Transfer) ile İŞ AMACI ayrı iki filtre ve ikisi de
+        # gerekli: "Fasona giden ne var?" sorusunun cevabı tipte değil amaçta,
+        # "bu raftan ne çıktı?" sorusununki ise tipte.
+        'islem_amaclari': stok_servisi.ISLEM_AMACLARI,
         # yaprak_mi: numune dolapları (kendisi hiç hareket taşımaz, yalnızca rafları
         # taşır) filtrede seçilebilir görünüp hep "0 hareket" dönmesin. tam_ad
         # hiyerarşiyi gösteriyor ("Numune Dolabı 1 · Raf 3") — düz lokasyon_adi
@@ -747,11 +835,14 @@ def hareket_gecmisi(request):
             .distinct()
         ),
         'secili': {
-            'q': arama, 'tip': tip, 'lokasyon': lokasyon, 'kullanici': kullanici,
+            'q': arama, 'tip': tip, 'amac': amac, 'lokasyon': lokasyon,
+            'kullanici': kullanici,
             'baslangic': baslangic.isoformat() if baslangic else '',
             'bitis': bitis.isoformat() if bitis else '',
         },
-        'filtre_var': bool(arama or tip or lokasyon or kullanici or baslangic or bitis),
+        'filtre_var': bool(
+            arama or tip or amac or lokasyon or kullanici or baslangic or bitis
+        ),
         'sonraki_url': None,
     }
     if sayfa.has_next():
@@ -925,418 +1016,23 @@ def stok_urun_detay(request, stok_kodu):
 
 
 # --------------------------------------------------------------------------------------
-# Stok işlemi (ilk yazma modülü)
+# Eski stok derin bağlantısı
+#
+# Yazma akışlarının tamamı migration 008'le `katalog/stok_yonetimi.py`'ye taşındı;
+# burada yalnızca `/stok/islem/<kod>/` biçimindeki eski adresi canlı tutan
+# yönlendirme kaldı. Kendi form/POST mantığı olan `stok_ekle`, `hizli_islem` ve
+# ortak `_islem_baglami` yardımcıları 2026-08-05'te SİLİNDİ: üçü de artık hiçbir
+# URL'den erişilemiyordu ve şablonlarıyla birlikte var olmayan bir forma
+# (`StokEkleFormu`) ve var olmayan parçalara (`_hizli_alan.html`) bağlıydılar.
 # --------------------------------------------------------------------------------------
-
-
-def _tam_sayi(deger):
-    """Formdan gelen metni int'e çevirir; boş/geçersizse None."""
-    try:
-        return int(str(deger).strip())
-    except (TypeError, ValueError):
-        return None
-
-
-def _lokasyon_stok(stok_kodu):
-    """Ürünün lokasyon bazlı stoğu; pasif lokasyonlar işaretlenmiş olarak.
-
-    v_lokasyon_stok_ozet, artık kullanılmayan lokasyonlardaki geçmiş hareketleri de
-    gösteriyor (2026-07-30'da Ana Depo / Sevkiyat Alanı / Fason Atölye 1 pasife alındı).
-    Satırları gizlemek geçmişi saklamak olurdu; işaretlemeden bırakmak ise "neden bu
-    lokasyonu seçemiyorum?" sorusunu doğuruyordu — bu yüzden gösterilip etiketleniyor.
-    """
-    aktif_idler = set(
-        Lokasyon.objects.using('metaks')
-        .filter(aktif_mi=True)
-        .values_list('lokasyon_id', flat=True)
-    )
-    satirlar = list(LokasyonStok.objects.using('metaks').filter(stok_kodu=stok_kodu))
-    for satir in satirlar:
-        satir.pasif = satir.lokasyon_id not in aktif_idler
-    return satirlar
-
-
-def _islem_urunu(stok_kodu):
-    """Stok işlem ekranının ürün kaynağı: AKTİF **ve** PASİF ürünlerin ikisi de.
-
-    Eskiden bu ekran ürünü doğrudan `AktifUrun`'dan (`v_aktif_urunler`) alıyordu ve o
-    view yalnızca `katalog_durumu='AKTIF'` satırları gösteriyor — yani kataloğun
-    %40'ına (2026-07-31: 2.973 ürünün 1.193'ü PASİF) arayüzden hiç stok işlemi
-    yapılamıyordu. Bu bir iş kuralı değildi, kaynak seçiminin yan etkisiydi:
-    `AktifUrun` görsel ve kategori adını hazır verdiği için seçilmişti.
-    Veritabanı tarafında böyle bir kısıt YOK — `stok_hareketi_kaydet()` PASİF bir
-    ürünü sorunsuz kabul ediyor (canlı şemada BEGIN/ROLLBACK içinde ölçüldü).
-    Devam eden depo sayımında elinde ürünle duran personelin kodu girememesi
-    gerçek bir eksikti; 3b (hızlı giriş) bunu görünür kıldı.
-
-    Dönen nesne her iki durumda da şablonun beklediği üç alanı taşıyor:
-    `stok_kodu`, `kategori_adi`, `gorsel_url` (+ `pasif` bayrağı).
-    """
-    urun = AktifUrun.objects.using('metaks').filter(pk=stok_kodu).first()
-    if urun is not None:
-        urun.pasif = False
-        return urun
-
-    urun = get_object_or_404(Urun.objects.using('metaks'), pk=stok_kodu)
-    urun.pasif = True
-    # PASİF ürünün görseli YOK — bu bir varsayım değil, tanımın kendisi:
-    # katalog_durumu AKTİF olmanın koşulu zaten doğrulanmış bir ana görseli olması
-    # (migration 001). Ölçüldü de: 1.193 PASİF ürünün 0'ında herhangi bir
-    # urun_gorselleri satırı var. Şablon bu None'da yer tutucuya düşüyor.
-    urun.gorsel_url = None
-    urun.kategori_adi = (
-        Kategori.objects.using('metaks')
-        .filter(pk=urun.kategori_id)
-        .values_list('kategori_adi', flat=True)
-        .first()
-        if urun.kategori_id
-        else None
-    )
-    return urun
-
-
-def _islem_baglami(request, urun, *, varsayilan_tip, hizli=False):
-    """Stok işlem formunun bağlamını üretir ve POST geldiyse hareketi kaydeder.
-
-    `stok_islem` (tam sayfa) ile `hizli_islem` (tek sayfa depo ekranı) **aynı** formu
-    kullanıyor; form da iş kuralları da tek yerde kalsın diye ortak. İş kuralları yine
-    burada DEĞİL — `stok_hareketi_kaydet()` içinde; bu fonksiyon yalnızca tip dönüşümü
-    yapıp dönen Türkçe mesajı taşıyor (bkz. stok_servisi).
-
-    `varsayilan_tip` iki ekranda farklı, çünkü kullanım senaryoları farklı: ürün detay
-    panelinden gelen yol sayım içindir (devam eden depo sayımı), hızlı ekran ise mal
-    kabul/sevkiyat içindir — orada GİRİŞ daha sık.
-    """
-    sonuc = None
-    hata = None
-    girilen = {
-        'islem_tipi': request.POST.get('islem_tipi', varsayilan_tip),
-        'miktar': request.POST.get('miktar', ''),
-        'kaynak_lokasyon_id': request.POST.get('kaynak_lokasyon_id', ''),
-        'hedef_lokasyon_id': request.POST.get('hedef_lokasyon_id', ''),
-        'aciklama': request.POST.get('aciklama', ''),
-        # Kova alanları (migration 007). Boş string = "belirtilmemiş" kovası;
-        # _tam_sayi/montaj_cozumle onu None'a çeviriyor.
-        'kaplama_id': request.POST.get('kaplama_id', ''),
-        'kaplama_cesidi': request.POST.get('kaplama_cesidi', ''),
-        'montaj': request.POST.get('montaj', ''),
-        'boya': request.POST.get('boya', ''),
-        'mine': request.POST.get('mine', ''),
-    }
-    islem_kimligi = request.POST.get('istemci_kimligi') or stok_servisi.yeni_islem_kimligi()
-
-    if request.method == 'POST':
-        if girilen['islem_tipi'] not in stok_servisi.ISLEM_TIPI_DEGERLERI:
-            hata = 'Geçersiz işlem tipi.'
-        elif _tam_sayi(girilen['miktar']) is None:
-            hata = 'Miktar bir tam sayı olmalıdır.'
-        else:
-            try:
-                sonuc = stok_servisi.hareket_kaydet(
-                    istemci_kimligi=islem_kimligi,
-                    stok_kodu=urun.stok_kodu,
-                    islem_tipi=girilen['islem_tipi'],
-                    miktar=_tam_sayi(girilen['miktar']),
-                    kaynak_lokasyon_id=_tam_sayi(girilen['kaynak_lokasyon_id']),
-                    hedef_lokasyon_id=_tam_sayi(girilen['hedef_lokasyon_id']),
-                    aciklama=girilen['aciklama'].strip(),
-                    yapan_kullanici=request.user.email or request.user.get_username(),
-                    kaplama_id=_tam_sayi(girilen['kaplama_id']),
-                    kaplama_cesidi=girilen['kaplama_cesidi'],
-                    montaj=stok_servisi.montaj_cozumle(girilen['montaj']),
-                    boya=girilen['boya'].strip(),
-                    mine=girilen['mine'].strip(),
-                )
-            except stok_servisi.StokIslemHatasi as istisna:
-                hata = str(istisna)
-
-        if sonuc and not sonuc['atlandi']:
-            # Kayıt gerçekleşti: formu temizle ve YENİ bir işlem kimliği ver, yoksa
-            # sonraki gönderim "zaten kaydedilmiş" diye atlanırdı.
-            girilen = {
-                'islem_tipi': girilen['islem_tipi'],
-                'miktar': '',
-                'kaynak_lokasyon_id': '',
-                'hedef_lokasyon_id': '',
-                'aciklama': '',
-                # Kova seçimi KORUNUYOR (miktar/lokasyonun aksine): aynı partiden
-                # arka arkaya işlem yapmak normal, kaplamayı her seferinde yeniden
-                # seçtirmek gereksiz sürtünme olurdu. /stok/ekle/ ile aynı duruş.
-                'kaplama_id': girilen['kaplama_id'],
-                'kaplama_cesidi': girilen['kaplama_cesidi'],
-                'montaj': girilen['montaj'],
-                'boya': girilen['boya'],
-                'mine': girilen['mine'],
-            }
-            islem_kimligi = stok_servisi.yeni_islem_kimligi()
-
-    return {
-        'urun': urun,
-        'islem_tipleri': stok_servisi.ISLEM_TIPLERI,
-        # aktif_mi + yaprak_mi: dolaplar burada seçilebilir görünürse
-        # stok_hareketi_kaydet() onları reddeder (migration 004, "sadece yaprak
-        # lokasyona yazılabilir") — kullanıcı formu doldurup gönderdikten SONRA
-        # hatayı görürdü, bunun yerine seçilemez olsunlar.
-        'lokasyonlar': list(
-            LokasyonDetay.objects.using('metaks').filter(aktif_mi=True, yaprak_mi=True)
-        ),
-        # Kova seçimi (migration 007). Renkler `kaplamalar` tablosundan okunuyor,
-        # sabit liste değil — yeni renk eklemek migration değil tek INSERT.
-        'kaplamalar': stok_servisi.kaplama_secenekleri(),
-        'kaplama_cesitleri': stok_servisi.KAPLAMA_CESITLERI,
-        'montaj_secenekleri': stok_servisi.MONTAJ_SECENEKLERI,
-        'mevcut_stok': _lokasyon_stok(urun.stok_kodu),
-        'girilen': girilen,
-        'istemci_kimligi': islem_kimligi,
-        'sonuc': sonuc,
-        'hata': hata,
-        # Formun nereye gönderileceğini ve HTMX ile mi çalışacağını şablona söyler.
-        'hizli': hizli,
-        'aktif_sekme': 'stok',
-    }
 
 
 @login_required
 def stok_islem(request, stok_kodu):
-    """Bir ürün için stok hareketi kaydı (GİRİŞ/ÇIKIŞ/TRANSFER/SAYIM/DÜZELTME).
+    """Eski `/stok/islem/<kod>/` bağlantısını kanonik amaç-temelli ekrana taşır.
 
-    İş kuralları bilinçli olarak burada tekrarlanmıyor: bu view yalnızca tip dönüşümü
-    yapıp stok_hareketi_kaydet()'i çağırıyor, zorunluluk/yeterlilik denetimleri ve
-    kullanıcıya gösterilen Türkçe mesajlar veritabanı fonksiyonundan geliyor
-    (bkz. stok_servisi). Kuralların iki kopyası olsaydı zamanla ayrışırlardı.
-
-    Giriş zorunlu çünkü stok_hareketleri.yapan_kullanici NOT NULL ve Postgres'e tek bir
-    paylaşılan `depo_admin` kullanıcısıyla bağlanıldığı için current_user'a güvenilemez —
-    "kim yaptı" bilgisi uygulamadan açıkça geçirilmek zorunda.
+    Giriş zorunlu çünkü gidilen ekran bir yazma ekranı; anonim kullanıcıyı önce
+    yönlendirip sonra oradan geri çevirmek yerine kapı burada kapanıyor.
     """
-    # Eski derin bağlantı korunur; yeni ekran teknik hareket yerine iş amacı sorar.
     return redirect(f"{reverse('katalog:stok_merkezi')}?kod={stok_kodu}")
 
-
-@login_required
-def stok_ekle(request):
-    """Depoya yeni stok girişi — her zaman bir GİRİŞ hareketi (`/stok/ekle/`).
-
-    Stok sayfasının "+ Stok ekle" bağlantısının hedefi; kataloğun "+ Ürün ekle"
-    bağlantısının stok tarafındaki karşılığı. İkisinin ayrı olması bu projenin
-    "her sayfa kendi işini anlatır" kuralının devamı: katalog ÜRÜN kaydının yeri,
-    stok STOĞUN.
-
-    `stok_islem`/`hizli_islem`'den farkı işlem tipi sormaması — burada tek bir
-    senaryo var (mal kabul). Yazma yolu yine aynı tek kapı: `hareket_kaydet()`.
-
-    Ürünün varlığı POST'tan ÖNCE kontrol ediliyor. `stok_hareketleri.stok_kodu`'nun
-    FK'sı zaten reddederdi ama mesajı psycopg2'nin İngilizce kısıt hatası olurdu;
-    bunun yerine Türkçe bir mesaj ve "bu kodla ürün oluştur" bağlantısı veriliyor —
-    hızlı ekranın "bulunamadı" dalıyla aynı davranış.
-    """
-    form = forms.StokEkleFormu(request.POST or None)
-    sonuc = None
-    hata = None
-    bilinmeyen_kod = None
-    islem_kimligi = request.POST.get('istemci_kimligi') or stok_servisi.yeni_islem_kimligi()
-
-    if request.method == 'POST' and form.is_valid():
-        stok_kodu = form.cleaned_data['stok_kodu'].strip()
-        varsa = (
-            Urun.objects.using('metaks').filter(pk=stok_kodu).values_list('stok_kodu', flat=True).first()
-            or Urun.objects.using('metaks').filter(stok_kodu__iexact=stok_kodu)
-            .values_list('stok_kodu', flat=True).first()
-        )
-        if varsa is None:
-            bilinmeyen_kod = stok_kodu
-            hata = f'"{stok_kodu}" kodlu bir ürün bulunamadı.'
-        else:
-            try:
-                sonuc = stok_servisi.hareket_kaydet(
-                    istemci_kimligi=islem_kimligi,
-                    stok_kodu=varsa,
-                    islem_tipi='GIRIS',
-                    miktar=form.cleaned_data['miktar'],
-                    kaynak_lokasyon_id=None,
-                    hedef_lokasyon_id=form.cleaned_data['hedef_lokasyon_id'],
-                    aciklama=form.cleaned_data.get('aciklama', ''),
-                    yapan_kullanici=request.user.email or request.user.get_username(),
-                    kaplama_id=form.cleaned_data.get('kaplama_id'),
-                    kaplama_cesidi=form.cleaned_data.get('kaplama_cesidi'),
-                    montaj=stok_servisi.montaj_cozumle(form.cleaned_data.get('montaj')),
-                    boya=form.cleaned_data.get('boya'),
-                    mine=form.cleaned_data.get('mine'),
-                )
-            except stok_servisi.StokIslemHatasi as istisna:
-                hata = str(istisna)
-
-        if sonuc and not sonuc['atlandi']:
-            # Başarılı kayıttan sonra form SIFIRDAN kurulmuyor: lokasyon ve kova
-            # alanları KORUNUYOR, yalnızca stok kodu ve miktar temizleniyor. Mal
-            # kabulde aynı partiden onlarca ürün arka arkaya giriliyor; kaplamayı
-            # her seferinde yeniden seçtirmek gereksiz sürtünme olurdu.
-            # Yeni istemci kimliği şart, yoksa sonraki gönderim "zaten kaydedilmiş"
-            # diye atlanırdı (uq_stok_hareketleri_istemci_kimligi).
-            form = forms.StokEkleFormu(initial={
-                'hedef_lokasyon_id': form.cleaned_data['hedef_lokasyon_id'],
-                'kaplama_id': form.cleaned_data.get('kaplama_id'),
-                'kaplama_cesidi': form.cleaned_data.get('kaplama_cesidi'),
-                'montaj': form.cleaned_data.get('montaj'),
-                'boya': form.cleaned_data.get('boya'),
-                'mine': form.cleaned_data.get('mine'),
-            })
-            islem_kimligi = stok_servisi.yeni_islem_kimligi()
-
-    return render(request, 'katalog/stok_ekle.html', {
-        'form': form,
-        'sonuc': sonuc,
-        'hata': hata,
-        'bilinmeyen_kod': bilinmeyen_kod,
-        'istemci_kimligi': islem_kimligi,
-        'aktif_sekme': 'stok',
-    })
-
-
-# --------------------------------------------------------------------------------------
-# Hızlı stok işlemi girişi (/stok/hizli/)
-#
-# Günde onlarca kez aynı işlemi yapan depo personeli için kısayol. Bugünkü yol (stok
-# sayfası -> kart ızgarasından ürünü gözle bul -> detay panelinden "Stok işlemi yap")
-# KALIYOR — ürünü görselinden tanımak için doğru yol o. Burası yalnızca kodu bilen/
-# okutan kişinin ızgarayı atlaması için.
-#
-# Yeni bir işlem formu YAZILMIYOR: burası yalnızca doğru stok_islem sayfasına
-# yönlendiriyor. O form zaten uçtan uca doğrulanmış, ikinci bir kopyası zamanla ondan
-# ayrışırdı.
-#
-# Barkod okuyucular ek kod GEREKTİRMİYOR: USB/Bluetooth okuyucular klavye gibi davranır
-# (kodu yazıp Enter'a basar), yani aşağıdaki düz <form> gönderimi onlarla çalışır.
-# Bu yüzden ana yol bilinçli olarak JS'siz. Telefon kamerasıyla QR okuma ayrı bir iş ve
-# bugün mümkün değil: getUserMedia "secure context" (HTTPS) istiyor, site düz HTTP
-# (bkz. YAPILACAKLAR.md, "Sırası gelmemiş" -> HTTPS).
-# --------------------------------------------------------------------------------------
-
-# Öneri listesinde gösterilecek en fazla satır. Kutunun altına sığacak kadar; burası
-# stok sayfasının kart ızgarasının yerini almaya çalışmıyor.
-ONERI_SAYISI = 8
-
-
-def _oneriler(kod, *, limit=ONERI_SAYISI):
-    """Koda benzeyen ürünler — yazım hatası / yanlış okunan barkod için.
-
-    `AktifUrun.arama_metni` yerine ham `urunler.stok_kodu` üzerinde arıyor, iki sebeple:
-    (1) `arama_metni` yalnızca `v_aktif_urunler`'da var, yani 2.973 ürünün 1.780'ini
-    kapsıyor — bu kutu artık PASİF ürünleri de bulmak zorunda; (2) buraya kod yazılıyor,
-    açıklama değil. Kategori ve görsel ayrı birer toplu sorguyla ekleniyor (ürün başına
-    sorgu değil).
-    """
-    if not kod:
-        return []
-
-    urunler = list(
-        Urun.objects.using('metaks')
-        .filter(stok_kodu__icontains=kod)
-        .order_by('stok_kodu')[:limit]
-    )
-    if not urunler:
-        return []
-
-    kodlar = [u.stok_kodu for u in urunler]
-    kategoriler = dict(
-        Kategori.objects.using('metaks')
-        .filter(pk__in={u.kategori_id for u in urunler if u.kategori_id})
-        .values_list('kategori_id', 'kategori_adi')
-    )
-    # Görsel yalnızca AKTİF ürünlerde var (PASİF'lerin 0'ında görsel kaydı bulunuyor),
-    # yani bu sorgu doğal olarak sadece bir kısmını dolduruyor.
-    gorseller = dict(
-        AktifUrun.objects.using('metaks')
-        .filter(pk__in=kodlar)
-        .values_list('stok_kodu', 'ana_gorsel_dosya_adi')
-    )
-
-    for urun in urunler:
-        urun.kategori_adi = kategoriler.get(urun.kategori_id)
-        dosya = gorseller.get(urun.stok_kodu)
-        urun.gorsel_url = settings.GORSEL_SUNUCU_BASE_URL + dosya if dosya else None
-        urun.pasif = urun.katalog_durumu != 'AKTIF'
-    return urunler
-
-
-def _kodu_coz(kod):
-    """Yazılan/okutulan kodu **gösterime hazır** bir ürüne çevirir; bulunamazsa None.
-
-    Eşleştirme önce harf duyarlı, sonra `iexact`: `urunler`de yalnızca büyük/küçük
-    harfte ayrışan iki kod YOK (ölçüldü), yani `iexact` belirsizlik üretmiyor. 2.973
-    kodun 306'sı harf içerdiği için (`1805012-YENI`) duyarlılık gerçek bir sorun —
-    okuyucudan ya da klavyeden farklı büyüklükte gelebilir.
-
-    Bulunan satır ham bırakılmıyor, `_islem_urunu()`'ne veriliyor: `gorsel_url`,
-    `kategori_adi` ve `pasif` oradan geliyor ve şablon üçünü de bekliyor. Ham `Urun`
-    döndürüldüğü ilk sürümde AKTİF ürünlerin görseli hiç basılmıyor, PASİF ürünlerin
-    de "katalogda pasif" açıklaması çıkmıyordu — süsleme tek yerde kalsın.
-    """
-    if not kod:
-        return None
-    eslesen = (
-        Urun.objects.using('metaks').filter(stok_kodu=kod).first()
-        or Urun.objects.using('metaks').filter(stok_kodu__iexact=kod).first()
-    )
-    return _islem_urunu(eslesen.stok_kodu) if eslesen is not None else None
-
-
-@login_required
-def hizli_islem(request):
-    """Tek sayfalık depo ekranı: kodu okut, işlemi aynı ekranda kaydet, sıradakine geç.
-
-    İlk sürümü (2026-07-31) yalnızca bir yönlendiriciydi — kod alıp `stok_islem`
-    sayfasına atıyordu. Kullanıcı geri bildirimi üzerine tek sayfaya çevrildi: mal
-    kabul/sevkiyat günde onlarca kez tekrarlanan bir iş, her seferinde sayfa
-    değiştirmek gereksiz sürtünme. Kaydedince kutu temizlenip yeniden odaklanıyor,
-    yani okut-kaydet-okut döngüsü hiç kesilmiyor.
-
-    Form KOPYALANMADI: `stok_islem` ile aynı `_stok_islem_govde.html` parçasını ve aynı
-    `_islem_baglami()` mantığını kullanıyor. İki kopya olsaydı zamanla ayrışırlardı —
-    `stok_servisi`'nin `stok_hareketi_kaydet()` karşısındaki duruşunun aynısı.
-
-    Giriş zorunlu: yazma ekranı ve `stok_hareketleri.yapan_kullanici` NOT NULL.
-    """
-    if request.method == 'POST':
-        urun = _kodu_coz(request.POST.get('stok_kodu', '').strip())
-        if urun is None:
-            # Yalnızca kurcalanmış bir POST'ta olur; sessizce boş alana dönmek yerine
-            # kullanıcıya kodu yeniden okutturuyoruz.
-            return render(request, 'katalog/_hizli_alan.html', {'kod': '', 'bulunamadi': False})
-        baglam = _islem_baglami(request, urun, varsayilan_tip='GIRIS', hizli=True)
-        baglam['kod'] = urun.stok_kodu
-        baglam['oob'] = True  # kayıt/hata sonrası da eski öneriler ekranda kalmasın
-        return render(request, 'katalog/_hizli_alan.html', baglam)
-
-    kod = request.GET.get('kod', '').strip()
-    htmx = bool(request.headers.get('HX-Request'))
-
-    # ?ara=1 kullanıcı YAZARKEN geliyor: yalnızca öneri listesi, AYRI bir hedefe
-    # (#oneriler). Enter/gönderim ise onsuz gelir ve #islem-alani'nı tazeler.
-    # İki tetikleyicinin ayrı hedefleri olması şart — aynı hedefi paylaştıkları ilk
-    # sürümde yarışıyorlardı (gerçek tarayıcıda ölçüldü: Enter formu getiriyor, son
-    # karakterin bekleyen 200 ms'lik isteği hemen ardından düşüp formu eziyordu).
-    # Ayrıca her tuş vuruşunda "bulunamadı" basmak gürültü olurdu; o uyarı ancak
-    # kullanıcı gerçekten gönderdiğinde bir şey anlatıyor.
-    if request.GET.get('ara') == '1':
-        return render(request, 'katalog/_hizli_oneriler.html', {'oneriler': _oneriler(kod)})
-
-    urun = _kodu_coz(kod)
-    baglam = {
-        'kod': kod,
-        'bulunamadi': bool(kod) and urun is None,
-        'oneriler': _oneriler(kod),
-        # Ürün geldiyse kutunun altındaki eski öneriler out-of-band temizlenir;
-        # tam sayfa basımında gerekmez (zaten sıfırdan basılıyor) ve orada
-        # mükerrer id üretirdi.
-        'oob': htmx and urun is not None,
-    }
-    if urun is not None:
-        # Varsayılan GİRİŞ: bu ekranın senaryosu mal kabul/sevkiyat (ürün detayından
-        # gelen yolun senaryosu ise sayım — bkz. stok_islem).
-        baglam = {**_islem_baglami(request, urun, varsayilan_tip='GIRIS', hizli=True), **baglam}
-
-    # HTMX yalnızca değişen alanı istiyor; HTMX yoksa (ya da sayfa doğrudan
-    # açıldıysa) aynı parçayı içeren tam sayfa basılıyor. Böylece düz <form>
-    # gönderimi de çalışmaya devam ediyor — barkod okuyucunun Enter'ı için önemli.
-    return render(request, 'katalog/_hizli_alan.html' if htmx else 'katalog/hizli_islem.html', baglam)

@@ -69,7 +69,8 @@
         <section class="mb-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
             <div class="flex flex-wrap items-center justify-between gap-2">
                 <div><span class="font-mono font-medium">{{ secili_sku.sku_kodu }}</span>
-                    <span class="ml-2 text-xs text-slate-400">ürün {{ secili_sku.urun_kodu }}</span></div>
+                    <span class="ml-2 text-xs text-slate-400">ürün {{ secili_sku.urun_kodu }}</span>
+                    {% if miras_sku %}<span class="ml-2 rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800">eski / belirsiz varyant</span>{% endif %}</div>
                 <a href="{% url 'katalog:stok_kalemi_yeni' %}?urun_kodu={{ secili_sku.urun_kodu|urlencode }}" class="text-xs text-slate-500 underline">Bu ürün için yeni varyant</a>
             </div>
             {% if bakiyeler %}
@@ -85,18 +86,53 @@
         </section>
         {% endif %}
 
+        {% comment %}
+        Kod bir ürüne karşılık geliyor ama işlem yazılabilecek gerçek bir varyantı yok
+        (hiç SKU açılmamış), ya da yalnız migration 008'in miras SKU'su var. İkisinde
+        de doğru sonraki adım aynı: kaplama/montaj kombinasyonunu tanımlamak. Kısayol
+        bakiye kartlarının yanında duruyor çünkü personel eksikliği tam orada görüyor.
+        {% endcomment %}
+        {% if varyant_urun_kodu %}
+        <div class="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <p class="text-sm text-amber-900">
+                {% if miras_sku %}<strong>{{ varyant_urun_kodu }}</strong> için yalnız eski/belirsiz varyant var; gerçek kaplama-montaj varyantını açabilirsiniz.
+                {% else %}<strong>{{ varyant_urun_kodu }}</strong> ürününün henüz stok varyantı (SKU) yok.{% endif %}
+            </p>
+            <a href="{% url 'katalog:stok_kalemi_yeni' %}?urun_kodu={{ varyant_urun_kodu|urlencode }}"
+               class="shrink-0 rounded-lg bg-amber-900 px-3 py-2 text-xs font-medium text-white hover:bg-amber-800">+ Bu ürüne yeni varyant aç</a>
+        </div>
+        {% endif %}
+
         <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
             {% include "katalog/_form_alani.html" with alan=form.miktar %}
+            <div data-alan="fire">{% include "katalog/_form_alani.html" with alan=form.fire_miktari %}</div>
             <div data-alan="kaynak">{% include "katalog/_form_alani.html" with alan=form.kaynak_lokasyon_id %}</div>
             <div data-alan="hedef">{% include "katalog/_form_alani.html" with alan=form.hedef_lokasyon_id %}</div>
-            {% include "katalog/_form_alani.html" with alan=form.stok_durumu_kodu %}
-            <div data-alan="hedef-durum">{% include "katalog/_form_alani.html" with alan=form.hedef_stok_durumu_kodu %}</div>
             <div data-alan="is-ortagi">{% include "katalog/_form_alani.html" with alan=form.is_ortagi_id %}</div>
             <div data-alan="fason-emri">{% include "katalog/_form_alani.html" with alan=form.fason_is_emri_id %}</div>
             <div data-alan="belge">{% include "katalog/_form_alani.html" with alan=form.belge_no %}</div>
-            <div data-alan="parti">{% include "katalog/_form_alani.html" with alan=form.parti_no %}</div>
             <div data-alan="duzeltme-baglantisi">{% include "katalog/_form_alani.html" with alan=form.duzelttigi_stok_islem_id %}</div>
         </div>
+
+        {% comment %}
+        Stok durumu ve parti bilinçli olarak katlanmış: ikisi de günlük depo işinde
+        neredeyse hep varsayılanda kalıyor (durum SERBEST, parti boş) ve her formda
+        görünmeleri, asıl doldurulması gereken alanların yanında eşit ağırlıkta bir
+        seçim gibi duruyordu. Katlanmışlık yalnız görünüm: alanlar DOM'da ve POST'ta.
+
+        İçeride hata varsa bölüm açık başlıyor — aksi hâlde kullanıcı formun neden
+        reddedildiğini göremezdi.
+        {% endcomment %}
+        <details class="mb-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+                 {% if form.stok_durumu_kodu.errors or form.hedef_stok_durumu_kodu.errors or form.parti_no.errors %}open{% endif %}>
+            <summary class="cursor-pointer text-sm font-medium text-slate-600">Gelişmiş seçenekler</summary>
+            <div class="mt-3 grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {% include "katalog/_form_alani.html" with alan=form.stok_durumu_kodu %}
+                <div data-alan="hedef-durum">{% include "katalog/_form_alani.html" with alan=form.hedef_stok_durumu_kodu %}</div>
+                <div data-alan="parti">{% include "katalog/_form_alani.html" with alan=form.parti_no %}</div>
+            </div>
+        </details>
+
         {% include "katalog/_form_alani.html" with alan=form.aciklama %}
 
         <button type="submit" class="mt-6 rounded-lg bg-slate-900 px-6 py-2.5 text-sm font-medium text-white hover:bg-slate-700">Kaydet</button>
@@ -121,6 +157,53 @@
     function alanGoster(ad, goster) {
         document.querySelectorAll(`[data-alan="${ad}"]`).forEach(el => el.classList.toggle('hidden', !goster));
     }
+
+    // ---------------------------------------------------------------------------
+    // Lokasyon süzme
+    //
+    // Kaynak ve hedef listeleri bütün aktif yaprak lokasyonları içeriyor; "Fasona
+    // gönder" seçiliyken hedefte dahili rafların, kaynakta fason atölyelerinin
+    // görünmesi kullanıcıyı ancak POST'tan SONRA reddedilecek bir seçime davet
+    // ediyordu. Aşağıdaki tablo `stok_islemi_kaydet()`'in KENDİ kontrollerinin
+    // aynası (migration 008): fason sevkte kaynak `tip='DAHILI'`, dönüşte hedef
+    // `tip='DAHILI'` ve iki uçtan biri iş emrindeki fason lokasyonu olmak zorunda.
+    // Burada kopyalanan bir iş kuralı YOK, yalnız aynı kısıt önceden gösteriliyor;
+    // otorite hâlâ veritabanı.
+    //
+    // Yer değiştirmede NUMUNE de listede kalıyor: numune rafı fiziksel olarak tesis
+    // içi ve depo↔numune transferi projenin bilinçli akışı (bkz. YAPILACAKLAR.md
+    // madde 4). Yalnız DAHILI'ya indirmek o yolu sessizce kapatırdı.
+    // ---------------------------------------------------------------------------
+    const TESIS_ICI = ['DAHILI', 'NUMUNE'];
+    const KAYNAK_TIPLERI = {
+        FASON_SEVK: ['DAHILI'], FASON_DONUS: ['FASON'], FIRE: ['FASON'], IC_TRANSFER: TESIS_ICI,
+    };
+    const HEDEF_TIPLERI = {
+        FASON_SEVK: ['FASON'], FASON_DONUS: ['DAHILI'], IC_TRANSFER: TESIS_ICI,
+    };
+
+    // Seçenekler bir kez saklanıyor: süzme DOM'dan eleman söktüğü için kaynak liste
+    // canlı <select>'ten okunamaz, ikinci süzmede geri getirilecek seçenek kalmazdı.
+    const lokasyonKutulari = {};
+    for (const ad of ['kaynak_lokasyon_id', 'hedef_lokasyon_id']) {
+        const kutu = document.querySelector(`[name="${ad}"]`);
+        if (kutu) lokasyonKutulari[ad] = { kutu, secenekler: Array.from(kutu.options) };
+    }
+
+    function lokasyonlariSuz(ad, tipler) {
+        const kayit = lokasyonKutulari[ad];
+        if (!kayit) return;
+        const oncekiDeger = kayit.kutu.value;
+        // Boş seçenek ("— seçilmedi —") tipsiz; her amaçta kalmalı.
+        kayit.kutu.replaceChildren(
+            ...kayit.secenekler.filter(o => !o.value || !tipler || tipler.includes(o.dataset.tip))
+        );
+        kayit.kutu.value = oncekiDeger;
+        // Seçili lokasyon süzgeçten geçmediyse tarayıcı value'yu boşaltır (selectedIndex
+        // -1 olur); görünür bir seçim kalmadığı için ilk seçeneğe düşürülüyor.
+        if (kayit.kutu.value !== oncekiDeger) kayit.kutu.selectedIndex = 0;
+    }
+
     function amacDegisti() {
         const amac = document.querySelector('[name="amac"]:checked')?.value;
         const giris = ['SATIN_ALMA_KABUL', 'URETIM_GIRIS'].includes(amac);
@@ -130,10 +213,13 @@
         alanGoster('hedef', giris || transfer || amac === 'SAYIM' || amac === 'DUZELTME');
         alanGoster('hedef-sku', amac === 'FASON_DONUS');
         alanGoster('hedef-durum', amac === 'FASON_DONUS');
+        alanGoster('fire', amac === 'FASON_DONUS');
         alanGoster('fason-emri', ['FASON_SEVK', 'FASON_DONUS', 'FIRE'].includes(amac));
         alanGoster('is-ortagi', ['SATIN_ALMA_KABUL', 'SATIS_SEVKI'].includes(amac));
         alanGoster('belge', ['SATIN_ALMA_KABUL', 'URETIM_GIRIS', 'SATIS_SEVKI'].includes(amac));
         alanGoster('duzeltme-baglantisi', amac === 'DUZELTME');
+        lokasyonlariSuz('kaynak_lokasyon_id', KAYNAK_TIPLERI[amac] || null);
+        lokasyonlariSuz('hedef_lokasyon_id', HEDEF_TIPLERI[amac] || null);
     }
     amacDegisti();
     if (!skuKutusu.value) skuKutusu.focus();

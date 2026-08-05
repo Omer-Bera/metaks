@@ -433,6 +433,28 @@ class ParolaBelirlemeFormu(AdminPasswordChangeForm):
         _girdileri_bicimlendir(self)
 
 
+class LokasyonSecici(forms.Select):
+    """Lokasyon `<option>`'larına `data-tip` basar.
+
+    Tek amacı stok işlem formundaki JS'in seçenekleri iş amacına göre süzebilmesi:
+    "Fasona gönder" seçiliyken hedef listesinde dahili rafların görünmesi, kullanıcıyı
+    ancak formu gönderdikten SONRA `stok_islemi_kaydet()`'in reddedeceği bir seçime
+    davet ediyordu. Tip bilgisi şablonda `{% for %}` ile basılamıyor çünkü seçenekleri
+    Django'nun widget'ı üretiyor.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # lokasyon_id -> tip. Form `__init__`'inde seçeneklerle birlikte doldurulur.
+        self.tipler = {}
+
+    def create_option(self, name, value, *args, **kwargs):
+        secenek = super().create_option(name, value, *args, **kwargs)
+        # Boş seçenek ("— seçilmedi —") tipsiz kalır ve her amaçta görünür.
+        secenek['attrs']['data-tip'] = self.tipler.get(str(value), '')
+        return secenek
+
+
 class StokIslemFormu(forms.Form):
     """Tek stok merkezi: kullanıcı teknik hareketi değil iş amacını seçer."""
 
@@ -443,18 +465,30 @@ class StokIslemFormu(forms.Form):
         help_text='Fason dönüşünde ürün değişiyorsa doldurun; aynı kalıyorsa boş bırakın.',
     )
     miktar = forms.IntegerField(label='Miktar', min_value=0)
+    # Fason dönüşünde fasoncunun bildirdiği fire, sağlam miktarla AYNI formda
+    # giriliyor. Ayrı bir "Fason fire kaydı" ekranı hâlâ var ve tamamı fire olan
+    # teslimatın yeri orası; buradaki alan ikisi birlikte geldiğinde personeli aynı
+    # iş emri/lokasyon/parti seçimlerini iki kez doldurmaktan kurtarıyor.
+    fire_miktari = forms.IntegerField(
+        label='Fire miktarı', min_value=0, required=False,
+        help_text='Fasoncu fire bildirdiyse doldurun; sağlam dönen miktarın dışındadır. '
+                   'Boş bırakılırsa yalnız dönüş kaydedilir.',
+    )
     kaynak_lokasyon_id = forms.TypedChoiceField(
         label='Kaynak lokasyon', coerce=int, choices=(), required=False, empty_value=None,
+        widget=LokasyonSecici,
     )
     hedef_lokasyon_id = forms.TypedChoiceField(
         label='Hedef lokasyon', coerce=int, choices=(), required=False, empty_value=None,
+        widget=LokasyonSecici,
     )
     stok_durumu_kodu = forms.ChoiceField(
         label='Kaynak / normal stok durumu', choices=stok_servisi.STOK_DURUMLARI,
+        initial='SERBEST',
     )
     hedef_stok_durumu_kodu = forms.ChoiceField(
         label='Dönüşte hedef stok durumu', choices=stok_servisi.STOK_DURUMLARI,
-        required=False,
+        required=False, initial='SERBEST',
     )
     is_ortagi_id = forms.TypedChoiceField(
         label='Müşteri / tedarikçi', coerce=int, choices=(), required=False, empty_value=None,
@@ -488,9 +522,13 @@ class StokIslemFormu(forms.Form):
         lokasyon_secenekleri = [
             (l.lokasyon_id, f'{l.tam_ad} ({l.tip})') for l in lokasyonlar
         ]
+        lokasyon_tipleri = {str(l.lokasyon_id): l.tip for l in lokasyonlar}
         bos = [('', '— seçilmedi —')]
-        self.fields['kaynak_lokasyon_id'].choices = bos + lokasyon_secenekleri
-        self.fields['hedef_lokasyon_id'].choices = bos + lokasyon_secenekleri
+        for ad in ('kaynak_lokasyon_id', 'hedef_lokasyon_id'):
+            self.fields[ad].choices = bos + lokasyon_secenekleri
+            # Süzme yalnızca sunum: hangi lokasyonun hangi amaçta geçerli olduğunun
+            # otoritesi `stok_islemi_kaydet()`. Burada kopyalanan tek şey tip etiketi.
+            self.fields[ad].widget.tipler = lokasyon_tipleri
         roller = {}
         for ortak_id, rol in IsOrtagiRolu.objects.using('metaks').values_list(
             'is_ortagi_id', 'rol'
@@ -535,6 +573,12 @@ class StokIslemFormu(forms.Form):
                 self.add_error('kaynak_lokasyon_id', 'Fason hareketinde kaynak zorunludur.')
             if not veri.get('hedef_lokasyon_id'):
                 self.add_error('hedef_lokasyon_id', 'Fason hareketinde hedef zorunludur.')
+        # Fire alanı yalnız fason dönüşünde anlamlı. JS onu diğer amaçlarda gizliyor
+        # ama TEMİZLEMİYOR (aynı tuzak `UrunFormu.clean`'de de var): kullanıcı önce
+        # dönüş seçip fire yazsa, sonra amacı değiştirse gizli değer yine POST edilir.
+        veri['fire_miktari'] = veri.get('fire_miktari') if amac == 'FASON_DONUS' else None
+        if veri['fire_miktari'] and not veri.get('kaynak_lokasyon_id'):
+            self.add_error('kaynak_lokasyon_id', 'Fire, malın bulunduğu fason lokasyonundan düşülür.')
         if amac == 'FIRE' and not veri.get('kaynak_lokasyon_id'):
             self.add_error('kaynak_lokasyon_id', 'Firenin bulunduğu fason lokasyonu zorunludur.')
         if amac == 'DUZELTME':

@@ -73,6 +73,25 @@
                           focus:outline-none focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5">
         </label>
 
+        {% comment %}
+        İş amacı ve teknik tip AYRI iki filtre. Amaç belge başlığındaki
+        `stok_islemleri.islem_nedeni`; "Fasona gönder" gibi günlük soruların cevabı
+        orada. Teknik tip (Giriş/Çıkış/Transfer) defter etkisini gösteriyor ve
+        aynı amacın satırları farklı tiplerde olabiliyor — biri diğerinin yerini
+        tutmuyor. Amaç önce geliyor: personelin aradığı ayrım genelde bu.
+        {% endcomment %}
+        <label class="block">
+            <span class="block mb-1.5 text-xs font-medium text-slate-600">İş amacı</span>
+            <select name="amac" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5
+                    text-sm focus:outline-none focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5">
+                <option value="">Tümü</option>
+                {% for deger, etiket in islem_amaclari %}
+                <option value="{{ deger }}" {% if secili.amac == deger %}selected{% endif %}
+                >{{ etiket }}</option>
+                {% endfor %}
+            </select>
+        </label>
+
         <label class="block">
             <span class="block mb-1.5 text-xs font-medium text-slate-600">İşlem tipi</span>
             <select name="tip" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5
@@ -123,8 +142,13 @@
                           focus:outline-none focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5">
         </label>
 
+        {% comment %}
+        col-span-2: yedi alan beş kolonlu ızgarada iki satır dolduruyor (ilk satırda
+        arama iki kolon), geriye tam iki kolonluk yer kalıyor. Üç kolona ayarlanmış
+        hâli altıncı kolona taşıp üçüncü bir satır açıyordu.
+        {% endcomment %}
         {% if filtre_var %}
-        <div class="flex items-end lg:col-span-3">
+        <div class="flex items-end lg:col-span-2">
             <a href="{% url 'katalog:hareket_gecmisi' %}"
                class="text-sm text-slate-500 underline underline-offset-4
                       transition hover:text-slate-900">Filtreleri temizle</a>

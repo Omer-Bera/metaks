@@ -179,6 +179,21 @@ def yeni_islem_kimligi():
     return str(uuid.uuid4())
 
 
+def turetilmis_islem_kimligi(istemci_kimligi, etiket):
+    """Aynı form gönderiminden çıkan İKİNCİ belge için türetilmiş, kararlı kimlik.
+
+    Fason dönüşü + fire tek ekranda giriliyor ama veritabanı tarafında iki ayrı
+    `islem_nedeni`, yani iki ayrı `stok_islemleri` başlığı — ikisinde aynı UUID
+    kullanılamaz (`istemci_islem_kimligi` UNIQUE).
+
+    Rastgele ikinci bir UUID üretmek mükerrer gönderim korumasını yalnız fire
+    tarafında sessizce kapatırdı: kullanıcı çift tıklasa dönüş atlanır ama fire
+    ikinci kez yazılırdı. uuid5 girdiden türediği için aynı gönderim her zaman aynı
+    fire kimliğini üretiyor ve iki belge de tek başına idempotent kalıyor.
+    """
+    return str(uuid.uuid5(uuid.UUID(str(istemci_kimligi)), etiket))
+
+
 def _hata_mesaji(hata):
     """psycopg2'nin CONTEXT satırlarını atıp fonksiyonun kendi mesajını bırakır."""
     return str(hata).strip().splitlines()[0].strip()

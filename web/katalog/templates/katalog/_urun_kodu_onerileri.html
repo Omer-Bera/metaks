@@ -1,0 +1,31 @@
+{% comment %}
+Yeni SKU ekranındaki ürün kodu önerileri. `_stok_kodu_onerileri.html`'in ürün
+karşılığı: orası var olan SKU'ları listeler, burası henüz varyantı olmayabilecek
+ürünleri. Seçim `urunSec()` ile yapılıyor (bkz. stok_kalemi_formu.html) — düz <a>
+yerine <button type="button">, çünkü bu parça bir <form> içinde basılıyor ve
+varsayılan tipteki bir düğme formu gönderirdi.
+{% endcomment %}
+{% if kayitlar %}
+<div class="absolute z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg overflow-hidden">
+    {% for kayit in kayitlar %}
+    <button type="button" onclick="urunSec('{{ kayit.stok_kodu|escapejs }}')"
+            class="flex w-full items-center gap-3 border-b border-slate-100 px-3 py-2 text-left
+                   text-sm last:border-0 hover:bg-slate-50">
+        {% if kayit.gorsel_url %}
+        <img src="{{ kayit.gorsel_url }}" alt="" loading="lazy"
+             class="h-10 w-10 shrink-0 rounded border border-slate-200 object-contain">
+        {% else %}
+        <span class="h-10 w-10 shrink-0 rounded bg-slate-100"></span>
+        {% endif %}
+        <span class="min-w-0 flex-1">
+            <span class="block font-mono text-slate-900">{{ kayit.stok_kodu }}</span>
+            <span class="block truncate text-xs text-slate-400">
+                {{ kayit.kategori_adi|default:"Kategorisiz" }}
+                {% if kayit.varyant_sayisi %} · {{ kayit.varyant_sayisi }} varyant{% else %} · varyantı yok{% endif %}
+                {% if kayit.katalog_durumu != 'AKTIF' %} · katalogda pasif{% endif %}
+            </span>
+        </span>
+    </button>
+    {% endfor %}
+</div>
+{% endif %}

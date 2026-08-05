@@ -8,8 +8,57 @@
     <form method="post" class="mt-6 rounded-xl border border-slate-200 bg-white p-6 space-y-4">
         {% csrf_token %}
         {{ form.non_field_errors }}
-        {% for alan in form %}{% include "katalog/_form_alani.html" with alan=alan %}{% endfor %}
+
+        {% comment %}
+        Ürün kodu alanı, döngünün dışında elle basılıyor: altına öneri listesinin
+        konteyneri ve üstüne `relative` sarmalayıcı gerekiyor. Kalan alanlar ortak
+        döngüde kalıyor, böylece forma yeni bir alan eklendiğinde burası
+        güncellenmek zorunda değil.
+        {% endcomment %}
+        <div class="relative">
+            {% include "katalog/_form_alani.html" with alan=form.urun_kodu %}
+            <div id="urun-onerileri"></div>
+        </div>
+
+        {% for alan in form %}{% if alan.name != 'urun_kodu' %}
+        {% include "katalog/_form_alani.html" with alan=alan %}
+        {% endif %}{% endfor %}
+
         <button class="rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-medium text-white">SKU oluştur</button>
     </form>
 </main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // HTMX öznitelikleri Python tarafında değil burada bağlanıyor — stok işlem
+    // ekranındaki (`stok_merkezi.html`) SKU öneri kutusuyla aynı desen: widget
+    // attrs'ına yazmak, form sınıfını bir şablonun URL'ine bağlardı.
+    const urunKutusu = document.getElementById('{{ form.urun_kodu.id_for_label }}');
+    const urunOnerileri = document.getElementById('urun-onerileri');
+    urunKutusu.setAttribute('autocomplete', 'off');
+    urunKutusu.setAttribute('hx-get', '{% url "katalog:urun_kodu_onerileri" %}');
+    urunKutusu.setAttribute('hx-trigger', 'input changed delay:200ms');
+    urunKutusu.setAttribute('hx-target', '#urun-onerileri');
+    htmx.process(urunKutusu);
+
+    function urunSec(kod) {
+        urunKutusu.value = kod;
+        urunOnerileri.innerHTML = '';
+        urunKutusu.focus();
+    }
+
+    // Liste dışına tıklanınca kapansın; kutu boşaltılırsa da bayat öneri kalmasın.
+    document.addEventListener('click', (olay) => {
+        if (!urunKutusu.contains(olay.target) && !urunOnerileri.contains(olay.target)) {
+            urunOnerileri.innerHTML = '';
+        }
+    });
+    urunKutusu.addEventListener('input', () => {
+        if (!urunKutusu.value.trim()) urunOnerileri.innerHTML = '';
+    });
+
+    // ?urun_kodu= ile gelindiyse kutu zaten dolu; odak ilk boş alana gitsin.
+    if (!urunKutusu.value) urunKutusu.focus();
+</script>
 {% endblock %}
