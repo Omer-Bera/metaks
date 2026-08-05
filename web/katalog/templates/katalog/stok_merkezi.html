@@ -312,9 +312,13 @@
         }
         kayit.kutu.replaceChildren(...dugumler);
         kayit.kutu.value = oncekiDeger;
-        // Seçili lokasyon süzgeçten geçmediyse tarayıcı value'yu boşaltır (selectedIndex
-        // -1 olur); görünür bir seçim kalmadığı için ilk seçeneğe düşürülüyor.
-        if (kayit.kutu.value !== oncekiDeger) kayit.kutu.selectedIndex = 0;
+        // Seçili lokasyon süzgeçten geçmediyse tarayıcı selectedIndex'i -1 yapar ve
+        // alan HİÇ POST EDİLMEZ. Burada değer karşılaştırması YETMİYOR: önceki
+        // değer '' iken kilit boş seçeneği de düşürüyor, atama sonrası value yine
+        // '' okunuyor ve karşılaştırma eşit çıkıyor — ölçüldü, kilitli fason
+        // lokasyonu ekranda görünüyor ama forma girmiyordu. selectedIndex'e
+        // bakmak bu durumu da yakalıyor.
+        if (kayit.kutu.selectedIndex < 0) kayit.kutu.selectedIndex = 0;
         // Kilitliyken tek seçenek var; kullanıcıya bunun bir seçim olmadığını göster.
         kayit.kutu.classList.toggle('bg-slate-100', Boolean(sadeceId));
         kayit.kutu.classList.toggle('pointer-events-none', Boolean(sadeceId));
@@ -348,7 +352,9 @@
             })
         );
         ortakKutusu.value = oncekiDeger;
-        if (ortakKutusu.value !== oncekiDeger) ortakKutusu.selectedIndex = 0;
+        // selectedIndex kontrolü (bkz. lokasyonlariSuz): değer karşılaştırması
+        // "hiçbir şey seçili değil" durumunu kaçırıyor.
+        if (ortakKutusu.selectedIndex < 0) ortakKutusu.selectedIndex = 0;
         const etiket = document.querySelector(`label[for="${ortakKutusu.id}"]`);
         if (etiket && kural) etiket.textContent = kural.etiket;
     }

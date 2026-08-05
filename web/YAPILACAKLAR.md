@@ -8,15 +8,22 @@ kurallar [AGENTS.md](AGENTS.md), şema yol haritası
 Eski madde numaraları kod ve diğer belge referanslarını bozmamak için korunur.
 Güncel uygulama sırası:
 
-1. **Eski/belirsiz SKU bakiyesini fiziksel sayımla gerçek SKU'lara sınıflandırma**
-2. **Madde 4 — gerçek numune dolap/raf düzeni**
+1. **Migration 010 + 011'i ortak veritabanına uygulama** — arayüz hazır (madde 7),
+   sıradaki iş bu. Ayrıntı ve riskler
+   [`veritabani/docs/INFO.md`](../veritabani/docs/INFO.md) içinde.
+2. **Eski/belirsiz SKU bakiyesini fiziksel sayımla gerçek SKU'lara sınıflandırma**
+3. **Madde 4 — gerçek numune dolap/raf düzeni**
 
 Migration 008 ve 009 **2026-08-05'te ortak veritabanına uygulandı** (ayrıntı ve
 doğrulama kaydı [`veritabani/docs/INFO.md`](../veritabani/docs/INFO.md)). Bunun
 arayüz tarafındaki doğrudan sonucu: 2.973 ürünün tamamı şu an tek bir miras
 (BELIRSIZ) SKU taşıyor, yani stok işlem ekranında çoğu kodda "eski / belirsiz
-varyant" rozeti ve "+ Bu ürüne yeni varyant aç" kısayolu görünecek. Sıradaki iş
-bu — kısayol tam olarak o akış için kondu.
+varyant" rozeti ve "+ Bu ürüne yeni varyant aç" kısayolu görünüyor.
+
+⚠️ **Arayüz artık migration 010'u ZORUNLU kılıyor.** `StokKalemi` modeli 010'un
+`lak_mi` / `vernik_mi` / `iscilik_mi` kolonlarını, `stok_kalemi_kaydet()` çağrısı
+da dokuz parametreli yeni imzayı kullanıyor. 010 uygulanmamış bir veritabanına
+bağlanan bu kod stok ekranlarında hata verir. İkisi birlikte uygulanmalıdır.
 
 Madde 5 (dışa aktarma) ve madde 2b (rol ayrımı) tamamlandı; kararları aşağıda.
 
@@ -136,6 +143,66 @@ Renk ve hammadde açılır listeleri migration 009 ile doldu (13 renk, 7 hammadd
 
 ---
 
+## ✅ 7. Stok, SKU ve fason ekranları — migration 010 + 011 hizalaması (2026-08-06)
+
+Ekranlar 010'un nitelik modeline ve 011'in iş kurallarına hizalandı. Kalıcı
+kararlar:
+
+- **Müşteri ve tedarikçi lokasyon DEĞİLDİR.** `lokasyonlar.tip` yalnız `DAHILI`,
+  `FASON`, `NUMUNE` olmaya devam ediyor; karşı taraf `is_ortaklari` satırı.
+  Dahili/Harici ayrımı SADECE görünüm: lokasyon listeleri Dahili / Numune /
+  Dış atölye (fason) `<optgroup>`'larıyla basılıyor, `tip='FASON'` kodu
+  değişmedi. Boş grup hiç basılmıyor — canlıda NUMUNE lokasyonu olmadığı için o
+  grup bugün gerçekten boş (bkz. madde 4).
+- **Amaç seçimi iki kademeli, aynı sayfada.** Üst kademe malın yönü (Mal giriyor
+  / Mal çıkıyor / Diğer), alt kademe amaç. Yeni URL/view açılmadı, POST'a giden
+  alan hâlâ tek `amac`; `?amac=` ve `?kod=` derin bağlantıları korunuyor. Bütün
+  alt seçenekleri izne takılan bir üst kademe hiç gösterilmiyor.
+- **Arayüzdeki her süzme veritabanındaki bir kuralın AYNASI.** Lokasyon tipi
+  tablosu 011'in, karşı taraf rol tablosu 008 + 011'in kontrollerinin birebir
+  kopyası; iş kuralı Python veya JS'te ikinci kez TANIMLANMADI. `DUZELTME`
+  bilerek kısıtsız: fason lokasyonundaki bir hatanın da düzeltilebilmesi gerekiyor
+  ve düzeltme oradan çıkışın tek yolu — oraya tesis-içi filtresi koymak o yolu
+  sessizce kapatırdı.
+- **Madde 6'daki "stok durumu katlandı" kararı BİLİNÇLİ olarak geri alındı.**
+  Alan gelişmiş bölümden çıkıp üç düğmeli segment oldu (varsayılan `SERBEST`
+  seçili). Katlandığı dönemde gerçekten hep varsayılanda kalıyordu, ama sebebinin
+  bir kısmı görünmemesiydi: kalite bekleyen veya bloke mal girişi yapan personel
+  alanı fark etmiyordu. Fason dönüşündeki İKİNCİ durum alanı gelişmişte kaldı —
+  yalnız tek amaçta anlamlı.
+- **Belge no taşınıyor, kopyalanmıyor.** Satın alma kabulü ve satış sevkiyatında
+  görünür (mükerrer belge kilidinin anahtarı), diğer amaçlarda gelişmişe iniyor.
+  İki kopya basmak aynı adı iki kez POST ederdi.
+- **Dönecek SKU artık elle yazılmıyor, türetiliyor.** Depocu yapılacak işlemleri
+  giriyor; sistem kaynak SKU'nun niteliklerine delta uygulayıp
+  `stok_kalemi_kaydet()` ile bul-veya-oluştur yapıyor. SKU açma ve iş emri yazma
+  TEK transaction'da: emir reddedilirse sahipsiz SKU kalmıyor. Kaynak SKU
+  `BELIRSIZ` ise türetme yapılmıyor — nitelikleri bilinmeyen bir şeye delta
+  uygulanamaz; kullanıcı "önce gerçek varyant aç" kısayoluna yönlendiriliyor.
+- **Fason lokasyonu gizli.** Fasoncunun tek atölyesi otomatik seçiliyor; birden
+  fazlaysa alan geri görünüyor. Şemanın izin verdiği çoklu durum sessizce
+  varsayılmıyor.
+- **`islem_turu` tek değerli kaldı, alt tablo açılmadı.** Tek işlem seçildiyse
+  onun türü, birden fazlaysa `DIGER`; ayrıntı `aciklama`'ya yazılıyor.
+- **Yeni "SKU niteliği" filtresi: Ham / İşlem görmüş / Eski-belirsiz.** Kod
+  değeri `ISLENMEMIS` — `HAM` DEĞİL, çünkü 010 tam olarak bu kelimenin iki
+  anlama gelmesini düzeltti; kullanıcıya gösterilen etiket "Ham" olarak kalıyor.
+  `kaplama_id IS NULL = ham` YAZILMADI: miras SKU'ların hepsinde kaplama NULL,
+  öyle yazılsaydı filtre bütün katalogu ham gösterirdi. Aynı sebeple `BELIRSIZ`
+  satırlarda `lak_mi = FALSE` "laksız" diye okunmuyor — 010 o kolonlara varsayılan
+  koydu, bilgi koymadı. Süzme `v_stok_bakiye` üzerinden YAPILAMIYOR (view 008'de
+  tanımlandı, yeni kolonları taşımıyor); ham `stok_kalemleri` üzerinden alt
+  sorguyla yapılıyor.
+- **Dışa aktarım hizası korundu.** Yeni filtre `kapsam_ozeti()`'ne girdi ve dosya
+  ekranla aynı kümeyi indiriyor (üç değerde de ölçüldü). Dışa aktarım SÜTUNLARI
+  değişmedi: stok dosyası ürün kırılımında, SKU nitelikleri o kırılıma sığmıyor —
+  bu yüzden `DISA_AKTARIM_TASARIMI.md` güncellenmedi.
+- **Ölü kod:** `stok_servisi.hareket_kaydet()` silindi (Django tarafında çağıranı
+  yoktu). SQL'deki `stok_hareketi_kaydet()` sarmalayıcısına dokunulmadı — o
+  veritabanının dış yüzeyi.
+
+---
+
 ## ✅ 2b. Rol/yetki ayrımı — tamamlandı
 
 Migration 008 arayüzüyle birlikte Django izinleri ayrıldı:
@@ -193,6 +260,7 @@ HTMX ve doğrudan URL aynı decorator/sorgu kontrolünü kullanır.
 | ✅ 6 — stok & fason kullanım turu | 2026-08-05 | Lokasyonlar iş amacına göre süzülüyor, fason dönüşü fireyi tek atomik akışta yazıyor, hareket geçmişi iş amacıyla filtreleniyor; kullanılmayan eski stok akışları silindi. |
 | ✅ numune şema ön koşulu | 2026-07-30 | Ayrı varlık yerine lokasyon hiyerarşisi seçildi; migration 004 ve Django yaprak-lokasyon geçişi tamamlandı. |
 | ✅ 5 — filtreli CSV/Excel dışa aktarım | 2026-08-04 | Katalog, stok ve hareket ekranları aynı filtre sorgularından sayfalamasız dosya üretiyor; CSV akışlı, XLSX write-only/geçici dosyalı ve anonim okuma davranışı korundu. |
+| ✅ 7 — stok/SKU/fason ekranlarının 010+011 hizalaması | 2026-08-06 | Amaç seçimi iki kademeli oldu, iadeler menüye girdi, lokasyon ve karşı taraf süzmeleri 011'in birebir aynası yapıldı, dönecek SKU elle yazılmak yerine türetiliyor ve `HAM` her yerde `DEMONTE` oldu; arayüz artık migration 010'u zorunlu kılıyor. |
 
 Bir madde tamamlandığında açık bölümden kaldırıp bu tabloya tarih ve tek cümlelik
 kalıcı gerekçeyle ekleyin. Canlı satır sayısı, kişisel cihaz durumu ve tek kullanımlık

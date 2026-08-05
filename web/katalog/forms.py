@@ -512,21 +512,30 @@ LOKASYON_GRUP_ETIKETLERI = [
 ]
 
 
-def lokasyon_gruplu_secenekler(lokasyonlar):
-    """LokasyonDetay listesini `<optgroup>`'lu seçeneklere çevirir.
+def lokasyonlari_grupla(lokasyonlar):
+    """LokasyonDetay listesini `[(grup_etiketi, [lokasyon, ...]), ...]`e böler.
 
-    Boş grup basılmaz. Bu bugün teorik bir incelik değil: canlı veritabanında henüz
+    Boş grup DÖNMEZ. Bu bugün teorik bir incelik değil: canlı veritabanında henüz
     hiç `NUMUNE` lokasyonu yok (bkz. YAPILACAKLAR madde 4), yani "Numune" grubu
     gerçekten boş kalıyor. Tip destekleniyor, eksik olan yalnız veri.
+
+    Nesneleri döndürüyor (id/ad çifti değil) çünkü hareket geçmişi filtresi
+    seçeneğin `aktif_mi`'sini de basıyor ("(pasif)" eki).
     """
     gruplar = []
     for tip, etiket in LOKASYON_GRUP_ETIKETLERI:
-        secenekler = [
-            (l.lokasyon_id, l.tam_ad) for l in lokasyonlar if l.tip == tip
-        ]
-        if secenekler:
-            gruplar.append((etiket, secenekler))
+        uyanlar = [l for l in lokasyonlar if l.tip == tip]
+        if uyanlar:
+            gruplar.append((etiket, uyanlar))
     return gruplar
+
+
+def lokasyon_gruplu_secenekler(lokasyonlar):
+    """`lokasyonlari_grupla`'nın form `choices` biçimi: `<optgroup>`'lu seçenekler."""
+    return [
+        (etiket, [(l.lokasyon_id, l.tam_ad) for l in uyanlar])
+        for etiket, uyanlar in lokasyonlari_grupla(lokasyonlar)
+    ]
 
 
 class StokIslemFormu(forms.Form):

@@ -72,6 +72,34 @@ _SEVIYE_ETIKETLERI = {
 }
 _FASON_DURUM_ETIKETLERI = {'ACIK': 'Açık', 'GECIKMIS': 'Gecikmiş'}
 
+# --------------------------------------------------------------------------------------
+# SKU nitelik durumu filtresi (migration 010)
+#
+# Üç değer ve üçü de AYRI bir soruyu cevaplıyor:
+#
+#   BELIRSIZ   — `nitelik_durumu='BELIRSIZ'`. 008'in miras SKU'ları: kaplaması,
+#                rengi, montajı, lakı BİLİNMİYOR. Bugün 2.973 SKU'nun tamamı burada.
+#   ISLENMEMIS — `nitelik_durumu='TANIMLI'` VE hiçbir işlem görmemiş: kaplama yok,
+#                boya yok, mine yok, lak/vernik/işçilik yok. Kullanıcıya "Ham".
+#   ISLENMIS   — `TANIMLI` ve bunlardan en az biri var.
+#
+# Kod değeri neden 'HAM' DEĞİL: migration 010 tam olarak bu kelimenin iki anlama
+# gelmesini düzeltti (montaj hali 'HAM' -> 'DEMONTE'). Kullanıcıya gösterilen
+# etiket "Ham" — burada doğru kelime, çünkü "ham" bu projede işlem görmemiş
+# demek — ama kodda ikinci bir 'HAM' sabiti aynı karışıklığı geri getirirdi.
+#
+# TUZAK: "ham" ile `kaplama_id IS NULL` AYNI ŞEY DEĞİL. Miras SKU'ların hepsinde
+# kaplama NULL; `kaplama_id IS NULL = ham` yazılsaydı filtre bütün katalogu "ham"
+# gösterirdi. Aynı sebeple `lak_mi = FALSE` de `BELIRSIZ` satırlarda "laksız"
+# okunamaz — 010 o kolonlara VARSAYILAN koydu, BİLGİ koymadı. `nitelik_durumu`
+# şartı bu yüzden üç dalın da içinde.
+# --------------------------------------------------------------------------------------
+NITELIK_ETIKETLERI = {
+    'ISLENMEMIS': 'Ham (işlem görmemiş)',
+    'ISLENMIS': 'İşlem görmüş',
+    'BELIRSIZ': 'Eski / belirsiz',
+}
+
 
 # Kullanıcının "giriş yapmadan devam et" dediğini session'da tutan anahtar.
 # Kapının her açılışta değil, tarayıcı başına bir kez görünmesini sağlıyor: katalog
@@ -196,6 +224,7 @@ class ListeFiltresi:
         self.lokasyon = _tam_sayi(request.GET.get('lokasyon', ''))
         self.kaplama = _tam_sayi(request.GET.get('kaplama', ''))
         self.montaj = request.GET.get('montaj', '').strip()
+        self.nitelik = request.GET.get('nitelik', '').strip()
         self.durum = request.GET.get('durum', '').strip()
         self.boya = _tam_sayi(request.GET.get('boya', ''))
         self.mine = _tam_sayi(request.GET.get('mine', ''))
@@ -212,14 +241,16 @@ class ListeFiltresi:
     def filtre_var(self):
         return bool(
             self.arama or self.kategoriler or self.sadece_stok or self.yer
-            or self.lokasyon or self.kaplama or self.montaj or self.durum
+            or self.lokasyon or self.kaplama or self.montaj or self.nitelik
+            or self.durum
             or self.boya or self.mine or self.stok_turu or self.seviye
             or self.fasoncu or self.fason_durum or self.parti or self.olcu
         )
 
     def url(
         self, *, yol=None, kategoriler=None, arama=None, sadece_stok=None,
-        yer=None, lokasyon=None, kaplama=None, montaj=None, durum=None,
+        yer=None, lokasyon=None, kaplama=None, montaj=None, nitelik=None,
+        durum=None,
         boya=None, mine=None, stok_turu=None, seviye=None, fasoncu=None,
         fason_durum=None, parti=None, olcu=None, **ekstra
     ):
@@ -236,6 +267,7 @@ class ListeFiltresi:
         lokasyon = self.lokasyon if lokasyon is None else lokasyon
         kaplama = self.kaplama if kaplama is None else kaplama
         montaj = self.montaj if montaj is None else montaj
+        nitelik = self.nitelik if nitelik is None else nitelik
         durum = self.durum if durum is None else durum
         boya = self.boya if boya is None else boya
         mine = self.mine if mine is None else mine
@@ -254,7 +286,7 @@ class ListeFiltresi:
             parametreler['stok'] = '1'
         for anahtar, deger in [
             ('yer', yer), ('lokasyon', lokasyon), ('kaplama', kaplama),
-            ('montaj', montaj), ('durum', durum),
+            ('montaj', montaj), ('nitelik', nitelik), ('durum', durum),
             ('boya', boya), ('mine', mine), ('stok_turu', stok_turu),
             ('seviye', seviye), ('fasoncu', fasoncu),
             ('fason_durum', fason_durum), ('parti', parti), ('olcu', olcu),
@@ -290,6 +322,9 @@ class ListeFiltresi:
         for etiket, deger, secenekler in (
             ('Yer', self.yer, _YER_ETIKETLERI),
             ('Montaj', self.montaj, MONTAJ_ETIKETLERI),
+            # Yeni filtre dosya kapsamına da giriyor: dosyayı açan kişi hangi
+            # kısıtlarla indirildiğini görmeden sayıyı başkasına aktarabilirdi.
+            ('Nitelik', self.nitelik, NITELIK_ETIKETLERI),
             ('Stok durumu', self.durum, _STOK_DURUMU_ETIKETLERI),
             ('Stok türü', self.stok_turu, _STOK_TURU_ETIKETLERI),
             ('Seviye', self.seviye, _SEVIYE_ETIKETLERI),
@@ -611,6 +646,26 @@ def _stok_liste_sorgusu(filtre):
             filtre_satisa_hazir__lte=F('kritik_stok_esigi'),
         )
 
+    # SKU nitelik durumu (migration 010). `StokBakiye` üzerinden YAPILAMAZ:
+    # `v_stok_bakiye` 008'de tanımlandı ve 010'un üç yeni kolonunu taşımıyor.
+    # Bu yüzden süzme ham `stok_kalemleri` üzerinden, ürün koduna alt sorguyla —
+    # `fason_durum` filtresinin zaten kullandığı desen. Ayrıca bu filtre bakiye
+    # değil KİMLİK sorusu: hiç hareket görmemiş bir SKU da sayılmalı.
+    if filtre.nitelik in NITELIK_ETIKETLERI:
+        islem_gormemis = Q(
+            kaplama_id__isnull=True, boya_renk_id__isnull=True,
+            mine_renk_id__isnull=True, lak_mi=False, vernik_mi=False,
+            iscilik_mi=False,
+        )
+        skular = StokKalemi.objects.using('metaks').filter(aktif_mi=True)
+        if filtre.nitelik == 'BELIRSIZ':
+            skular = skular.filter(nitelik_durumu='BELIRSIZ')
+        elif filtre.nitelik == 'ISLENMEMIS':
+            skular = skular.filter(islem_gormemis, nitelik_durumu='TANIMLI')
+        else:
+            skular = skular.filter(~islem_gormemis, nitelik_durumu='TANIMLI')
+        urunler = urunler.filter(stok_kodu__in=Subquery(skular.values('urun_kodu')))
+
     if filtre.fason_durum in ('ACIK', 'GECIKMIS'):
         emirler = FasonIsEmriOzet.objects.using('metaks').filter(durum='ACIK', acik_miktar__gt=0)
         if filtre.fason_durum == 'GECIKMIS':
@@ -661,8 +716,8 @@ def _stok_liste_context(request, filtre):
         'toplam': sayfalayici.count,
         'temiz_url': filtre.url(
             arama='', kategoriler=[], sadece_stok=False, yer='', lokasyon='',
-            kaplama='', montaj='', durum='', boya='', mine='', stok_turu='',
-            seviye='', fasoncu='', fason_durum='', parti='', olcu='',
+            kaplama='', montaj='', nitelik='', durum='', boya='', mine='',
+            stok_turu='', seviye='', fasoncu='', fason_durum='', parti='', olcu='',
         ),
         'stok_ac_url': filtre.url(sadece_stok=True),
         'stok_kapat_url': filtre.url(sadece_stok=False),
@@ -676,7 +731,11 @@ def _stok_liste_context(request, filtre):
             ),
         },
         'sonraki_url': filtre.url(sayfa=sayfa.next_page_number()) if sayfa.has_next() else None,
-        'lokasyonlar': list(LokasyonDetay.objects.using('metaks').filter(aktif_mi=True, yaprak_mi=True)),
+        # Dahili / Numune / Dış atölye (fason) gruplu; boş grup basılmıyor.
+        'lokasyon_gruplari': forms.lokasyonlari_grupla(
+            list(LokasyonDetay.objects.using('metaks').filter(aktif_mi=True, yaprak_mi=True))
+        ),
+        'nitelik_secenekleri': list(NITELIK_ETIKETLERI.items()),
         'kaplamalar': stok_servisi.kaplama_secenekleri(),
         'renkler': list(Renk.objects.using('metaks').filter(aktif_mi=True)),
         'fasoncular': list(IsOrtagi.objects.using('metaks').filter(
@@ -1120,8 +1179,11 @@ def hareket_gecmisi(request):
         # taşır) filtrede seçilebilir görünüp hep "0 hareket" dönmesin. tam_ad
         # hiyerarşiyi gösteriyor ("Numune Dolabı 1 · Raf 3") — düz lokasyon_adi
         # birden çok dolaptaki aynı isimli rafları ayırt edemezdi.
-        'lokasyonlar': list(
-            LokasyonDetay.objects.using('metaks').filter(yaprak_mi=True)
+        # Dahili / Numune / Dış atölye (fason) gruplu; boş grup basılmıyor. Pasif
+        # lokasyonlar burada BİLEREK duruyor (geçmiş onlara yazılmış olabilir) ve
+        # "(pasif)" ekiyle görünüyor — bu yüzden gruplama nesneleri koruyor.
+        'lokasyon_gruplari': forms.lokasyonlari_grupla(
+            list(LokasyonDetay.objects.using('metaks').filter(yaprak_mi=True))
         ),
         'kullanicilar': sorted(
             StokHareketi.objects.using('metaks')

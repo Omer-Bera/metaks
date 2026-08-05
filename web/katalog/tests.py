@@ -489,6 +489,24 @@ class FiltreSozlesmesiTestleri(SimpleTestCase):
         self.assertTrue(filtre.filtre_var)
         self.assertIn('Amaç: ', filtre.kapsam_ozeti())
 
+    def test_nitelik_filtresi_url_ve_dosya_kapsamina_giriyor(self):
+        # Madde 5'te bir kez ödenmiş bedel: yeni her filtre hem URL sözleşmesine
+        # hem `kapsam_ozeti()`'ne girmezse dosya, ekrandan BAŞKA bir küme indirir
+        # ya da hangi kısıtla indirildiği dosyada görünmez.
+        istek = self.istek_fabrikasi.get('/stok/', {'nitelik': 'ISLENMEMIS', 'q': 'toka'})
+        filtre = views.ListeFiltresi(istek, reverse('katalog:stok_listesi'))
+        self.assertTrue(filtre.filtre_var)
+        self.assertIn('nitelik=ISLENMEMIS', filtre.url())
+        self.assertIn('Nitelik: Ham (işlem görmemiş)', filtre.kapsam_ozeti(stok_goster=True))
+        self.assertNotIn('nitelik', filtre.url(nitelik=''))
+
+    def test_nitelik_kod_degeri_ham_kelimesini_yeniden_kullanmiyor(self):
+        # Migration 010 tam olarak bu kelimenin iki anlama gelmesini düzeltti;
+        # kodda ikinci bir 'HAM' sabiti aynı karışıklığı geri getirirdi.
+        # Kullanıcıya gösterilen ETİKET "Ham" olarak kalıyor.
+        self.assertNotIn('HAM', views.NITELIK_ETIKETLERI)
+        self.assertEqual(views.NITELIK_ETIKETLERI['ISLENMEMIS'], 'Ham (işlem görmemiş)')
+
     def test_stok_sku_filtreleri_dosya_kapsaminda_okunuyor(self):
         # Kapsam satırı dosyayı açan kişinin gördüğü tek filtre kaydı; 008'in SKU
         # filtreleri buraya girmezse sayı bağlamsız aktarılır.

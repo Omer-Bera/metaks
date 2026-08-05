@@ -110,10 +110,14 @@
             <select name="lokasyon" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5
                     text-sm focus:outline-none focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5">
                 <option value="">Tümü</option>
-                {% for lokasyon in lokasyonlar %}
-                <option value="{{ lokasyon.lokasyon_id }}"
-                        {% if secili.lokasyon == lokasyon.lokasyon_id %}selected{% endif %}
-                >{{ lokasyon.tam_ad }}{% if not lokasyon.aktif_mi %} (pasif){% endif %}</option>
+                {% for grup_etiketi, grup_lokasyonlari in lokasyon_gruplari %}
+                <optgroup label="{{ grup_etiketi }}">
+                    {% for lokasyon in grup_lokasyonlari %}
+                    <option value="{{ lokasyon.lokasyon_id }}"
+                            {% if secili.lokasyon == lokasyon.lokasyon_id %}selected{% endif %}
+                    >{{ lokasyon.tam_ad }}{% if not lokasyon.aktif_mi %} (pasif){% endif %}</option>
+                    {% endfor %}
+                </optgroup>
                 {% endfor %}
             </select>
         </label>

@@ -120,7 +120,12 @@
             lokasyonKutusu.append(new Option(ad, String(id)));
         }
         lokasyonKutusu.value = oncekiDeger;
-        if (lokasyonKutusu.value !== oncekiDeger) lokasyonKutusu.selectedIndex = 0;
+        // Tek atölyede boş seçenek basılmıyor; önceki değer '' ise tarayıcı
+        // selectedIndex'i -1 bırakır ve alan hiç POST edilmez. Değer
+        // karşılaştırması bunu yakalamıyor (stok_merkezi.html'de ölçüldü).
+        // Sunucu tarafı tek atölyeyi zaten kendisi dolduruyor, ama istemcinin
+        // de tutarlı olması gerekiyor.
+        if (lokasyonKutusu.selectedIndex < 0) lokasyonKutusu.selectedIndex = 0;
         // Hata varsa alan görünür kalsın; kullanıcı neyi düzelteceğini görmeli.
         const hataVar = Boolean(lokasyonSarmalayici.querySelector('.text-rose-700'));
         lokasyonSarmalayici.classList.toggle('hidden', lokasyonlar.length <= 1 && !hataVar);

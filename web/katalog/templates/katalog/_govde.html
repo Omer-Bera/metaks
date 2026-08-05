@@ -65,28 +65,33 @@ sıralama) bunun dışında kalıyor ve durumu buradaki #filtre-durumu üzerinde
                     <option value="">Tümü</option><option value="DAHILI" {% if filtre.yer == 'DAHILI' %}selected{% endif %}>İçeride</option><option value="FASON" {% if filtre.yer == 'FASON' %}selected{% endif %}>Dışarıda / fason</option><option value="NUMUNE" {% if filtre.yer == 'NUMUNE' %}selected{% endif %}>Numunede</option>
                 </select>
             </label>
+            {% comment %}
+            Lokasyon listeleri Dahili / Numune / Dış atölye (fason) gruplu. Boş grup
+            HİÇ basılmıyor — canlıda bugün NUMUNE lokasyonu yok, o grup gerçekten
+            boş kalıyor (YAPILACAKLAR madde 4). `tip='FASON'` kodu değişmedi;
+            değişen yalnız etiket.
+            {% endcomment %}
             <label class="text-xs text-slate-500">Tam lokasyon
                 <select name="lokasyon" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm"
                         hx-get="{{ filtre.yol }}" hx-trigger="change"
                         hx-include="[name='q'], [name='sirala'], #filtre-durumu input, #stok-filtreleri select, #stok-filtreleri input"
                         hx-target="#katalog-govde" hx-swap="outerHTML" hx-push-url="true">
-                    <option value="">Tümü</option>{% for l in lokasyonlar %}<option value="{{ l.lokasyon_id }}" {% if filtre.lokasyon == l.lokasyon_id %}selected{% endif %}>{{ l.tam_ad }}</option>{% endfor %}
+                    <option value="">Tümü</option>
+                    {% for grup_etiketi, grup_lokasyonlari in lokasyon_gruplari %}<optgroup label="{{ grup_etiketi }}">{% for l in grup_lokasyonlari %}<option value="{{ l.lokasyon_id }}" {% if filtre.lokasyon == l.lokasyon_id %}selected{% endif %}>{{ l.tam_ad }}</option>{% endfor %}</optgroup>{% endfor %}
                 </select>
             </label>
-            <label class="text-xs text-slate-500">Kaplama
-                <select name="kaplama" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm"
+            {% comment %}
+            Migration 010'un nitelik durumu filtresi. "Ham" `kaplama_id IS NULL`
+            DEĞİL: miras SKU'ların hepsinde kaplama NULL, öyle yazılsaydı filtre
+            bütün katalogu ham gösterirdi. Tanım `views.NITELIK_ETIKETLERI`
+            yanındaki yorumda.
+            {% endcomment %}
+            <label class="text-xs text-slate-500">SKU niteliği
+                <select name="nitelik" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm"
                         hx-get="{{ filtre.yol }}" hx-trigger="change"
                         hx-include="[name='q'], [name='sirala'], #filtre-durumu input, #stok-filtreleri select, #stok-filtreleri input"
                         hx-target="#katalog-govde" hx-swap="outerHTML" hx-push-url="true">
-                    <option value="">Tümü</option>{% for id, ad in kaplamalar %}<option value="{{ id }}" {% if filtre.kaplama == id %}selected{% endif %}>{{ ad }}</option>{% endfor %}
-                </select>
-            </label>
-            <label class="text-xs text-slate-500">Montaj hali
-                <select name="montaj" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm"
-                        hx-get="{{ filtre.yol }}" hx-trigger="change"
-                        hx-include="[name='q'], [name='sirala'], #filtre-durumu input, #stok-filtreleri select, #stok-filtreleri input"
-                        hx-target="#katalog-govde" hx-swap="outerHTML" hx-push-url="true">
-                    <option value="">Tümü</option><option value="BELIRSIZ" {% if filtre.montaj == 'BELIRSIZ' %}selected{% endif %}>Eski / belirsiz</option><option value="DEMONTE" {% if filtre.montaj == 'DEMONTE' %}selected{% endif %}>Demonte</option><option value="YARI_MONTE" {% if filtre.montaj == 'YARI_MONTE' %}selected{% endif %}>Yarı monte</option><option value="MONTE" {% if filtre.montaj == 'MONTE' %}selected{% endif %}>Monte</option>
+                    <option value="">Tümü</option>{% for kod, etiket in nitelik_secenekleri %}<option value="{{ kod }}" {% if filtre.nitelik == kod %}selected{% endif %}>{{ etiket }}</option>{% endfor %}
                 </select>
             </label>
             <label class="text-xs text-slate-500">Stok durumu
@@ -98,9 +103,27 @@ sıralama) bunun dışında kalıyor ve durumu buradaki #filtre-durumu üzerinde
                 </select>
             </label>
         </div>
-        <details class="mt-3" {% if filtre.boya or filtre.mine or filtre.stok_turu or filtre.seviye or filtre.fasoncu or filtre.fason_durum or filtre.parti or filtre.olcu %}open{% endif %}>
+        {% comment %}
+        Kaplama ve montaj hali gelişmişe indi: ikisi de belirli bir varyantı
+        ararken kullanılıyor, günlük listeleme sorusu değil. Hızlı erişimdeki
+        yerlerini "SKU niteliği" aldı — "hangi mal daha işlem görmemiş" sorusu
+        depo işinde çok daha sık.
+        {% endcomment %}
+        <details class="mt-3" {% if filtre.kaplama or filtre.montaj or filtre.boya or filtre.mine or filtre.stok_turu or filtre.seviye or filtre.fasoncu or filtre.fason_durum or filtre.parti or filtre.olcu %}open{% endif %}>
             <summary class="cursor-pointer text-xs font-medium text-slate-600">Gelişmiş filtreler</summary>
             <div class="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
+                <label class="text-xs text-slate-500">Kaplama
+                    <select name="kaplama" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm"
+                            hx-get="{{ filtre.yol }}" hx-trigger="change" hx-include="[name='q'], [name='sirala'], #filtre-durumu input, #stok-filtreleri select, #stok-filtreleri input" hx-target="#katalog-govde" hx-swap="outerHTML" hx-push-url="true">
+                        <option value="">Tümü</option>{% for id, ad in kaplamalar %}<option value="{{ id }}" {% if filtre.kaplama == id %}selected{% endif %}>{{ ad }}</option>{% endfor %}
+                    </select>
+                </label>
+                <label class="text-xs text-slate-500">Montaj hali
+                    <select name="montaj" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm"
+                            hx-get="{{ filtre.yol }}" hx-trigger="change" hx-include="[name='q'], [name='sirala'], #filtre-durumu input, #stok-filtreleri select, #stok-filtreleri input" hx-target="#katalog-govde" hx-swap="outerHTML" hx-push-url="true">
+                        <option value="">Tümü</option><option value="BELIRSIZ" {% if filtre.montaj == 'BELIRSIZ' %}selected{% endif %}>Eski / belirsiz</option><option value="DEMONTE" {% if filtre.montaj == 'DEMONTE' %}selected{% endif %}>Demonte</option><option value="YARI_MONTE" {% if filtre.montaj == 'YARI_MONTE' %}selected{% endif %}>Yarı monte</option><option value="MONTE" {% if filtre.montaj == 'MONTE' %}selected{% endif %}>Monte</option>
+                    </select>
+                </label>
                 <label class="text-xs text-slate-500">Stok görünümü
                     <select name="stok_turu" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm"
                             hx-get="{{ filtre.yol }}" hx-trigger="change" hx-include="[name='q'], [name='sirala'], #filtre-durumu input, #stok-filtreleri select, #stok-filtreleri input" hx-target="#katalog-govde" hx-swap="outerHTML" hx-push-url="true">
@@ -125,7 +148,7 @@ sıralama) bunun dışında kalıyor ve durumu buradaki #filtre-durumu üzerinde
                         <option value="">Tümü</option>{% for r in renkler %}<option value="{{ r.renk_id }}" {% if filtre.mine == r.renk_id %}selected{% endif %}>{{ r.renk_adi }}</option>{% endfor %}
                     </select>
                 </label>
-                <label class="text-xs text-slate-500">Fasoncu
+                <label class="text-xs text-slate-500">Hangi fasoncuda
                     <select name="fasoncu" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm"
                             hx-get="{{ filtre.yol }}" hx-trigger="change" hx-include="[name='q'], [name='sirala'], #filtre-durumu input, #stok-filtreleri select, #stok-filtreleri input" hx-target="#katalog-govde" hx-swap="outerHTML" hx-push-url="true">
                         <option value="">Tümü</option>{% for f in fasoncular %}<option value="{{ f.is_ortagi_id }}" {% if filtre.fasoncu == f.is_ortagi_id %}selected{% endif %}>{{ f.unvan }}</option>{% endfor %}
