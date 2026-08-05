@@ -19,6 +19,8 @@ işlerin uzun tarihçesi eklenmez.
   `lokasyon_yonetimi.py`, ürün yazma akışları `urun_yonetimi.py` içindedir.
 - Şema sözleşmesi için
   [`aktif-urun-veri-sozlesmesi.md`](../veritabani/docs/aktif-urun-veri-sozlesmesi.md)
+  ve migration 008 sonrasındaki stok yüzeyleri için
+  [`stok-urun-veri-sozlesmesi.md`](../veritabani/docs/stok-urun-veri-sozlesmesi.md)
   otoritedir. Django aynı kuralları ikinci kez tanımlamaz.
 
 ## Geliştirme komutları
@@ -64,12 +66,14 @@ Kesin kurallar:
 ## Yazma kapıları
 
 - `stok_hareketleri`ne doğrudan `INSERT` yoktur. Django yalnız
-  `stok_servisi.hareket_kaydet()` üzerinden `stok_hareketi_kaydet()` çağırır ve
+  migration 008 sonrasında `stok_servisi.stok_islemi_kaydet()` üzerinden
+  `stok_islemi_kaydet()` çağırır ve
   veritabanının döndürdüğü Türkçe mesajı taşır.
 - `urunler`e doğrudan `INSERT/UPDATE` yoktur. Yazma yolu
   `urun_servisi` üzerinden `urun_kaydet()` fonksiyonudur.
-- Yeterli stok, işlem tipine göre lokasyon, SAYIM_DEVRİ farkı, kova seçimi ve
-  mükerrer istek gibi iş kuralları Python veya JavaScript'te kopyalanmaz.
+- Yeterli stok, işlem amacına göre defter etkisi, lokasyon, SKU/parti/durum,
+  SAYIM_DEVRİ farkı ve mükerrer istek gibi iş kuralları Python veya JavaScript'te
+  kopyalanmaz.
 - Lokasyon ekleme/pasife alma/silme bu iki fonksiyonun dışında kalan bilinçli
   istisnadır. Kurallar SQL kısıtlarındadır; `IntegrityError` kısıt adına göre
   kullanıcı mesajına çevrilir.
@@ -110,19 +114,22 @@ bir yazma yolu yapılandırılmalıdır.
 
 ## Stok ve lokasyon semantiği
 
-- `v_toplam_stok`ta satır bulunmaması “sayılmadı”, satırda `0` bulunması “sayıldı,
-  boş” demektir. Arayüz bu durumları birleştirmez.
-- SAYIM_DEVRİ alanı fark değil, personelin saydığı toplam miktardır; farkı veritabanı
-  hesaplar.
-- Stok kovası `kaplama_id + kaplama_cesidi + montaj` ile ayrılır. Çıkış, transfer
-  ve sayım doğru kovayı belirtmelidir. Boya ve mine serbest metindir ve kova
-  kimliğine girmez.
-- Numune ayrı ürün veya ayrı veritabanı değildir; `NUMUNE` tipli lokasyondaki fiziksel
-  stoktur. Dolap kök, raf yapraktır. Hareket yalnız `yaprak_mi=True` lokasyona yazılır.
-- Satılabilir stok ile fiziksel/numune stoku birbirine karıştırılmaz;
-  `v_toplam_stok`, `v_fiziksel_stok` ve `v_numune_konumlari` kendi sözleşmelerine
-  göre kullanılır.
-- Pasif lokasyon geçmişte gösterilebilir ama yeni harekette seçilemez.
+- Ürün kodu tasarım/model kimliğidir; fiziksel olarak birbirinin yerine sevk
+  edilemeyen kaplama, boya/mine ve montaj kombinasyonu `stok_kalemleri` içindeki
+  SKU'dur. Eski aynı kodlu SKU `BELIRSIZ` varyanttır, ham sayılmaz.
+- `v_stok_bakiye` SKU × lokasyon × durum × parti bakiyesidir. Sayım alanı fark
+  değil, personelin saydığı toplamdır; farkı `stok_islemi_kaydet()` hesaplar.
+- Fiziksel konum ile kullanılabilirlik bağımsızdır. Durum `SERBEST`,
+  `KALITE_BEKLIYOR` veya `BLOKE`; parti/lot ise yalnız ihtiyaç olan akışlarda
+  seçilir.
+- Numune ayrı ürün veya ayrı veritabanı değildir; `NUMUNE` tipli lokasyondaki
+  fiziksel stoktur. Fason mal da ayrı veritabanında değil, iş emrine bağlı FASON
+  lokasyonunda METAKS mülkiyetinde kalır.
+- Sahip olunan, tesis içi, satışa hazır, fasonda, numunede, kalite bekleyen ve
+  bloke toplamların otoritesi `v_stok_urun_ozet`tir; eski `v_toplam_stok` bu
+  ayrımlar için kullanılmaz.
+- Hareket yalnız aktif `yaprak_mi=True` lokasyona yazılır. Pasif lokasyon geçmişte
+  gösterilebilir ama yeni harekette seçilemez.
 
 ## Zaman, HTMX ve frontend
 
@@ -144,14 +151,14 @@ parçasıdır; burada ikinci bir güvenlik listesi tutulmaz.
 
 ## Yetki ve test disiplini
 
-- Katalog, stok ve hareket geçmişi bugün salt-okunur anonim erişime izin verir.
-- Stok/ürün yazma ekranları `login_required`, kullanıcı ve lokasyon yönetimi
-  `is_staff` kapısındadır.
-- Daha ince depo/yönetici/fason rol ayrımı ertelenmiştir; durum
-  `YAPILACAKLAR.md` içinde izlenir.
-- `katalog/tests.py` henüz gerçek bir test takımı içermez. Django test runner'ını
-  canlı/paylaşılan `depo_sistemi`ne karşı çalıştırmayın ve otomatik test DB'si
-  oluşturmasına izin vermeyin.
+- Katalog anonim kalabilir; stok ve hareket verileri `stok_goruntule` /
+  `hareket_goruntule` izinleri olmadan sorgulanmaz veya gösterilmez.
+- Stok yazma, sayım, düzeltme ve fason yönetimi ayrı Django izinleridir. Hazır
+  gruplar görüntüleyici, operatör, fason sorumlusu ve stok yöneticisidir; `is_staff`
+  geçiş süresince bütün stok izinlerine sahiptir.
+- `katalog/tests.py` veritabanısız yetki/yönlendirme testleri içerir. Django test
+  runner'ını canlı/paylaşılan `depo_sistemi`ne karşı çalıştırmayın ve onun için
+  otomatik test DB'si oluşturmasına izin vermeyin.
 - Yazma entegrasyonu gerekiyorsa geçici/test veritabanı veya geri alınan transaction
   kullanın; canlı deftere test satırı bırakmayın.
 

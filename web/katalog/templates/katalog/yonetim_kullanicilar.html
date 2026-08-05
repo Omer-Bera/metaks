@@ -34,6 +34,9 @@
                         <span class="rounded px-1.5 py-0.5 text-xs font-medium
                                      bg-slate-900 text-white">Yönetici</span>
                         {% endif %}
+                        {% if kayit.stok_rolu_etiketi != 'Stok yetkisi yok' %}
+                        <span class="rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-medium text-emerald-800">{{ kayit.stok_rolu_etiketi }}</span>
+                        {% endif %}
 
                         {% comment %}
                         Pasif hesap yalnızca soluk renkle değil, açık etiketle

@@ -1,0 +1,15 @@
+{% extends "katalog/base.html" %}
+{% block title %}METAKS · Yeni SKU{% endblock %}
+{% block content %}
+<main class="max-w-2xl mx-auto px-4 sm:px-6 py-8">
+    <a href="{% url 'katalog:stok_merkezi' %}" class="text-sm text-slate-500">← Stok işlemi</a>
+    <h1 class="mt-5 text-2xl font-semibold">Yeni stok varyantı (SKU)</h1>
+    <p class="mt-1 text-sm text-slate-500">Yalnız gerçekten kullanılan kaplama/mine/montaj kombinasyonunu açın.</p>
+    <form method="post" class="mt-6 rounded-xl border border-slate-200 bg-white p-6 space-y-4">
+        {% csrf_token %}
+        {{ form.non_field_errors }}
+        {% for alan in form %}{% include "katalog/_form_alani.html" with alan=alan %}{% endfor %}
+        <button class="rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-medium text-white">SKU oluştur</button>
+    </form>
+</main>
+{% endblock %}

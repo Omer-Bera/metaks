@@ -19,7 +19,101 @@ sıralama) bunun dışında kalıyor ve durumu buradaki #filtre-durumu üzerinde
         {% if filtre.sadece_stok %}<input type="hidden" name="stok" value="1">{% endif %}
     </div>
 
-    {% if secili_seritler %}
+    {% if stok_goster %}
+    <section id="stok-filtreleri" class="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <div class="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
+            <label class="text-xs text-slate-500">Bulunduğu yer
+                <select name="yer" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm"
+                        hx-get="{{ filtre.yol }}" hx-trigger="change"
+                        hx-include="[name='q'], [name='sirala'], #filtre-durumu input, #stok-filtreleri select, #stok-filtreleri input"
+                        hx-target="#katalog-govde" hx-swap="outerHTML" hx-push-url="true">
+                    <option value="">Tümü</option><option value="DAHILI" {% if filtre.yer == 'DAHILI' %}selected{% endif %}>İçeride</option><option value="FASON" {% if filtre.yer == 'FASON' %}selected{% endif %}>Dışarıda / fason</option><option value="NUMUNE" {% if filtre.yer == 'NUMUNE' %}selected{% endif %}>Numunede</option>
+                </select>
+            </label>
+            <label class="text-xs text-slate-500">Tam lokasyon
+                <select name="lokasyon" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm"
+                        hx-get="{{ filtre.yol }}" hx-trigger="change"
+                        hx-include="[name='q'], [name='sirala'], #filtre-durumu input, #stok-filtreleri select, #stok-filtreleri input"
+                        hx-target="#katalog-govde" hx-swap="outerHTML" hx-push-url="true">
+                    <option value="">Tümü</option>{% for l in lokasyonlar %}<option value="{{ l.lokasyon_id }}" {% if filtre.lokasyon == l.lokasyon_id %}selected{% endif %}>{{ l.tam_ad }}</option>{% endfor %}
+                </select>
+            </label>
+            <label class="text-xs text-slate-500">Kaplama
+                <select name="kaplama" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm"
+                        hx-get="{{ filtre.yol }}" hx-trigger="change"
+                        hx-include="[name='q'], [name='sirala'], #filtre-durumu input, #stok-filtreleri select, #stok-filtreleri input"
+                        hx-target="#katalog-govde" hx-swap="outerHTML" hx-push-url="true">
+                    <option value="">Tümü</option>{% for id, ad in kaplamalar %}<option value="{{ id }}" {% if filtre.kaplama == id %}selected{% endif %}>{{ ad }}</option>{% endfor %}
+                </select>
+            </label>
+            <label class="text-xs text-slate-500">Montaj hali
+                <select name="montaj" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm"
+                        hx-get="{{ filtre.yol }}" hx-trigger="change"
+                        hx-include="[name='q'], [name='sirala'], #filtre-durumu input, #stok-filtreleri select, #stok-filtreleri input"
+                        hx-target="#katalog-govde" hx-swap="outerHTML" hx-push-url="true">
+                    <option value="">Tümü</option><option value="BELIRSIZ" {% if filtre.montaj == 'BELIRSIZ' %}selected{% endif %}>Eski / belirsiz</option><option value="HAM" {% if filtre.montaj == 'HAM' %}selected{% endif %}>Ham</option><option value="YARI_MONTE" {% if filtre.montaj == 'YARI_MONTE' %}selected{% endif %}>Yarı monte</option><option value="MONTE" {% if filtre.montaj == 'MONTE' %}selected{% endif %}>Monte</option>
+                </select>
+            </label>
+            <label class="text-xs text-slate-500">Stok durumu
+                <select name="durum" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm"
+                        hx-get="{{ filtre.yol }}" hx-trigger="change"
+                        hx-include="[name='q'], [name='sirala'], #filtre-durumu input, #stok-filtreleri select, #stok-filtreleri input"
+                        hx-target="#katalog-govde" hx-swap="outerHTML" hx-push-url="true">
+                    <option value="">Tümü</option><option value="SERBEST" {% if filtre.durum == 'SERBEST' %}selected{% endif %}>Serbest</option><option value="KALITE_BEKLIYOR" {% if filtre.durum == 'KALITE_BEKLIYOR' %}selected{% endif %}>Kalite bekliyor</option><option value="BLOKE" {% if filtre.durum == 'BLOKE' %}selected{% endif %}>Bloke</option>
+                </select>
+            </label>
+        </div>
+        <details class="mt-3" {% if filtre.boya or filtre.mine or filtre.stok_turu or filtre.seviye or filtre.fasoncu or filtre.fason_durum or filtre.parti or filtre.olcu %}open{% endif %}>
+            <summary class="cursor-pointer text-xs font-medium text-slate-600">Gelişmiş filtreler</summary>
+            <div class="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
+                <label class="text-xs text-slate-500">Stok görünümü
+                    <select name="stok_turu" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm"
+                            hx-get="{{ filtre.yol }}" hx-trigger="change" hx-include="[name='q'], [name='sirala'], #filtre-durumu input, #stok-filtreleri select, #stok-filtreleri input" hx-target="#katalog-govde" hx-swap="outerHTML" hx-push-url="true">
+                        <option value="">Tümü</option><option value="SATISA_HAZIR" {% if filtre.stok_turu == 'SATISA_HAZIR' %}selected{% endif %}>Satışa hazır</option><option value="FASONDA" {% if filtre.stok_turu == 'FASONDA' %}selected{% endif %}>Fasonda</option><option value="KALITE" {% if filtre.stok_turu == 'KALITE' %}selected{% endif %}>Kalite bekleyen</option><option value="BLOKE" {% if filtre.stok_turu == 'BLOKE' %}selected{% endif %}>Bloke</option>
+                    </select>
+                </label>
+                <label class="text-xs text-slate-500">Stok seviyesi
+                    <select name="seviye" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm"
+                            hx-get="{{ filtre.yol }}" hx-trigger="change" hx-include="[name='q'], [name='sirala'], #filtre-durumu input, #stok-filtreleri select, #stok-filtreleri input" hx-target="#katalog-govde" hx-swap="outerHTML" hx-push-url="true">
+                        <option value="">Tümü</option><option value="STOKLU" {% if filtre.seviye == 'STOKLU' %}selected{% endif %}>Stoklu</option><option value="SIFIR" {% if filtre.seviye == 'SIFIR' %}selected{% endif %}>Sıfır</option><option value="SAYILMAMIS" {% if filtre.seviye == 'SAYILMAMIS' %}selected{% endif %}>Sayılmamış</option><option value="KRITIK" {% if filtre.seviye == 'KRITIK' %}selected{% endif %}>Kritik altı</option>
+                    </select>
+                </label>
+                <label class="text-xs text-slate-500">Boya rengi
+                    <select name="boya" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm"
+                            hx-get="{{ filtre.yol }}" hx-trigger="change" hx-include="[name='q'], [name='sirala'], #filtre-durumu input, #stok-filtreleri select, #stok-filtreleri input" hx-target="#katalog-govde" hx-swap="outerHTML" hx-push-url="true">
+                        <option value="">Tümü</option>{% for r in renkler %}<option value="{{ r.renk_id }}" {% if filtre.boya == r.renk_id %}selected{% endif %}>{{ r.renk_adi }}</option>{% endfor %}
+                    </select>
+                </label>
+                <label class="text-xs text-slate-500">Mine rengi
+                    <select name="mine" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm"
+                            hx-get="{{ filtre.yol }}" hx-trigger="change" hx-include="[name='q'], [name='sirala'], #filtre-durumu input, #stok-filtreleri select, #stok-filtreleri input" hx-target="#katalog-govde" hx-swap="outerHTML" hx-push-url="true">
+                        <option value="">Tümü</option>{% for r in renkler %}<option value="{{ r.renk_id }}" {% if filtre.mine == r.renk_id %}selected{% endif %}>{{ r.renk_adi }}</option>{% endfor %}
+                    </select>
+                </label>
+                <label class="text-xs text-slate-500">Fasoncu
+                    <select name="fasoncu" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm"
+                            hx-get="{{ filtre.yol }}" hx-trigger="change" hx-include="[name='q'], [name='sirala'], #filtre-durumu input, #stok-filtreleri select, #stok-filtreleri input" hx-target="#katalog-govde" hx-swap="outerHTML" hx-push-url="true">
+                        <option value="">Tümü</option>{% for f in fasoncular %}<option value="{{ f.is_ortagi_id }}" {% if filtre.fasoncu == f.is_ortagi_id %}selected{% endif %}>{{ f.unvan }}</option>{% endfor %}
+                    </select>
+                </label>
+                <label class="text-xs text-slate-500">Fason iş emri
+                    <select name="fason_durum" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm"
+                            hx-get="{{ filtre.yol }}" hx-trigger="change" hx-include="[name='q'], [name='sirala'], #filtre-durumu input, #stok-filtreleri select, #stok-filtreleri input" hx-target="#katalog-govde" hx-swap="outerHTML" hx-push-url="true">
+                        <option value="">Tümü</option><option value="ACIK" {% if filtre.fason_durum == 'ACIK' %}selected{% endif %}>Açık</option><option value="GECIKMIS" {% if filtre.fason_durum == 'GECIKMIS' %}selected{% endif %}>Gecikmiş</option>
+                    </select>
+                </label>
+                <label class="text-xs text-slate-500">Parti no
+                    <input name="parti" value="{{ filtre.parti }}" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm" placeholder="Parti ara" hx-get="{{ filtre.yol }}" hx-trigger="input changed delay:300ms" hx-include="[name='q'], [name='sirala'], #filtre-durumu input, #stok-filtreleri select, #stok-filtreleri input" hx-target="#katalog-govde" hx-swap="outerHTML" hx-push-url="true">
+                </label>
+                <label class="text-xs text-slate-500">Ölçü (mm)
+                    <input name="olcu" value="{{ filtre.olcu }}" inputmode="decimal" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm" placeholder="Örn. 12,5" hx-get="{{ filtre.yol }}" hx-trigger="change" hx-include="[name='q'], [name='sirala'], #filtre-durumu input, #stok-filtreleri select, #stok-filtreleri input" hx-target="#katalog-govde" hx-swap="outerHTML" hx-push-url="true">
+                </label>
+            </div>
+        </details>
+    </section>
+    {% endif %}
+
+    {% if filtre.filtre_var %}
     <div class="flex flex-wrap items-center gap-2 mb-4">
         {% for serit in secili_seritler %}
         <button type="button"
@@ -75,19 +169,9 @@ sıralama) bunun dışında kalıyor ve durumu buradaki #filtre-durumu üzerinde
             {% endcomment %}
             {% if user.is_authenticated %}
                 {% if stok_goster %}
-                {% comment %}
-                Stok tarafında İKİ eylem var ve ayrı duruyorlar çünkü ayrı işler:
-                "+ Stok ekle" mal kabuldür (hep GİRİŞ, kaplama sorar), "Hızlı stok
-                işlemi" ise kodu okutup HERHANGİ bir işlemi (çıkış/transfer/sayım)
-                yapmaktır. Kataloğun "+ Ürün ekle"si ile aynı hizada duran, yeni
-                kayıt açan eylem birincisi.
-                {% endcomment %}
-                <a href="{% url 'katalog:stok_ekle' %}"
+                {% if perms.katalog.stok_islem_yap or user.is_staff %}<a href="{% url 'katalog:stok_merkezi' %}"
                    class="text-sm text-slate-500 underline underline-offset-4
-                          transition hover:text-slate-900">+ Stok ekle</a>
-                <a href="{% url 'katalog:hizli_islem' %}"
-                   class="text-sm text-slate-500 underline underline-offset-4
-                          transition hover:text-slate-900">Hızlı stok işlemi</a>
+                          transition hover:text-slate-900">+ Stok işlemi</a>{% endif %}
                 {% else %}
                 <a href="{% url 'katalog:urun_ekle' %}"
                    class="text-sm text-slate-500 underline underline-offset-4

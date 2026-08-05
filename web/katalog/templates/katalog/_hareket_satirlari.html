@@ -45,6 +45,17 @@ değer basılırsa saat 3 saat geri görünür (bkz. models.py::StokHareketi).
         >{{ hareket.islem_etiketi }}</span>
     </td>
 
+    <td class="px-4 py-2.5 align-top">
+        {% if hareket.belge %}
+        <div class="text-slate-700">{{ hareket.islem_amaci }}</div>
+        <div class="text-xs text-slate-400">
+            #{{ hareket.belge.stok_islem_id }}
+            {% if hareket.belge.belge_no %} · {{ hareket.belge.belge_no }}{% endif %}
+            {% if hareket.is_ortagi_adi %} · {{ hareket.is_ortagi_adi }}{% endif %}
+        </div>
+        {% else %}<span class="text-slate-300">—</span>{% endif %}
+    </td>
+
     <td class="px-4 py-2.5 text-right align-top tabular-nums text-slate-900">
         {{ hareket.miktar|intcomma }}</td>
 
@@ -65,7 +76,7 @@ değer basılırsa saat 3 saat geri görünür (bkz. models.py::StokHareketi).
     hx-trigger="revealed"
     hx-target="this"
     hx-swap="outerHTML">
-    <td colspan="7" class="px-4 py-6 text-center">
+    <td colspan="8" class="px-4 py-6 text-center">
         <svg class="inline-block animate-spin w-5 h-5 text-slate-300" viewBox="0 0 24 24" fill="none">
             <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity=".25"/>
             <path d="M22 12a10 10 0 0 0-10-10" stroke="currentColor" stroke-width="3"

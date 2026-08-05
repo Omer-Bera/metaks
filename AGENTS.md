@@ -71,8 +71,9 @@ Bunlar tek bir dizinin meselesi olmadığı için burada duruyor:
   `BEGIN`/`COMMIT` içinde, önce-test-sonra-uygula). Django o veritabanına
   **asla** `migrate` çalıştırmaz; `metaks` bağlantısındaki her model
   `managed = False`.
-- **Yazma tek kapıdan.** `stok_hareketleri`'ne doğrudan INSERT yok
-  (`stok_hareketi_kaydet()`), `urunler`'e doğrudan INSERT/UPDATE yok
+- **Yazma tek kapıdan.** Migration 008 sonrasında `stok_hareketleri`'ne doğrudan
+  INSERT yok (`stok_islemi_kaydet()`; eski `stok_hareketi_kaydet()` yalnız
+  uyumluluk sarmalayıcısı), `urunler`'e doğrudan INSERT/UPDATE yok
   (`urun_kaydet()`). İş kuralları veritabanı fonksiyonlarında; Django sadece
   parametre geçirip dönen Türkçe mesajı taşıyor.
 - **Docker proje adı `veritabani/docker-compose.yml` içinde sabitlenmiştir**

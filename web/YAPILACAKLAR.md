@@ -8,9 +8,10 @@ kurallar [AGENTS.md](AGENTS.md), şema yol haritası
 Eski madde numaraları kod ve diğer belge referanslarını bozmamak için korunur.
 Güncel uygulama sırası:
 
-1. **Madde 4 — numune arayüzü ve gerçek dolap/raf düzeni**
-2. **Madde 5 — filtreli CSV/Excel dışa aktarma**
-3. **Madde 2b — rol ayrımı**, dış/fason kullanıcı sisteme girene kadar erteli
+1. **Migration 008'i yedek + açık onayla ortak veritabanına uygulama**
+2. **Eski/belirsiz SKU bakiyesini fiziksel sayımla gerçek SKU'lara sınıflandırma**
+3. **Madde 4 — gerçek numune dolap/raf düzeni**
+4. **Madde 5 — filtreli CSV/Excel dışa aktarma**
 
 ---
 
@@ -39,11 +40,11 @@ hareketidir ve aynı defterde izlenir.
 - [ ] Raf sayısı büyüdüğünde stok işlem formundaki düz seçimi iki adımlı
   dolap→raf seçimine veya aranabilir kutuya çevir. Küçük listede gereksiz özel UI
   ekleme; gerçek satır sayısına göre karar ver.
-- [ ] Ürün stok detayında satılabilir stok ile numuneyi ayrı özetle; örneğin
+- [x] Ürün stok detayında satılabilir stok ile numuneyi ayrı özetle; örneğin
   “N adet satılabilir · M numune”. Toplamların kaynağı doğru view olmalı.
 - [ ] Ürün detayında “Numunesi nerede?” bilgisini `v_numune_konumlari` üzerinden
   doğrudan görünür yap; dolap + raf kodu/adı birlikte gösterilsin.
-- [ ] Transfer ekranında numune raflarını anlaşılır etiketle; kök dolabın seçilebilir
+- [x] Transfer ekranında numune raflarını anlaşılır etiketle; kök dolabın seçilebilir
   hâle gelmediğini koru.
 
 ### Kabul ölçütleri
@@ -88,36 +89,37 @@ indiren “Dışa aktar” eylemi eklenecek. Kapsam ve kararlar için
 
 ---
 
-## 2b. Rol/yetki ayrımı — ertelendi
+## ✅ 2b. Rol/yetki ayrımı — tamamlandı
 
-Bugünkü kapılar:
+Migration 008 arayüzüyle birlikte Django izinleri ayrıldı:
 
-- anonim kullanıcı: katalog, stok ve hareket geçmişinde salt-okunur erişim;
-- giriş yapmış kullanıcı: ürün ve stok yazma işlemleri;
-- `is_staff`: kullanıcı ve lokasyon yönetimi.
+- anonim kullanıcı: yalnız katalog;
+- stok görüntüleyici: stok ve hareket salt-okuma;
+- stok operatörü: görüntüleme + normal stok işlemi + sayım;
+- fason sorumlusu: görüntüleme + normal işlem + fason iş emri/hareketi;
+- stok yöneticisi: düzeltme dahil bütün stok yetkileri;
+- `is_staff`: yönetim paneli ve geçiş süresince bütün stok yetkileri.
 
-Depo personeli, yönetici, salt-okunur personel ve fason/dış kullanıcı için ince
-izin modeli henüz tasarlanmadı. İç ekip dışına hesap verilene kadar yeni rol tablosu
-veya izin matrisi eklenmeyecek.
-
-Bu maddeyi yeniden açan olay dış/fason kullanıcıya hesap verilmesi veya anonim
-ekranların şirket verisi nedeniyle kapatılmasıdır. O zaman stok işlem tipleri,
-lokasyon kapsamı, ürün düzenleme, dışa aktarma ve yönetim eylemleri ayrı ayrı izin
-matrisine dökülmeli; güvenlik kararları kök güvenlik belgesiyle birlikte ele alınmalı.
+Roller Django gruplarıdır; asıl kapılar ayrı `stok_goruntule`, `hareket_goruntule`,
+`stok_islem_yap`, `sayim_yap`, `duzeltme_yap`, `fason_yonet` izinleridir. HTML,
+HTMX ve doğrudan URL aynı decorator/sorgu kontrolünü kullanır.
 
 ---
 
 ## Sırası gelmemiş / arka planda duranlar
 
-- **Otomatik test altyapısı:** `katalog/tests.py` boş. Canlı `depo_sistemi`ne test
-  DB'si oluşturmayan güvenli bir fixture/test şeması tasarlanmadan test runner'ı
-  paylaşılan veriye karşı çalıştırılmamalı.
+- **Django otomatik test altyapısı:** Yetki/kanonik URL için veritabanısız hızlı
+  testler var. Defter kabul testleri `veritabani/sql/tests/008_stok_urun_modeli_test.sql`
+  içinde ve yalnız disposable kopyada çalışır; tam web akış testleri için izole
+  METAKS DB fixture'ı hâlâ gerekir. Çekirdek SQL kabul turu geçti; sonradan eklenen
+  parti, fason fire ve rollback korumaları için son forward + kabul + rollback
+  turu ortak DB'ye geçmeden önce yeni restore edilmiş kopyada tekrarlanmalıdır.
 - **Çoklu görsel galerisi:** veri ve kullanıcı ihtiyacı belirginleşene kadar tek ana
   görsel korunuyor.
 - **Otomatik stok yenileme:** açık sekme kendiliğinden yenilenmiyor. Operasyonel
   ihtiyaç oluşursa katalogdan bağımsız olarak stok ekranında değerlendirilecek.
 - **Telefon kamerasıyla kod okuma:** HTTPS ve gerçek donanım ihtiyacı netleşmeden
-  yapılmayacak; klavye gibi çalışan USB/Bluetooth okuyucular mevcut hızlı ekranla
+  yapılmayacak; klavye gibi çalışan USB/Bluetooth okuyucular mevcut stok işlem ekranıyla
   kullanılabilir.
 - **Yayın/güvenlik:** DEBUG, SECRET_KEY, HTTPS, servis sunucusu, ACL, yedekleme ve
   Raspberry Pi işletimi burada tekrarlanmaz; kök güvenlik belgesinden izlenir.
@@ -129,12 +131,13 @@ matrisine dökülmeli; güvenlik kararları kök güvenlik belgesiyle birlikte e
 | Eski madde | Tarih | Sonuç ve kalıcı karar |
 | --- | --- | --- |
 | ✅ 0 — düşük-kod arayüz | 2026-07-31 | Appsmith projeden çıkarıldı; korunacak ikinci arayüz tüketicisi yok. |
-| ✅ 1 — giriş akışı | 2026-07-30 | `/` giriş/misafir yönlendiricisi oldu; salt-okunur ekranlar anonim kalırken yazma giriş istiyor. |
+| ✅ 1 — giriş akışı | 2026-08-04 | `/` giriş/misafir yönlendiricisi; katalog anonim, stok ve hareketler izinli kullanıcıya açık. |
 | ✅ 2a — kullanıcı yönetimi | 2026-07-31 | Django auth + `is_staff`; kullanıcı adı/silme yerine hesap pasife alma ve parola yönetimi. |
 | ✅ 2c — lokasyon yönetimi | 2026-07-31 | Hiyerarşik ekleme, pasife alma ve yalnız hiç kullanılmamış lokasyonda silme tamamlandı. |
 | ✅ 3 — ürün ekleme/düzenleme | 2026-07-31 | İki ekran aynı formu ve tek `urun_kaydet()` yazma kapısını kullanıyor; giriş yeterli, `is_staff` gerekmiyor. |
-| ✅ 3b — hızlı stok işlemi | 2026-07-31 | Kod/barkod, öneri, ürün formu ve kayıt döngüsü URL değiştirmeyen tek sayfada birleşti; PASİF ürünler de işleniyor. |
-| ✅ stok kovası ve stok ekle | 2026-08-02 | Kaplama/çeşit/montaj ürün özelliği değil stok kovası oldu; `/stok/ekle/` mal kabul ekranı eklendi. |
+| ✅ 3b — birleşik stok işlemi | 2026-08-04 | `/stok/ekle/` ve `/stok/hizli/` tek amaç-temelli `/stok/islem/` ekranına yönlendi; teknik giriş/çıkış seçimini sistem yapıyor. |
+| ✅ ürün/SKU/fason modeli | 2026-08-04 | Ürün kodu model kimliği, SKU ticari varyant oldu; dış stok aynı defterde fason lokasyonu + iş emriyle izleniyor. Migration 008 ortak DB onayını bekliyor. |
+| ✅ stok görünürlük ve roller | 2026-08-04 | Katalog açık kaldı; stok/hareket sorguları ayrı Django izinleri ve yönetim ekranındaki stok rolleriyle kapatıldı. |
 | ✅ numune şema ön koşulu | 2026-07-30 | Ayrı varlık yerine lokasyon hiyerarşisi seçildi; migration 004 ve Django yaprak-lokasyon geçişi tamamlandı. |
 
 Bir madde tamamlandığında açık bölümden kaldırıp bu tabloya tarih ve tek cümlelik

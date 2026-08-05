@@ -1,191 +1,124 @@
 {% load humanize %}
-{# #modal'ın içine yüklenir. Kapatma: çarpı, arka plana tıklama, Esc (base.html). #}
-<div class="fon-ac fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm
-            flex items-start sm:items-center justify-center p-0 sm:p-6 overflow-y-auto"
-     onclick="modalKapat()"
-     role="dialog" aria-modal="true" aria-label="{{ urun.stok_kodu }} ürün detayı">
-
-    {# Panelin kendi içine yapılan tıklama arka plana yayılıp modal'ı kapatmasın. #}
-    <div class="panel-ac relative bg-white w-full max-w-4xl sm:rounded-2xl shadow-2xl
-                overflow-hidden min-h-full sm:min-h-0"
+<div class="fon-ac fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-start
+            sm:items-center justify-center p-0 sm:p-6 overflow-y-auto"
+     onclick="modalKapat()" role="dialog" aria-modal="true"
+     aria-label="{{ urun.stok_kodu }} ürün detayı">
+    <div data-urun-detay class="panel-ac relative w-full max-w-6xl min-h-full sm:min-h-0
+                bg-white sm:rounded-2xl shadow-2xl overflow-hidden"
          onclick="event.stopPropagation()">
-
         <button type="button" onclick="modalKapat()" aria-label="Kapat"
-                class="absolute top-3 right-3 z-10 grid place-items-center w-9 h-9 rounded-full
-                       bg-white/80 backdrop-blur text-slate-500 border border-slate-200
-                       transition hover:bg-white hover:text-slate-900
-                       focus:outline-none focus:ring-4 focus:ring-slate-900/10">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2"
-                 viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
-        </button>
+                class="absolute right-3 top-3 z-20 grid h-9 w-9 place-items-center rounded-full
+                       border border-slate-200 bg-white/90 text-slate-500 hover:text-slate-900">×</button>
 
-        <div class="grid md:grid-cols-[1.1fr_1fr]">
-
-            {% comment %}
-            Görsel genişliği bilinçli olarak 420px'de sınırlı. Kaynak görsellerin %55'i
-            200px'den dar (ölçüm: veritabani/images/final/products) — panelin tüm sütununu
-            doldurmak bunları 3-4 katına büyütüp bulanıklaştırırdı. 420px sınırı, küçük
-            görselleri "kayıp" görünmeyecek kadar büyütüyor (≤2,8x) ama okunabilirliği
-            bozacak kadar zorlamıyor; büyük görseller ise net biçimde küçültülüyor.
-            {% endcomment %}
-            <div class="relative bg-slate-50 md:border-r border-slate-200
-                        grid place-items-center p-6 sm:p-8">
-                <img src="{{ urun.gorsel_url }}"
-                     alt="{{ urun.stok_kodu }}"
-                     onerror="gorselHata(this)"
-                     class="w-full max-w-[420px] max-h-[40vh] md:max-h-[60vh] object-contain">
-                <div class="hidden text-center">
-                    <svg class="mx-auto w-10 h-10 text-slate-300" fill="none" stroke="currentColor"
-                         stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true">
-                        <rect x="3" y="3" width="18" height="18" rx="2"/>
-                        <path d="m3 16 5-5 4 4 3-3 6 6"/>
-                    </svg>
-                    <p class="mt-2 text-xs text-slate-400">Görsel yüklenemedi</p>
-                </div>
-            </div>
-
-            <div class="p-6 sm:p-8 md:max-h-[85vh] md:overflow-y-auto">
-                {% if tip_etiketi %}
-                <span class="inline-block mb-2 rounded-md bg-amber-100 px-2 py-0.5 text-[11px]
-                             font-medium text-amber-800">{{ tip_etiketi }}</span>
-                {% endif %}
-
-                <h2 class="font-mono text-2xl sm:text-3xl font-semibold tracking-tight
-                           text-slate-900 break-all">{{ urun.stok_kodu }}</h2>
-                <p class="mt-1 text-slate-500">{{ urun.kategori_adi|default:"Kategorisiz" }}</p>
-
-                <dl class="mt-7 divide-y divide-slate-100 border-y border-slate-100">
-                    {% for alan in alanlar %}
-                    <div class="flex gap-4 py-2.5">
-                        <dt class="w-32 shrink-0 text-sm text-slate-500">{{ alan.etiket }}</dt>
-                        <dd class="text-sm text-slate-900">{{ alan.deger }}</dd>
+        <div class="grid md:grid-cols-[320px_1fr]">
+            <aside class="bg-slate-50 p-6 md:border-r border-slate-200">
+                <div class="aspect-[4/3] grid place-items-center rounded-xl bg-white border border-slate-200 overflow-hidden">
+                    {% if urun.gorsel_url %}
+                    <img src="{{ urun.gorsel_url }}" alt="{{ urun.stok_kodu }}"
+                         onerror="gorselHata(this)" class="h-full w-full object-contain p-3">
+                    {% else %}
+                    <div class="text-center text-slate-400">
+                        <svg class="mx-auto h-10 w-10 text-slate-300" fill="none" stroke="currentColor"
+                             stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m3 16 5-5 4 4 3-3 6 6"/></svg>
+                        <p class="mt-2 text-xs">Görsel yok</p>
                     </div>
-                    {% endfor %}
-                </dl>
-
-                {% comment %}
-                Düzenleme girişi katalog VE stok panelinde ortak — kategori/ölçü gibi
-                bilgiler stokla ilgili değil, "Stok işlemi yap" butonunun aksine
-                stok_goster'a bağlı değil. Yalnızca giriş yapmış kullanıcıya.
-                {% endcomment %}
-                {% if user.is_authenticated %}
-                <div class="mt-4">
-                    <a href="{% url 'katalog:urun_duzenle' urun.stok_kodu %}"
-                       class="inline-flex items-center gap-1.5 text-sm text-slate-500
-                              underline underline-offset-4 transition hover:text-slate-900">
-                        Ürünü düzenle
-                    </a>
+                    {% endif %}
                 </div>
-                {% endif %}
+                <div class="mt-5">
+                    {% if tip_etiketi %}<span class="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800">{{ tip_etiketi }}</span>{% endif %}
+                    <h2 class="mt-2 break-all font-mono text-2xl font-semibold text-slate-900">{{ urun.stok_kodu }}</h2>
+                    <p class="mt-1 text-sm text-slate-500">{{ urun.kategori_adi|default:"Kategorisiz" }}</p>
+                </div>
+                <div class="mt-5 flex flex-wrap gap-2">
+                    {% if user.is_authenticated %}
+                    <a href="{% url 'katalog:urun_duzenle' urun.stok_kodu %}"
+                       class="rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-700">Ürünü düzenle</a>
+                    {% endif %}
+                    {% if stok_goster %}
+                    <a href="{% url 'katalog:stok_listesi' %}?q={{ urun.stok_kodu|urlencode }}"
+                       class="rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-700">Stokta göster</a>
+                    {% endif %}
+                    {% if stok_yazabilir %}
+                    <a href="{% url 'katalog:stok_merkezi' %}?kod={{ urun.stok_kodu|urlencode }}"
+                       class="rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white">Stok işlemi</a>
+                    {% endif %}
+                </div>
+            </aside>
+
+            <section class="min-w-0 p-5 sm:p-7 md:max-h-[88vh] md:overflow-y-auto">
+                <nav class="mb-6 flex gap-1 overflow-x-auto border-b border-slate-200" aria-label="Ürün detay sekmeleri">
+                    <button type="button" data-sekme-dugmesi="urun" onclick="urunDetaySekme(this, 'urun')"
+                            class="border-b-2 border-slate-900 px-3 py-2 text-sm font-medium text-slate-900">Ürün</button>
+                    {% if stok_goster %}<button type="button" data-sekme-dugmesi="stok" onclick="urunDetaySekme(this, 'stok')"
+                            class="border-b-2 border-transparent px-3 py-2 text-sm text-slate-500">Stok</button>{% endif %}
+                    {% if hareket_goster %}<button type="button" data-sekme-dugmesi="hareketler" onclick="urunDetaySekme(this, 'hareketler')"
+                            class="border-b-2 border-transparent px-3 py-2 text-sm text-slate-500">Hareketler</button>{% endif %}
+                    {% if fason_goster %}<button type="button" data-sekme-dugmesi="fason" onclick="urunDetaySekme(this, 'fason')"
+                            class="border-b-2 border-transparent px-3 py-2 text-sm text-slate-500">Fason işler</button>{% endif %}
+                </nav>
+
+                <div data-sekme="urun">
+                    <h3 class="text-lg font-semibold text-slate-900">Ürün bilgileri</h3>
+                    <dl class="mt-4 divide-y divide-slate-100 border-y border-slate-100">
+                        {% for alan in alanlar %}<div class="flex gap-4 py-2.5">
+                            <dt class="w-32 shrink-0 text-sm text-slate-500">{{ alan.etiket }}</dt>
+                            <dd class="text-sm text-slate-900">{{ alan.deger }}</dd>
+                        </div>{% empty %}<div class="py-4 text-sm text-slate-400">Ek ürün niteliği yok.</div>{% endfor %}
+                    </dl>
+                    {% if urun.parent_stok_kodu %}
+                    <div class="mt-5"><p class="text-sm text-slate-500">Ana ürün</p>
+                        {% if ana_urun_katalogda %}<button type="button" class="mt-1 font-mono text-sm underline"
+                            hx-get="{% url detay_url_adi urun.parent_stok_kodu %}" hx-target="#modal" hx-swap="innerHTML">{{ urun.parent_stok_kodu }} →</button>
+                        {% else %}<p class="mt-1 font-mono text-sm">{{ urun.parent_stok_kodu }}</p>{% endif %}
+                    </div>{% endif %}
+                    {% if urun.gorsel_url %}<a href="{{ urun.gorsel_url }}" target="_blank" rel="noopener"
+                       class="mt-6 inline-block text-sm text-slate-500 underline">Görseli yeni sekmede aç</a>{% endif %}
+                </div>
 
                 {% if stok_goster %}
-                {% comment %}
-                Stok dökümü yalnızca stok sayfasından açılan panelde. Katalog sayfası
-                bilinçli olarak stoktan hiç söz etmiyor — ön büroda müşteriye ürün
-                gösterirken ilgilenilen şey ürünün kendisi, deposu değil.
-                {% endcomment %}
-                <div class="mt-6 rounded-xl border border-slate-200 overflow-hidden">
-                    <div class="flex items-baseline justify-between gap-3 px-4 py-2.5
-                                border-b border-slate-200 bg-slate-50">
-                        <span class="text-sm font-medium text-slate-700">Stok</span>
-                        {% if toplam_stok %}
-                        <span class="text-sm font-semibold text-emerald-700">
-                            {{ toplam_stok|intcomma }} adet</span>
-                        {% elif lokasyonlar %}
-                        <span class="text-sm font-medium text-amber-700">Stok yok</span>
-                        {% else %}
-                        <span class="text-sm text-slate-400">Henüz sayılmadı</span>
-                        {% endif %}
+                <div data-sekme="stok" class="hidden">
+                    <div class="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                        <div class="rounded-xl bg-slate-50 p-3"><p class="text-xs text-slate-500">Sahip olunan</p><strong class="text-xl">{{ stok_ozeti.sahip_olunan_toplam|default:0|intcomma }}</strong></div>
+                        <div class="rounded-xl bg-emerald-50 p-3"><p class="text-xs text-emerald-700">Satışa hazır</p><strong class="text-xl text-emerald-800">{{ stok_ozeti.satisa_hazir_toplam|default:0|intcomma }}</strong></div>
+                        <div class="rounded-xl bg-sky-50 p-3"><p class="text-xs text-sky-700">Fasonda</p><strong class="text-xl text-sky-800">{{ stok_ozeti.fasonda_toplam|default:0|intcomma }}</strong></div>
+                        <div class="rounded-xl bg-amber-50 p-3"><p class="text-xs text-amber-700">Kalite / bloke</p><strong class="text-xl text-amber-800">{{ stok_ozeti.kalite_bekleyen_toplam|default:0|add:stok_ozeti.bloke_toplam|default:0|intcomma }}</strong></div>
                     </div>
-
-                    {% if lokasyonlar %}
-                    {% comment %}
-                    Satırlar lokasyon × KOVA (migration 007): aynı lokasyonda farklı
-                    kaplamadaki stok ayrı satır. Yukarıdaki toplam bunların hepsini
-                    kapsıyor — v_toplam_stok kova kırılımından bağımsız olarak ürün
-                    başına tek rakam vermeye devam ediyor.
-                    {% endcomment %}
-                    <dl class="divide-y divide-slate-100">
-                        {% for lokasyon in lokasyonlar %}
-                        <div class="flex items-center justify-between gap-4 px-4 py-2">
-                            <dt class="min-w-0 text-sm text-slate-600">
-                                <span class="block">
-                                    {{ lokasyon.lokasyon_adi }}
-                                    <span class="ml-1 text-[11px] text-slate-400">{{ lokasyon.lokasyon_tipi }}</span>
-                                    {% if lokasyon.pasif %}
-                                    <span class="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500"
-                                          title="Bu lokasyon kapatıldı">pasif</span>
-                                    {% endif %}
-                                </span>
-                                <span class="block mt-0.5 text-xs {% if lokasyon.kaplama_adi %}text-slate-500{% else %}text-slate-400 italic{% endif %}">{{ lokasyon.kova_adi }}</span>
-                            </dt>
-                            <dd class="shrink-0 text-sm font-medium text-slate-900">
-                                {{ lokasyon.mevcut_miktar|intcomma }}</dd>
-                        </div>
-                        {% endfor %}
-                    </dl>
-                    {% else %}
-                    <p class="px-4 py-3 text-xs text-slate-500">
-                        Bu ürün için hiç stok hareketi kaydedilmemiş.
-                    </p>
-                    {% endif %}
-                </div>
-
-                {% comment %}
-                Yazma sayfasına giriş noktası. Giriş yapılmamışsa @login_required
-                kullanıcıyı giriş sayfasına, oradan da buraya geri gönderiyor.
-                {% endcomment %}
-                <div class="mt-4 flex flex-wrap items-center gap-2">
-                    <a href="{% url 'katalog:stok_islem' urun.stok_kodu %}"
-                       class="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5
-                              text-sm font-medium text-white transition hover:bg-slate-700
-                              focus:outline-none focus:ring-4 focus:ring-slate-900/10">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2"
-                             viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-                        Stok işlemi yap
-                    </a>
-                    <a href="{% url 'katalog:hareket_gecmisi' %}?q={{ urun.stok_kodu|urlencode }}"
-                       class="inline-flex items-center gap-2 rounded-lg border border-slate-300
-                              bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition
-                              hover:border-slate-400 hover:text-slate-900
-                              focus:outline-none focus:ring-4 focus:ring-slate-900/5">
-                        Hareketleri
-                    </a>
+                    {% if stok_kalemleri %}<div class="mt-5 flex flex-wrap gap-2">{% for sku in stok_kalemleri %}
+                        <span class="rounded-full border border-slate-200 px-2.5 py-1 font-mono text-xs">{{ sku.sku_kodu }}</span>{% endfor %}</div>{% endif %}
+                    <div class="mt-5 overflow-x-auto rounded-xl border border-slate-200">
+                        <table class="min-w-full text-sm"><thead class="bg-slate-50 text-slate-500"><tr><th class="p-2 text-left">SKU / varyant</th><th class="p-2 text-left">Lokasyon</th><th class="p-2 text-left">Durum</th><th class="p-2 text-left">Parti</th><th class="p-2 text-right">Miktar</th></tr></thead>
+                        <tbody class="divide-y divide-slate-100">{% for b in lokasyonlar %}<tr><td class="p-2"><span class="font-mono text-xs">{{ b.sku_kodu }}</span><div class="text-xs text-slate-400">{{ b.varyant_adi }}</div></td><td class="p-2">{{ b.lokasyon_tam_adi }}<div class="text-xs text-slate-400">{{ b.lokasyon_tipi }}</div></td><td class="p-2">{{ b.stok_durumu_adi }}</td><td class="p-2">{{ b.parti_no|default:"—" }}</td><td class="p-2 text-right font-medium">{{ b.mevcut_miktar|intcomma }}</td></tr>{% empty %}<tr><td colspan="5" class="p-6 text-center text-slate-400">Henüz stok hareketi yok.</td></tr>{% endfor %}</tbody></table>
+                    </div>
                 </div>
                 {% endif %}
 
-                {% if urun.parent_stok_kodu %}
-                <div class="mt-5">
-                    <p class="text-sm text-slate-500 mb-1.5">Ana ürün</p>
-                    {% if ana_urun_katalogda %}
-                    <button type="button"
-                            class="font-mono text-sm rounded-lg border border-slate-200 bg-slate-50
-                                   px-3 py-1.5 text-slate-900 transition hover:bg-white
-                                   hover:border-slate-400 focus:outline-none
-                                   focus:ring-4 focus:ring-slate-900/10"
-                            {# Aynı sekmede kal: stok sayfasından açıldıysa ana ürün de stok dökümlü açılsın. #}
-                            hx-get="{% url detay_url_adi urun.parent_stok_kodu %}"
-                            hx-target="#modal"
-                            hx-swap="innerHTML">{{ urun.parent_stok_kodu }} →</button>
-                    {% else %}
-                    <p class="font-mono text-sm text-slate-900">{{ urun.parent_stok_kodu }}</p>
-                    <p class="mt-1 text-xs text-slate-400">
-                        Bu ürün aktif katalogda değil (geçerli ana görseli yok), açılamıyor.
-                    </p>
-                    {% endif %}
+                {% if hareket_goster %}
+                <div data-sekme="hareketler" class="hidden">
+                    <div class="overflow-x-auto rounded-xl border border-slate-200"><table class="min-w-full text-sm"><thead class="bg-slate-50 text-slate-500"><tr><th class="p-2 text-left">Tarih</th><th class="p-2 text-left">İşlem</th><th class="p-2 text-left">Rota</th><th class="p-2 text-right">Miktar</th></tr></thead><tbody class="divide-y divide-slate-100">
+                    {% for h in hareketler %}<tr><td class="p-2 whitespace-nowrap">{{ h.tarih|date:"d.m.Y H:i" }}</td><td class="p-2">{{ h.islem_etiketi }}</td><td class="p-2 text-xs">{{ h.kaynak_lokasyon.lokasyon_adi|default:"—" }} → {{ h.hedef_lokasyon.lokasyon_adi|default:"—" }}</td><td class="p-2 text-right">{{ h.miktar|intcomma }}</td></tr>{% empty %}<tr><td colspan="4" class="p-6 text-center text-slate-400">Hareket yok.</td></tr>{% endfor %}</tbody></table></div>
+                    <a href="{% url 'katalog:hareket_gecmisi' %}?q={{ urun.stok_kodu|urlencode }}" class="mt-4 inline-block text-sm underline">Tüm hareketleri aç</a>
                 </div>
                 {% endif %}
 
-                <a href="{{ urun.gorsel_url }}" target="_blank" rel="noopener"
-                   class="mt-7 inline-flex items-center gap-1.5 text-sm text-slate-500
-                          transition hover:text-slate-900">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5"
-                         viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M14 4h6v6M20 4l-8 8M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>
-                    </svg>
-                    Görseli yeni sekmede aç
-                </a>
-            </div>
+                {% if fason_goster %}
+                <div data-sekme="fason" class="hidden">
+                    <div class="space-y-2">{% for e in fason_isleri %}<div class="rounded-xl border border-slate-200 p-3"><div class="flex justify-between gap-3"><strong class="font-mono text-sm">{{ e.emir_no }}</strong><span class="text-xs text-slate-500">{{ e.durum }}</span></div><p class="mt-1 text-sm">{{ e.fasoncu_adi }} · {{ e.islem_turu }}</p><p class="mt-1 font-mono text-xs text-slate-500">{{ e.kaynak_sku_kodu }} → {{ e.hedef_sku_kodu }}</p><p class="mt-2 text-xs text-slate-500">Fasonda {{ e.fason_bakiye|intcomma }} · Açık {{ e.acik_miktar|intcomma }}</p></div>{% empty %}<p class="py-8 text-center text-sm text-slate-400">Bu ürün için fason iş emri yok.</p>{% endfor %}</div>
+                </div>
+                {% endif %}
+            </section>
         </div>
     </div>
 </div>
+<script>
+function urunDetaySekme(dugme, ad) {
+    const panel = dugme.closest('[data-urun-detay]');
+    panel.querySelectorAll('[data-sekme]').forEach((el) => el.classList.toggle('hidden', el.dataset.sekme !== ad));
+    panel.querySelectorAll('[data-sekme-dugmesi]').forEach((el) => {
+        const aktif = el.dataset.sekmeDugmesi === ad;
+        el.classList.toggle('border-slate-900', aktif);
+        el.classList.toggle('text-slate-900', aktif);
+        el.classList.toggle('border-transparent', !aktif);
+        el.classList.toggle('text-slate-500', !aktif);
+    });
+}
+</script>

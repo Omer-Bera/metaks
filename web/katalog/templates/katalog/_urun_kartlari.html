@@ -30,18 +30,20 @@ sayılmaz ve düz metin olarak tarayıcıya gider.
     ekranın tek işi ürünü görselden tanıtmak.
     {% endcomment %}
     <div class="relative aspect-[4/3] bg-white overflow-hidden">
+        {% if urun.gorsel_url %}
         <img src="{{ urun.gorsel_url }}"
              alt="{{ urun.stok_kodu }}"
              loading="lazy"
              onerror="gorselHata(this)"
              class="w-full h-full object-contain p-2
                     transition duration-300 group-hover:scale-[1.06]">
+        {% endif %}
         {% comment %}
         Yedek yer tutucu: yalnızca `hidden` ile gizleniyor, üzerinde ikinci bir display
         utility'si yok. (`hidden grid` ikilisi yalnızca Tailwind'in kendi CSS sırasına
         güvendiği için çalışır — o kadar ince bir davranışa dayanmıyoruz.)
         {% endcomment %}
-        <div class="hidden absolute inset-0 bg-slate-50" aria-hidden="true">
+        <div class="{% if urun.gorsel_url %}hidden {% endif %}absolute inset-0 bg-slate-50" aria-hidden="true">
             <div class="w-full h-full grid place-items-center">
                 <svg class="w-8 h-8 text-slate-300" fill="none" stroke="currentColor"
                      stroke-width="1.5" viewBox="0 0 24 24">
@@ -67,9 +69,9 @@ sayılmaz ve düz metin olarak tarayıcıya gider.
 
         {% if stok_goster %}
         {% comment %}
-        Üç durum ayrı gösteriliyor: v_toplam_stok'ta satırı olmayan ürün hiç sayılmamıştır,
-        0 yazan ise sayılmış ama boş çıkmıştır. Devam eden depo sayımında "daha neye
-        bakmadık?" sorusunun cevabı birincisi (bkz. views.py::_stok_bilgisini_ekle).
+        Üç durum ayrı gösteriliyor: yeni stok özetinde satırı olmayan ürün hiç hareket
+        görmemiştir; satışa hazır 0 ise fasonda/numunede/bloke olabilir veya gerçekten
+        boş olabilir. Ayrıntı bir alt satırda sahip olunan kırılımla gösterilir.
         {% endcomment %}
         <p class="mt-1.5 text-[11px] font-medium">
             {% if urun.stok_durumu == 'var' %}
@@ -80,6 +82,13 @@ sayılmaz ve düz metin olarak tarayıcıya gider.
             <span class="text-slate-400">Sayılmadı</span>
             {% endif %}
         </p>
+        {% if urun.stok_ozeti %}
+        <p class="mt-1 truncate text-[10px] text-slate-400">
+            Toplam {{ urun.stok_ozeti.sahip_olunan_toplam|intcomma }}
+            {% if urun.stok_ozeti.fasonda_toplam %} · fasonda {{ urun.stok_ozeti.fasonda_toplam|intcomma }}{% endif %}
+            {% if urun.stok_ozeti.numunede_toplam %} · numune {{ urun.stok_ozeti.numunede_toplam|intcomma }}{% endif %}
+        </p>
+        {% endif %}
         {% endif %}
     </div>
 </button>

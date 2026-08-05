@@ -32,14 +32,14 @@ kontrol onları hx-include ile canlı DOM'dan okuyor, dolayısıyla hiçbiri esk
                class="rounded-full px-3.5 py-1.5 text-sm font-medium transition
                       {% if aktif_sekme == 'katalog' %}bg-white text-slate-900 shadow-sm
                       {% else %}text-slate-500 hover:text-slate-900{% endif %}">Katalog</a>
-            <a href="{% url 'katalog:stok_listesi' %}"
+            {% if perms.katalog.stok_goruntule or user.is_staff %}<a href="{% url 'katalog:stok_listesi' %}"
                class="rounded-full px-3.5 py-1.5 text-sm font-medium transition
                       {% if aktif_sekme == 'stok' %}bg-white text-slate-900 shadow-sm
-                      {% else %}text-slate-500 hover:text-slate-900{% endif %}">Stok</a>
-            <a href="{% url 'katalog:hareket_gecmisi' %}"
+                      {% else %}text-slate-500 hover:text-slate-900{% endif %}">Stok</a>{% endif %}
+            {% if perms.katalog.hareket_goruntule or user.is_staff %}<a href="{% url 'katalog:hareket_gecmisi' %}"
                class="rounded-full px-3.5 py-1.5 text-sm font-medium transition
                       {% if aktif_sekme == 'hareketler' %}bg-white text-slate-900 shadow-sm
-                      {% else %}text-slate-500 hover:text-slate-900{% endif %}">Hareketler</a>
+                      {% else %}text-slate-500 hover:text-slate-900{% endif %}">Hareketler</a>{% endif %}
         </nav>
 
         <div class="relative flex-1 min-w-[220px] order-last lg:order-none w-full lg:w-auto">
@@ -54,7 +54,7 @@ kontrol onları hx-include ile canlı DOM'dan okuyor, dolayısıyla hiçbiri esk
                 name="q"
                 value="{{ filtre.arama }}"
                 autocomplete="off"
-                placeholder="Stok kodu, kategori veya açıklama ara…"
+                placeholder="{% if stok_goster %}Ürün veya SKU kodu ara…{% else %}Ürün kodu, kategori veya açıklama ara…{% endif %}"
                 aria-label="Ürün ara"
                 class="w-full rounded-full border border-slate-300 bg-slate-50/80 pl-11 pr-11 py-2.5
                        text-[15px] placeholder:text-slate-400 transition
@@ -62,7 +62,7 @@ kontrol onları hx-include ile canlı DOM'dan okuyor, dolayısıyla hiçbiri esk
                        focus:outline-none focus:ring-4 focus:ring-slate-900/5"
                 hx-get="{{ filtre.yol }}"
                 hx-trigger="input changed delay:250ms, search"
-                hx-include="#filtre-durumu input, [name='sirala']"
+                hx-include="#filtre-durumu input, #stok-filtreleri select, #stok-filtreleri input, [name='sirala']"
                 hx-target="#katalog-govde"
                 hx-swap="outerHTML"
                 hx-push-url="true"
@@ -116,7 +116,7 @@ kontrol onları hx-include ile canlı DOM'dan okuyor, dolayısıyla hiçbiri esk
                        focus:outline-none focus:ring-4 focus:ring-slate-900/5"
                 hx-get="{{ filtre.yol }}"
                 hx-trigger="change"
-                hx-include="[name='q'], #filtre-durumu input"
+                hx-include="[name='q'], #filtre-durumu input, #stok-filtreleri select, #stok-filtreleri input"
                 hx-target="#katalog-govde"
                 hx-swap="outerHTML"
                 hx-push-url="true"

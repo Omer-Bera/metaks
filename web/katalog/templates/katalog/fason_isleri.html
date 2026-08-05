@@ -1,0 +1,19 @@
+{% extends "katalog/base.html" %}
+{% load humanize %}
+{% block title %}METAKS · Fason işler{% endblock %}
+{% block content %}
+<main class="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+    <div class="flex flex-wrap items-end justify-between gap-3">
+        <div><a href="{% url 'katalog:stok_merkezi' %}" class="text-sm text-slate-500">← Stok işlemi</a><h1 class="mt-3 text-2xl font-semibold">Fason işler</h1></div>
+        <div class="flex gap-3"><a href="{% url 'katalog:is_ortagi_yeni' %}" class="text-sm text-slate-500 underline">İş ortağı ekle</a><a href="{% url 'katalog:fason_is_emri_yeni' %}" class="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white">+ İş emri</a></div>
+    </div>
+    {% if messages %}{% for mesaj in messages %}<div class="mt-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-900">{{ mesaj }}</div>{% endfor %}{% endif %}
+    <div class="mt-5 flex gap-2">
+        <a href="?durum=ACIK" class="text-sm underline">Açık</a><a href="?durum=TAMAMLANDI" class="text-sm underline">Tamamlanan</a><a href="?durum=IPTAL" class="text-sm underline">İptal</a>
+    </div>
+    <div class="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <table class="min-w-full text-sm"><thead class="bg-slate-50 text-slate-500"><tr><th class="p-3 text-left">İş emri</th><th class="p-3 text-left">Fasoncu</th><th class="p-3 text-left">SKU dönüşümü</th><th class="p-3 text-right">Gönderilen</th><th class="p-3 text-right">Dönen</th><th class="p-3 text-right">Fasonda</th><th class="p-3 text-left">Beklenen</th></tr></thead>
+        <tbody class="divide-y divide-slate-100">{% for e in emirler %}<tr><td class="p-3 font-mono">{{ e.emir_no }}</td><td class="p-3">{{ e.fasoncu_adi }}<div class="text-xs text-slate-400">{{ e.islem_turu }}</div></td><td class="p-3 font-mono text-xs">{{ e.kaynak_sku_kodu }} → {{ e.hedef_sku_kodu }}</td><td class="p-3 text-right">{{ e.gonderilen_miktar|intcomma }}</td><td class="p-3 text-right">{{ e.donen_miktar|intcomma }}</td><td class="p-3 text-right font-medium">{{ e.fason_bakiye|intcomma }}</td><td class="p-3">{{ e.beklenen_donus_tarihi|default:"—" }}</td></tr>{% empty %}<tr><td colspan="7" class="p-8 text-center text-slate-400">Bu durumda iş emri yok.</td></tr>{% endfor %}</tbody></table>
+    </div>
+</main>
+{% endblock %}

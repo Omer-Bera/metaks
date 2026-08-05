@@ -1,0 +1,3 @@
+{% extends "katalog/base.html" %}
+{% block title %}METAKS · İş ortağı{% endblock %}
+{% block content %}<main class="max-w-xl mx-auto px-4 py-8"><a href="{% url 'katalog:fason_isleri' %}" class="text-sm text-slate-500">← Fason işler</a><h1 class="mt-4 text-2xl font-semibold">Yeni iş ortağı</h1><form method="post" class="mt-6 rounded-xl border bg-white p-6 space-y-4">{% csrf_token %}{{ form.non_field_errors }}{% for alan in form %}{% include "katalog/_form_alani.html" with alan=alan %}{% endfor %}<button class="rounded-lg bg-slate-900 px-5 py-2.5 text-sm text-white">Kaydet</button></form></main>{% endblock %}
