@@ -86,7 +86,7 @@ sıralama) bunun dışında kalıyor ve durumu buradaki #filtre-durumu üzerinde
                         hx-get="{{ filtre.yol }}" hx-trigger="change"
                         hx-include="[name='q'], [name='sirala'], #filtre-durumu input, #stok-filtreleri select, #stok-filtreleri input"
                         hx-target="#katalog-govde" hx-swap="outerHTML" hx-push-url="true">
-                    <option value="">Tümü</option><option value="BELIRSIZ" {% if filtre.montaj == 'BELIRSIZ' %}selected{% endif %}>Eski / belirsiz</option><option value="HAM" {% if filtre.montaj == 'HAM' %}selected{% endif %}>Ham</option><option value="YARI_MONTE" {% if filtre.montaj == 'YARI_MONTE' %}selected{% endif %}>Yarı monte</option><option value="MONTE" {% if filtre.montaj == 'MONTE' %}selected{% endif %}>Monte</option>
+                    <option value="">Tümü</option><option value="BELIRSIZ" {% if filtre.montaj == 'BELIRSIZ' %}selected{% endif %}>Eski / belirsiz</option><option value="DEMONTE" {% if filtre.montaj == 'DEMONTE' %}selected{% endif %}>Demonte</option><option value="YARI_MONTE" {% if filtre.montaj == 'YARI_MONTE' %}selected{% endif %}>Yarı monte</option><option value="MONTE" {% if filtre.montaj == 'MONTE' %}selected{% endif %}>Monte</option>
                 </select>
             </label>
             <label class="text-xs text-slate-500">Stok durumu

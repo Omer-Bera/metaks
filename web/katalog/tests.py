@@ -209,6 +209,115 @@ class LokasyonGruplamaTestleri(SimpleTestCase):
         self.assertEqual([etiket for etiket, _ in gruplar], ['Dahili'])
 
 
+class StokKalemiFormuTestleri(SimpleTestCase):
+    """Yeni SKU formunun kapı mantığı. Referans listeleri patch'lendiği için DB yok."""
+
+    KAPLAMALAR = [(13, 'free nikel'), (15, 'light gold')]
+    RENKLER = [('Siyah', 'Siyah'), ('Beyaz', 'Beyaz')]
+
+    def _form(self, veri):
+        from .forms import StokKalemiFormu
+
+        with patch.object(stok_servisi, 'kaplama_secenekleri', return_value=self.KAPLAMALAR), \
+                patch.object(stok_servisi, 'renk_secenekleri', return_value=self.RENKLER):
+            form = StokKalemiFormu(veri)
+            form.is_valid()
+            return form
+
+    def test_kapi_kapaliyken_gizli_deger_temizleniyor_ve_hata_vermiyor(self):
+        # JS gizler ama TEMİZLEMEZ: kullanıcı önce "Boya var" deyip renk seçse,
+        # sonra kutucuğu kaldırsa gizli değer yine POST edilir. Form bunu sessizce
+        # atmalı — göremediği bir alanda doğrulama hatası göstermemeli.
+        form = self._form({
+            'urun_kodu': '1005910', 'montaj_durumu': 'DEMONTE',
+            'kaplama_id': '13', 'boya_renk': 'Siyah', 'mine_renk_yeni': 'turkuaz',
+        })
+        self.assertTrue(form.is_valid(), form.errors)
+        parametreler = form.servis_parametreleri()
+        self.assertIsNone(parametreler['kaplama_id'])
+        self.assertIsNone(parametreler['boya_renk'])
+        self.assertIsNone(parametreler['mine_renk'])
+
+    def test_kapi_acikken_secilen_renk_gecer(self):
+        form = self._form({
+            'urun_kodu': '1005910', 'montaj_durumu': 'MONTE',
+            'kaplama_var_mi': 'on', 'kaplama_id': '15',
+            'boya_var_mi': 'on', 'boya_renk': 'Siyah',
+        })
+        parametreler = form.servis_parametreleri()
+        self.assertEqual(parametreler['kaplama_id'], 15)
+        self.assertEqual(parametreler['boya_renk'], 'Siyah')
+
+    def test_listede_yok_kutusu_secimi_eziyor(self):
+        form = self._form({
+            'urun_kodu': '1005910', 'montaj_durumu': 'MONTE',
+            'boya_var_mi': 'on', 'boya_renk': 'Siyah', 'boya_renk_yeni': '  turkuaz  ',
+        })
+        self.assertEqual(form.servis_parametreleri()['boya_renk'], 'turkuaz')
+
+    def test_renk_belirsiz_none_gonderir(self):
+        form = self._form({
+            'urun_kodu': '1005910', 'montaj_durumu': 'MONTE',
+            'boya_var_mi': 'on', 'boya_renk': '',
+        })
+        self.assertIsNone(form.servis_parametreleri()['boya_renk'])
+
+    def test_uc_ikili_nitelik_servise_bool_olarak_gidiyor(self):
+        # 010 fonksiyona DEFAULT koymadı; None gitmesi veritabanı hatası olurdu.
+        form = self._form({
+            'urun_kodu': '1005910', 'montaj_durumu': 'DEMONTE', 'lak_mi': 'on',
+        })
+        parametreler = form.servis_parametreleri()
+        self.assertIs(parametreler['lak_mi'], True)
+        self.assertIs(parametreler['vernik_mi'], False)
+        self.assertIs(parametreler['iscilik_mi'], False)
+
+    def test_servis_parametreleri_fonksiyon_imzasiyla_birebir(self):
+        # `**form.cleaned_data` geçilseydi kapı alanları da servise giderdi.
+        import inspect
+
+        form = self._form({'urun_kodu': '1005910', 'montaj_durumu': 'DEMONTE'})
+        imza = set(inspect.signature(stok_servisi.stok_kalemi_kaydet).parameters)
+        imza.discard('yapan_kullanici')
+        self.assertEqual(set(form.servis_parametreleri()), imza)
+
+
+class MontajDurumuGecisiTestleri(SimpleTestCase):
+    """Migration 010'un `HAM` -> `DEMONTE` yeniden adlandırması arayüzde tamam mı?
+
+    Birini bile atlamak sessiz bir hata üretir: filtre veya etiket eşleşmez ve
+    kullanıcı boş sonuç görür, hiçbir yerde hata çıkmaz.
+    """
+
+    def test_secenek_ve_etiket_tablolari_demonte(self):
+        self.assertEqual(
+            [kod for kod, _ in stok_servisi.MONTAJ_DURUMLARI],
+            ['DEMONTE', 'YARI_MONTE', 'MONTE'],
+        )
+        self.assertIn('DEMONTE', views.MONTAJ_ETIKETLERI)
+        self.assertNotIn('HAM', views.MONTAJ_ETIKETLERI)
+
+    def test_kaynakta_hicbir_yerde_HAM_montaj_degeri_kalmadi(self):
+        import pathlib
+        import re
+
+        kok = pathlib.Path(__file__).resolve().parent
+        kalanlar = []
+        for yol in list(kok.rglob('*.py')) + list(kok.rglob('*.html')):
+            if yol.name == 'tests.py' or 'migrations' in yol.parts:
+                continue
+            for numara, satir in enumerate(
+                yol.read_text(encoding='utf-8').splitlines(), start=1
+            ):
+                # Yorumlar elenir: geçişin NEDENİNİ anlatan satırlar ('HAM' ->
+                # 'DEMONTE') kod değil, belge. Kalan kod kısmında tırnak içinde HAM
+                # aranıyor — HAMMADDE/hammadde eşleşmesin diye tırnak şartı var.
+                kod = re.split(r'#|//', satir, maxsplit=1)[0]
+                if re.search(r"""['"]HAM['"]""", kod):
+                    kalanlar.append(f'{yol.relative_to(kok)}:{numara}')
+        self.assertEqual(kalanlar, [], f'Kalan HAM montaj değeri: {kalanlar}')
+
+
 class TuretilmisIslemKimligiTestleri(SimpleTestCase):
     """Fason dönüşünün yanında yazılan fire belgesinin kimliği.
 

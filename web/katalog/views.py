@@ -563,7 +563,7 @@ def _stok_liste_sorgusu(filtre):
         bakiyeler = bakiyeler.filter(lokasyon_id=filtre.lokasyon)
     if filtre.kaplama:
         bakiyeler = bakiyeler.filter(kaplama_id=filtre.kaplama)
-    if filtre.montaj in ('BELIRSIZ', 'HAM', 'YARI_MONTE', 'MONTE'):
+    if filtre.montaj in ('BELIRSIZ', 'DEMONTE', 'YARI_MONTE', 'MONTE'):
         bakiyeler = bakiyeler.filter(montaj_durumu=filtre.montaj)
     if filtre.durum in ('SERBEST', 'KALITE_BEKLIYOR', 'BLOKE'):
         bakiyeler = bakiyeler.filter(stok_durumu_kodu=filtre.durum)
@@ -872,7 +872,7 @@ def _tarih_cozumle(metin):
 # StokBakiye.varyant_adi ile aynı etiketler; orası view'dan (adlar hazır) okuyor,
 # burası ham `stok_kalemleri`'nden kuruyor.
 MONTAJ_ETIKETLERI = {
-    'HAM': 'ham',
+    'DEMONTE': 'demonte',
     'YARI_MONTE': 'yarı monte',
     'MONTE': 'monte',
     'BELIRSIZ': 'eski/belirsiz varyant',

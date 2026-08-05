@@ -284,6 +284,16 @@ class StokKalemi(models.Model):
     boya_renk_id = models.IntegerField(null=True)
     mine_renk_id = models.IntegerField(null=True)
     montaj_durumu = models.CharField(max_length=20)
+    # Migration 010'un üç ikili niteliği. DİKKAT: `nitelik_durumu='BELIRSIZ'`
+    # (miras) satırlarda bu FALSE değerler BİLGİ DEĞİL, yalnızca kolon
+    # varsayılanıdır — tekillik indeksi `WHERE nitelik_durumu='TANIMLI'` olduğu
+    # için kimliğe girmiyorlar. `kaplama_id IS NULL`'ın taşıdığı belirsizliğin
+    # aynısı: bu satırlarda lak/vernik/işçilik bilgisi YOKTUR, "yok" değildir.
+    # `lak_mi=False`'ı "laksız" diye okuyan bir filtre miras SKU'lar hakkında
+    # yalan söyler (bkz. `_stok_liste_sorgusu` nitelik filtresi).
+    lak_mi = models.BooleanField()
+    vernik_mi = models.BooleanField()
+    iscilik_mi = models.BooleanField()
     satilabilir_mi = models.BooleanField()
     stoklanabilir_mi = models.BooleanField()
     kritik_stok_esigi = models.IntegerField()
@@ -350,8 +360,11 @@ class StokBakiye(models.Model):
             self.kaplama_adi,
             self.boya_renk_adi and f'boya: {self.boya_renk_adi}',
             self.mine_renk_adi and f'mine: {self.mine_renk_adi}',
+            # Migration 010: 'HAM' -> 'DEMONTE'. "Ham" bu projede kaplanmamış
+            # demek; montaj hali için aynı kelimeyi kullanmak iki anlamı
+            # karıştırıyordu.
             {
-                'HAM': 'ham', 'YARI_MONTE': 'yarı monte', 'MONTE': 'monte',
+                'DEMONTE': 'demonte', 'YARI_MONTE': 'yarı monte', 'MONTE': 'monte',
                 'BELIRSIZ': 'eski/belirsiz varyant',
             }.get(self.montaj_durumu),
         ]

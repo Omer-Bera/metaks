@@ -242,11 +242,32 @@ STOK_DURUMLARI = [
     ('KALITE_BEKLIYOR', 'Kalite bekliyor'),
     ('BLOKE', 'Bloke'),
 ]
+# Migration 010: 'HAM' -> 'DEMONTE'. Bu projede "ham" KAPLANMAMIŞ demek
+# (`kaplamalar` tablosundaki satır), montaj hali değil; aynı kelimenin iki anlamı
+# hem ekranda hem SQL'de karışıyordu. Veritabanındaki CHECK artık yalnız
+# 'BELIRSIZ', 'DEMONTE', 'YARI_MONTE', 'MONTE' kabul ediyor.
 MONTAJ_DURUMLARI = [
-    ('HAM', 'Ham'),
+    ('DEMONTE', 'Demonte'),
     ('YARI_MONTE', 'Yarı monte'),
     ('MONTE', 'Monte'),
 ]
+
+
+def renk_secenekleri():
+    """`renkler` tablosundaki aktif renk ADLARI.
+
+    Değer olarak id değil AD kullanılıyor: `stok_kalemi_kaydet()` renk parametresini
+    metin alıyor ve tabloda yoksa kendisi açıyor. Id'ye çevirip geri ada dönmek,
+    fonksiyonun zaten yaptığı işi arayüzde ikinci kez yapmak olurdu.
+    """
+    from .models import Renk
+
+    return list(
+        Renk.objects.using('metaks')
+        .filter(aktif_mi=True)
+        .order_by('renk_adi')
+        .values_list('renk_adi', 'renk_adi')
+    )
 
 
 class StokIslemHatasi(Exception):
@@ -286,70 +307,6 @@ def turetilmis_islem_kimligi(istemci_kimligi, etiket):
 def _hata_mesaji(hata):
     """psycopg2'nin CONTEXT satırlarını atıp fonksiyonun kendi mesajını bırakır."""
     return str(hata).strip().splitlines()[0].strip()
-
-
-def hareket_kaydet(
-    *,
-    istemci_kimligi,
-    stok_kodu,
-    islem_tipi,
-    miktar,
-    kaynak_lokasyon_id,
-    hedef_lokasyon_id,
-    aciklama,
-    yapan_kullanici,
-    kaplama_id=None,
-    kaplama_cesidi=None,
-    montaj=None,
-    boya=None,
-    mine=None,
-):
-    """stok_hareketi_kaydet() çağrısı. Sonucu dict olarak döndürür.
-
-    `atlandi=True` iki durumda gelir ve ikisi de hata değildir: aynı istemci kimliği
-    daha önce kaydedilmiştir (mükerrer gönderim), ya da sayılan miktar sistemdekiyle
-    aynıdır (yazacak fark yok).
-
-    Kova alanları (kaplama_id/kaplama_cesidi/montaj) hepsi opsiyonel ve varsayılanları
-    None: belirtilmezse hareket "belirtilmemiş kaplama" kovasına düşer. Bu, migration
-    007 öncesi yazılmış 5 hareketin bugünkü durumu ve doğru olan da bu — geçmiş
-    hareketlere uydurma bir renk atamaktansa "bilinmiyor" demek.
-
-    TRANSFER'de kova TAŞINIR: mal fiziksel olarak aynı kaplamada kaldığı için tek
-    parametre seti hareketin iki ucuna da uygulanıyor (fonksiyonun kendi davranışı).
-    """
-    with connections['metaks'].cursor() as imlec:
-        try:
-            imlec.execute(
-                'SELECT hareket_id, uygulanan_miktar, atlandi, mesaj '
-                'FROM stok_hareketi_kaydet(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)',
-                [
-                    istemci_kimligi,
-                    stok_kodu,
-                    islem_tipi,
-                    miktar,
-                    kaynak_lokasyon_id,
-                    hedef_lokasyon_id,
-                    aciklama or None,
-                    yapan_kullanici,
-                    kaplama_id,
-                    kaplama_cesidi or None,
-                    montaj,
-                    boya or None,
-                    mine or None,
-                ],
-            )
-        except DatabaseError as hata:
-            raise StokIslemHatasi(_hata_mesaji(hata)) from hata
-
-        hareket_id, uygulanan_miktar, atlandi, mesaj = imlec.fetchone()
-
-    return {
-        'hareket_id': hareket_id,
-        'uygulanan_miktar': uygulanan_miktar,
-        'atlandi': atlandi,
-        'mesaj': mesaj,
-    }
 
 
 def stok_islemi_kaydet(
@@ -395,17 +352,25 @@ def stok_islemi_kaydet(
 
 
 def stok_kalemi_kaydet(
-    *, urun_kodu, kaplama_id, boya_renk, mine_renk, montaj_durumu, yapan_kullanici
+    *, urun_kodu, kaplama_id, boya_renk, mine_renk, montaj_durumu,
+    lak_mi, vernik_mi, iscilik_mi, yapan_kullanici,
 ):
-    """Gerçekten kullanılan tek bir ürün varyantı için SKU üretir."""
+    """Gerçekten kullanılan tek bir ürün varyantı için SKU üretir.
+
+    Migration 010 imzaya üç BOOLEAN ekledi ve bunlara DEFAULT KOYMADI. Bu bilinçli:
+    varsayılan olsaydı güncellenmemiş altı parametreli bir çağrı sessizce
+    "laksız/verniksiz/işçiliksiz" bir SKU kaydederdi. Varsayılansız imzada eski
+    çağrı "function ... does not exist" ile gürültülü biçimde patlıyor — bu üç
+    parametre bu yüzden opsiyonel değil.
+    """
     with connections['metaks'].cursor() as imlec:
         try:
             imlec.execute(
                 'SELECT stok_kalemi_id, sku_kodu, atlandi, mesaj '
-                'FROM stok_kalemi_kaydet(%s, %s, %s, %s, %s, %s)',
+                'FROM stok_kalemi_kaydet(%s, %s, %s, %s, %s, %s, %s, %s, %s)',
                 [
                     urun_kodu, kaplama_id, boya_renk or None, mine_renk or None,
-                    montaj_durumu, yapan_kullanici,
+                    montaj_durumu, lak_mi, vernik_mi, iscilik_mi, yapan_kullanici,
                 ],
             )
         except DatabaseError as hata:

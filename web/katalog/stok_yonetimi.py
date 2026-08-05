@@ -332,8 +332,10 @@ def stok_kalemi_yeni(request):
     })
     if request.method == 'POST' and form.is_valid():
         try:
+            # `**form.cleaned_data` DEĞİL: formda artık servise ait olmayan kapı
+            # alanları da var (kutucuklar, "listede yok" renk kutuları).
             sonuc = stok_servisi.stok_kalemi_kaydet(
-                **form.cleaned_data, yapan_kullanici=_kullanici_adi(request)
+                **form.servis_parametreleri(), yapan_kullanici=_kullanici_adi(request)
             )
         except stok_servisi.StokIslemHatasi as istisna:
             form.add_error(None, str(istisna))

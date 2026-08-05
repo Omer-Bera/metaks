@@ -20,9 +20,46 @@
             <div id="urun-onerileri"></div>
         </div>
 
-        {% for alan in form %}{% if alan.name != 'urun_kodu' %}
-        {% include "katalog/_form_alani.html" with alan=alan %}
-        {% endif %}{% endfor %}
+        {% comment %}
+        Alanlar artık ortak döngüde DEĞİL, kapı-ayrıntı çiftleri hâlinde: her onay
+        kutusu kendi ayrıntısını açıyor. Kutucuk yalnız KAPI — işaretlenmezse
+        ayrıntı hiç gösterilmiyor ve veritabanına NULL gidiyor. Gizleme yalnız
+        görünüm; POST'ta boşaltma işi `StokKalemiFormu.clean`'de (JS gizler ama
+        temizlemez).
+        {% endcomment %}
+
+        <div class="rounded-lg border border-slate-200 p-4 space-y-3">
+            {% include "katalog/_form_alani.html" with alan=form.kaplama_var_mi %}
+            <div data-ayrinti="kaplama">{% include "katalog/_form_alani.html" with alan=form.kaplama_id %}</div>
+        </div>
+
+        <div class="rounded-lg border border-slate-200 p-4 space-y-3">
+            {% include "katalog/_form_alani.html" with alan=form.boya_var_mi %}
+            <div data-ayrinti="boya" class="space-y-3">
+                {% include "katalog/_form_alani.html" with alan=form.boya_renk %}
+                {% include "katalog/_form_alani.html" with alan=form.boya_renk_yeni %}
+            </div>
+        </div>
+
+        <div class="rounded-lg border border-slate-200 p-4 space-y-3">
+            {% include "katalog/_form_alani.html" with alan=form.mine_var_mi %}
+            <div data-ayrinti="mine" class="space-y-3">
+                {% include "katalog/_form_alani.html" with alan=form.mine_renk %}
+                {% include "katalog/_form_alani.html" with alan=form.mine_renk_yeni %}
+            </div>
+        </div>
+
+        {% comment %}
+        Lak, vernik ve işçilik migration 010'da ikili kolon (`lak_mi`, `vernik_mi`,
+        `iscilik_mi`) — ayrıntısı olmadığı için kapı da ayrıntı da aynı kutucuk.
+        {% endcomment %}
+        <div class="rounded-lg border border-slate-200 p-4 space-y-3">
+            {% include "katalog/_form_alani.html" with alan=form.lak_mi %}
+            {% include "katalog/_form_alani.html" with alan=form.vernik_mi %}
+            {% include "katalog/_form_alani.html" with alan=form.iscilik_mi %}
+        </div>
+
+        {% include "katalog/_form_alani.html" with alan=form.montaj_durumu %}
 
         <button class="rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-medium text-white">SKU oluştur</button>
     </form>
@@ -60,5 +97,34 @@
 
     // ?urun_kodu= ile gelindiyse kutu zaten dolu; odak ilk boş alana gitsin.
     if (!urunKutusu.value) urunKutusu.focus();
+
+    // -------------------------------------------------------------------------
+    // Kapı kutucukları: işaretlenmemiş nitelik hiç sorulmaz.
+    //
+    // Gizleme yalnız GÖRÜNÜM. Gizli kalan bir <select> değerini POST etmeye devam
+    // eder — kullanıcı önce "Boya var" deyip renk seçse, sonra kutucuğu kaldırsa,
+    // eski renk yine gider ve SKU sessizce boyalı kaydedilirdi. Asıl temizliği
+    // `StokKalemiFormu.clean` yapıyor; burası sadece formu sadeleştiriyor.
+    // -------------------------------------------------------------------------
+    const KAPILAR = [
+        ['kaplama_var_mi', 'kaplama'],
+        ['boya_var_mi', 'boya'],
+        ['mine_var_mi', 'mine'],
+    ];
+
+    function kapiyiUygula(kutucukAdi, ayrintiAdi) {
+        const kutucuk = document.querySelector(`[name="${kutucukAdi}"]`);
+        const ayrinti = document.querySelector(`[data-ayrinti="${ayrintiAdi}"]`);
+        if (!kutucuk || !ayrinti) return;
+        ayrinti.classList.toggle('hidden', !kutucuk.checked);
+    }
+
+    for (const [kutucukAdi, ayrintiAdi] of KAPILAR) {
+        const kutucuk = document.querySelector(`[name="${kutucukAdi}"]`);
+        if (kutucuk) {
+            kutucuk.addEventListener('change', () => kapiyiUygula(kutucukAdi, ayrintiAdi));
+        }
+        kapiyiUygula(kutucukAdi, ayrintiAdi);
+    }
 </script>
 {% endblock %}

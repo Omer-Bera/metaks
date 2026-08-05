@@ -694,22 +694,128 @@ class StokIslemFormu(forms.Form):
 
 
 class StokKalemiFormu(forms.Form):
+    """Yeni SKU: hangi niteliklerin VAR olduğu önce sorulur, ayrıntı sonra.
+
+    Migration 010 SKU kimliğini yedi niteliğe çıkardı (kaplama, boya rengi, mine
+    rengi, montaj hali, lak, vernik, işçilik). Hepsini yan yana yedi açılır liste
+    olarak sormak, çoğu SKU'da altısı boş bırakılan bir form üretiyordu. Onay
+    kutuları yalnız KAPI: işaretlenmezse ilgili ayrıntı hiç gösterilmiyor ve
+    veritabanına NULL gidiyor.
+
+    Boya ve mine rengi ikili niteliğe İNDİRİLMEDİ (010'un kararı): kutucuk yalnız
+    kapı, işaretlenince renk sorulur ve renk `renkler` tablosuna bakan kontrollü
+    referans olarak kalır.
+    """
+
     urun_kodu = forms.CharField(label='Ürün kodu', max_length=100)
+
+    kaplama_var_mi = forms.BooleanField(
+        label='Kaplama var mı?', required=False,
+        help_text='İşaretlenmezse kalem kaplanmamış sayılır (kaplama boş kaydedilir).',
+    )
     kaplama_id = forms.TypedChoiceField(
         label='Kaplama', coerce=int, choices=(), required=False, empty_value=None,
     )
-    boya_renk = forms.CharField(label='Boya rengi', max_length=100, required=False)
-    mine_renk = forms.CharField(label='Mine rengi', max_length=100, required=False)
-    montaj_durumu = forms.ChoiceField(
-        label='Montaj hali', choices=stok_servisi.MONTAJ_DURUMLARI,
+
+    # ChoiceField DEĞİL, `Select` widget'lı CharField. Sebebi ölçüldü: kutucuk
+    # kaldırıldığında gizli kalan eski renk yine POST ediliyor ve ChoiceField onu
+    # `clean()` çalışmadan ÖNCE reddediyordu — kullanıcı göremediği bir alanda
+    # "Geçerli bir seçenek seçin" hatası alıyordu. Değer zaten renk ADI ve
+    # `stok_kalemi_kaydet()` tabloda olmayan rengi kendisi açıyor ("listede yok"
+    # kutusunun yaptığı da bu), yani katı üyelik denetiminin koruduğu bir şey yok.
+    boya_var_mi = forms.BooleanField(label='Boya var mı?', required=False)
+    boya_renk = forms.CharField(
+        label='Boya rengi', required=False, widget=forms.Select(choices=()),
     )
+    boya_renk_yeni = forms.CharField(
+        label='Listede yoksa yeni boya rengi', max_length=100, required=False,
+        help_text='Doldurulursa yukarıdaki seçim yok sayılır; renk listeye eklenir.',
+    )
+
+    mine_var_mi = forms.BooleanField(label='Mine var mı?', required=False)
+    mine_renk = forms.CharField(
+        label='Mine rengi', required=False, widget=forms.Select(choices=()),
+    )
+    mine_renk_yeni = forms.CharField(
+        label='Listede yoksa yeni mine rengi', max_length=100, required=False,
+        help_text='Doldurulursa yukarıdaki seçim yok sayılır; renk listeye eklenir.',
+    )
+
+    lak_mi = forms.BooleanField(label='Lak var mı?', required=False)
+    vernik_mi = forms.BooleanField(label='Vernik var mı?', required=False)
+    iscilik_mi = forms.BooleanField(label='İşçilik var mı?', required=False)
+
+    montaj_durumu = forms.ChoiceField(
+        label='Montaj hali', choices=stok_servisi.MONTAJ_DURUMLARI, initial='DEMONTE',
+    )
+
+    # "Renk belirsiz": kutucuk işaretli ama renk bilinmiyor. Veritabanına NULL
+    # gider — yani tekillik anahtarında "boyasız" SKU'dan AYRILMAZ, çünkü şemada
+    # ayrı bir `boya_var_mi` kolonu yok (010 boya/mineyi bilerek ikiliye indirmedi).
+    # Yardım metni bunu kullanıcıya söylüyor; sessiz bırakmak yanıltıcı olurdu.
+    RENK_BELIRSIZ = ''
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # Migration 010 `kaplamalar`'daki "ham" satırını pasife aldı; bu liste zaten
+        # yalnız `aktif_mi=True` okuduğu için satır kendiliğinden düşüyor.
         self.fields['kaplama_id'].choices = [
-            ('', '— kaplama yok/belirsiz —'), *stok_servisi.kaplama_secenekleri()
+            ('', '— kaplama belirsiz —'), *stok_servisi.kaplama_secenekleri()
         ]
+        renkler = stok_servisi.renk_secenekleri()
+        for ad in ('boya_renk', 'mine_renk'):
+            self.fields[ad].widget.choices = [
+                (self.RENK_BELIRSIZ, '— renk belirsiz —'), *renkler
+            ]
         _girdileri_bicimlendir(self)
+
+    def _renk_coz(self, veri, kutucuk, secim_alani, yeni_alani):
+        """Bir renk kapısını tek metne indirir; kapı kapalıysa None.
+
+        JS gizler ama TEMİZLEMEZ (aynı tuzak `UrunFormu.clean` ve
+        `StokIslemFormu.clean` içinde de var): kullanıcı önce "Boya var" deyip renk
+        seçse, sonra kutucuğu kaldırsa, gizli kalan değer yine POST edilir. Burada
+        temizlenmezse SKU sessizce boyalı kaydedilir ve tekillik anahtarı yanlış
+        satıra düşer.
+        """
+        if not veri.get(kutucuk):
+            veri[secim_alani] = ''
+            veri[yeni_alani] = ''
+            return None
+        yeni = (veri.get(yeni_alani) or '').strip()
+        if yeni:
+            return yeni
+        return (veri.get(secim_alani) or '').strip() or None
+
+    def clean(self):
+        veri = super().clean()
+        veri['boya_renk_cozulen'] = self._renk_coz(
+            veri, 'boya_var_mi', 'boya_renk', 'boya_renk_yeni'
+        )
+        veri['mine_renk_cozulen'] = self._renk_coz(
+            veri, 'mine_var_mi', 'mine_renk', 'mine_renk_yeni'
+        )
+        if not veri.get('kaplama_var_mi'):
+            veri['kaplama_id'] = None
+        return veri
+
+    def servis_parametreleri(self):
+        """`stok_servisi.stok_kalemi_kaydet()`'in beklediği tam parametre kümesi.
+
+        View `**form.cleaned_data` geçemez: formda artık servise ait olmayan kapı
+        alanları (kutucuklar, "listede yok" kutuları) da var.
+        """
+        veri = self.cleaned_data
+        return {
+            'urun_kodu': veri['urun_kodu'],
+            'kaplama_id': veri.get('kaplama_id'),
+            'boya_renk': veri.get('boya_renk_cozulen'),
+            'mine_renk': veri.get('mine_renk_cozulen'),
+            'montaj_durumu': veri['montaj_durumu'],
+            'lak_mi': bool(veri.get('lak_mi')),
+            'vernik_mi': bool(veri.get('vernik_mi')),
+            'iscilik_mi': bool(veri.get('iscilik_mi')),
+        }
 
 
 class FasonIsEmriFormu(forms.Form):
