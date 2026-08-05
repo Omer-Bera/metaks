@@ -9,12 +9,21 @@ Canlı satır sayıları kalıcı gerçekler değildir. Aşağıdaki sayılar
 **2026-08-04 tarihli salt-okunur denetim snapshot'ıdır**; karar vermeden önce
 yeniden sorgulanmalıdır.
 
-## Güncel çalışma noktası — 2026-08-05
+## Güncel çalışma noktası — 2026-08-06
 
 Veri temizleme, normalizasyon, karışık stok kodu çözümü, PostgreSQL yüklemesi ve
 görsel eşleme tamamlandı. **Migration 001–009 ortak `depo_sistemi` veritabanına
 (Raspberry Pi, 100.64.0.7:5433) uygulanmış durumdadır.** 008 ve 009 2026-08-05'te,
 kullanıcının açık onayı ve güncel yedekle uygulandı; ayrıntı aşağıdaki tabloda.
+
+**Migration 010 yazıldı, ortak veritabanına UYGULANMADI.** SKU kimliğine lak, vernik
+ve işçilik nitelikleri ekliyor ve montaj hali `HAM` değerini `DEMONTE` yapıyor.
+Dosyalar hazır ve tek kullanımlık kopyada ileri + kabul testi + rollback turu
+geçti; uygulama ayrı bir oturumda, güncel yedek ve kullanıcının açık onayıyla
+yapılacak. **Django tarafı henüz 010'a hizalanmadı** — `web/` içinde `HAM` sabiti
+ve altı parametreli `stok_kalemi_kaydet()` çağrısı duruyor. 010 ortak veritabanına
+Django hizalanmadan uygulanırsa varyant ekleme ekranı kırılır; ikisi birlikte
+planlanmalıdır.
 
 ### İki ayrı `depo_sistemi` var, ikisi de güncel şemada
 
@@ -71,6 +80,7 @@ değildir. Henüz `NUMUNE` tipinde gerçek dolap/raf satırı yoktur.
 | 007 | Uygulandı | Stok partisi için kaplama/montaj kovaları ve 11 kaplama rengi |
 | 008 | Uygulandı (2026-08-05) | Ürün/SKU ayrımı, belge başlığı, stok durumu, parti, iş ortağı ve fason iş emri |
 | 009 | Uygulandı (2026-08-05) | 13 standart renk ve 7 hammadde çeşidi başlangıç verisi |
+| 010 | **Yazıldı, ortak DB'ye uygulanmadı** (2026-08-06) | SKU kimliğine lak/vernik/işçilik ikili nitelikleri, montaj hali `HAM` → `DEMONTE`, `ham` kaplamasının pasife alınması |
 
 Migration 009 yalnız veri ekler (tablo/kolon/kısıt/view değiştirmez) ve 008'in
 `renkler` tablosuna bağımlıdır, yani 008'den SONRA uygulanır. İleri yönü
@@ -115,6 +125,29 @@ Uygulama sonrası ortak veritabanında ölçülenler: ürün/hareket/kategori/lo
 kaplama sayıları yedekle birebir aynı, SKU'suz ve belgesiz hareket sıfır, altı
 yazma kapısının altısı da yerinde, ve defter neti ile `v_stok_bakiye` toplamı
 eşit (2.022). Django arayüzü Pi'ye bağlanarak on iki sayfada denendi.
+
+### 010 — SKU nitelik modeli, uygulama BEKLİYOR
+
+010, SKU kimliğini kaplama + boya + mine + montaj hali dörtlüsünden yedi niteliğe
+çıkarır: `lak_mi`, `vernik_mi`, `iscilik_mi` eklenir, boya ve mine rengi kontrollü
+referans olarak korunur. Montaj hali `HAM` değeri `DEMONTE` olur — bu projede "ham"
+kaplanmamış demektir ve aynı kelimenin iki anlamı karışıyordu. `kaplamalar`
+tablosundaki `ham` satırı silinmez, pasife alınır.
+
+`stok_kalemi_kaydet()` imzası değiştiği için `CREATE OR REPLACE` yerine 008'in
+`stok_hareketi_kaydet` için kullandığı desen izleniyor: eski gövde
+`stok_kalemi_kaydet_v008` adına RENAME edilip park ediliyor, yeni imza sıfırdan
+yaratılıyor, rollback adı geri alıyor. Böylece eski gövde ne rollback dosyasına
+kopyalanıyor ne de çağrılabilir bir aşırı yükleme olarak açıkta kalıyor.
+
+Rollback bir güvenlik kapısı taşır: yalnız lak/vernik/işçilik farkıyla ayrılmış
+`TANIMLI` SKU varsa en başta durur, çünkü kolonlar düşerse o SKU'lar aynı kimliğe
+inerdi.
+
+Uygulanmadan önce iki şey netleşmeli: (1) `web/` tarafındaki `HAM` sabitleri ve
+`web/katalog/stok_servisi.py` içindeki altı parametreli `stok_kalemi_kaydet()`
+çağrısı hizalanmalı; (2) hem yerel Docker hem Pi kopyasına uygulanmalı — ikisinin
+şeması aynı, defterleri ayrı.
 
 ## Veri hattının sonucu
 
@@ -185,6 +218,10 @@ tam olarak kanıtlanamaz.
 
 ### Yakın dönem
 
+0. Migration 010'u Django hizalamasıyla birlikte planlayıp ortak veritabanına
+   uygulayın. Sıra bağlayıcıdır: 010 uygulanmadan varyant ekleme ekranı yeni
+   nitelikleri gönderemez, Django hizalanmadan 010 uygulanırsa aynı ekran kırılır.
+   Uygulama hem yerel Docker hem Pi kopyasına yapılır.
 1. Eski/belirsiz SKU bakiyesini ham varsaymadan fiziksel sayımla gerçek SKU'lara
    sınıflandırın. 008 ortak veritabanına uygulandığı için **2.973 ürünün tamamı
    şu an tek bir miras (BELIRSIZ) SKU taşıyor**; gerçek kaplama/montaj varyantları
