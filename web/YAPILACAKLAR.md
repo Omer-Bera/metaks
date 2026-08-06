@@ -8,22 +8,26 @@ kurallar [AGENTS.md](AGENTS.md), şema yol haritası
 Eski madde numaraları kod ve diğer belge referanslarını bozmamak için korunur.
 Güncel uygulama sırası:
 
-1. **Migration 010 + 011'i ortak veritabanına uygulama** — arayüz hazır (madde 7),
-   sıradaki iş bu. Ayrıntı ve riskler
-   [`veritabani/docs/INFO.md`](../veritabani/docs/INFO.md) içinde.
-2. **Eski/belirsiz SKU bakiyesini fiziksel sayımla gerçek SKU'lara sınıflandırma**
-3. **Madde 4 — gerçek numune dolap/raf düzeni**
+1. **Eski/belirsiz SKU bakiyesini fiziksel sayımla gerçek SKU'lara sınıflandırma**
+2. **Madde 4 — gerçek numune dolap/raf düzeni**
 
-Migration 008 ve 009 **2026-08-05'te ortak veritabanına uygulandı** (ayrıntı ve
+Migration 008–009 2026-08-05'te, **010 ve 011 2026-08-06'da** her iki
+`depo_sistemi` kopyasına da uygulandı; arayüz aynı gün `dev`'e alındı (ayrıntı ve
 doğrulama kaydı [`veritabani/docs/INFO.md`](../veritabani/docs/INFO.md)). Bunun
 arayüz tarafındaki doğrudan sonucu: 2.973 ürünün tamamı şu an tek bir miras
 (BELIRSIZ) SKU taşıyor, yani stok işlem ekranında çoğu kodda "eski / belirsiz
-varyant" rozeti ve "+ Bu ürüne yeni varyant aç" kısayolu görünüyor.
+varyant" rozeti ve "+ Bu ürüne yeni varyant aç" kısayolu görünüyor. Sıradaki iş
+tam olarak bu: gerçek varyantları açıp bakiyeyi oraya taşımak.
 
-⚠️ **Arayüz artık migration 010'u ZORUNLU kılıyor.** `StokKalemi` modeli 010'un
+⚠️ **Kendi makinesinde yerel `depo_sistemi` kopyası çalıştıran herkes 010 + 011'i
+o kopyaya da uygulamalı.** `StokKalemi` modeli 010'un
 `lak_mi` / `vernik_mi` / `iscilik_mi` kolonlarını, `stok_kalemi_kaydet()` çağrısı
-da dokuz parametreli yeni imzayı kullanıyor. 010 uygulanmamış bir veritabanına
-bağlanan bu kod stok ekranlarında hata verir. İkisi birlikte uygulanmalıdır.
+da dokuz parametreli yeni imzayı kullanıyor; migration görmemiş bir kopyada stok
+ekranları "column does not exist" verir.
+
+⚠️ **İlk gerçek varyant açıldığı an 010'un geri dönüş kapısı kapanıyor.**
+Rollback, yalnız lak/vernik/işçilik farkıyla ayrılmış `TANIMLI` SKU varsa baştan
+durur. Bugün `TANIMLI` SKU sayısı sıfır, yani kapı hâlâ açık.
 
 Madde 5 (dışa aktarma) ve madde 2b (rol ayrımı) tamamlandı; kararları aşağıda.
 
@@ -302,6 +306,7 @@ HTMX ve doğrudan URL aynı decorator/sorgu kontrolünü kullanır.
 | ✅ numune şema ön koşulu | 2026-07-30 | Ayrı varlık yerine lokasyon hiyerarşisi seçildi; migration 004 ve Django yaprak-lokasyon geçişi tamamlandı. |
 | ✅ 5 — filtreli CSV/Excel dışa aktarım | 2026-08-04 | Katalog, stok ve hareket ekranları aynı filtre sorgularından sayfalamasız dosya üretiyor; CSV akışlı, XLSX write-only/geçici dosyalı ve anonim okuma davranışı korundu. |
 | ✅ 7 — stok/SKU/fason ekranlarının 010+011 hizalaması | 2026-08-06 | Amaç seçimi iki kademeli oldu, iadeler menüye girdi, lokasyon ve karşı taraf süzmeleri 011'in birebir aynası yapıldı, dönecek SKU elle yazılmak yerine türetiliyor ve `HAM` her yerde `DEMONTE` oldu; arayüz artık migration 010'u zorunlu kılıyor. |
+| ✅ 010 + 011'in uygulanması | 2026-08-06 | İki `depo_sistemi` kopyasına da (önce yerel Docker, doğrulama sonrası Pi) yedek + prova + açık onayla uygulandı ve arayüz aynı gün `dev`'e alındı; şema değişikliği ile ona bağımlı kod arasındaki pencere kapatıldı. |
 
 Bir madde tamamlandığında açık bölümden kaldırıp bu tabloya tarih ve tek cümlelik
 kalıcı gerekçeyle ekleyin. Canlı satır sayısı, kişisel cihaz durumu ve tek kullanımlık

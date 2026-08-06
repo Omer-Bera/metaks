@@ -12,25 +12,25 @@ yeniden sorgulanmalıdır.
 ## Güncel çalışma noktası — 2026-08-06
 
 Veri temizleme, normalizasyon, karışık stok kodu çözümü, PostgreSQL yüklemesi ve
-görsel eşleme tamamlandı. **Migration 001–009 ortak `depo_sistemi` veritabanına
-(Raspberry Pi, 100.64.0.7:5433) uygulanmış durumdadır.** 008 ve 009 2026-08-05'te,
-kullanıcının açık onayı ve güncel yedekle uygulandı; ayrıntı aşağıdaki tabloda.
+görsel eşleme tamamlandı. **Migration 001–011 her iki `depo_sistemi` kopyasına da
+(yerel Docker `localhost:5433` ve Raspberry Pi `100.64.0.7:5433`) uygulanmış
+durumdadır.** 008 ve 009 2026-08-05'te, 010 ve 011 2026-08-06'da, kullanıcının
+açık onayı ve güncel yedekle uygulandı; ayrıntı aşağıdaki tabloda.
 
-**Migration 010 ve 011 yazıldı, ortak veritabanına UYGULANMADI.** 010 SKU kimliğine
-lak, vernik ve işçilik niteliklerini ekliyor ve montaj hali `HAM` değerini `DEMONTE`
-yapıyor. 011 `stok_islemi_kaydet()`'e iki iş kuralı ekliyor: iadelerde karşı taraf
-zorunlu ve rollü, ve amaç ↔ lokasyon tipi eşlemesi.
+Arayüz de aynı gün 010 + 011'e hizalandı ve `dev`'e alındı (bkz.
+`../../web/YAPILACAKLAR.md` madde 7).
 
-**İkisi bir arada uygulanır ve Django hizalanmadan uygulanmaz.** 011, 010'un üstüne
-gelir; ikisinin de dosyaları hazır ve tek kullanımlık kopyada tam tur geçti
-(010 ileri → 011 ileri → kabul testi → 011 rollback → 010 rollback). Uygulama ayrı
-bir oturumda, güncel yedek ve kullanıcının açık onayıyla yapılacak.
+⚠️ **Kendi makinesinde yerel bir `depo_sistemi` kopyası çalıştıran herkes
+010 + 011'i o kopyaya da uygulamalıdır.** Güncel Django kodu `stok_kalemleri`'nin
+`lak_mi` / `vernik_mi` / `iscilik_mi` kolonlarını ve dokuz parametreli
+`stok_kalemi_kaydet()` imzasını kullanıyor; migration görmemiş bir kopyada bütün
+stok ekranları "column does not exist" verir.
 
-**Django tarafı henüz hizalanmadı** — `web/` içinde `HAM` sabiti ve altı parametreli
-`stok_kalemi_kaydet()` çağrısı duruyor. 010 Django hizalanmadan uygulanırsa varyant
-ekleme ekranı kırılır. 011 mevcut ekranları kırmaz (yalnız yeni yazımlarda kural
-uygular) ama arayüzün bu kuralları "ayna" olarak göstermesi gerekir; aksi hâlde
-kullanıcı ancak kaydete bastıktan sonra reddedildiğini görür.
+⚠️ **010'un geri dönüşü pratikte tek yönlüdür.** Rollback, yalnız
+lak/vernik/işçilik farkıyla ayrılmış `TANIMLI` bir SKU varsa en baştan durur —
+o kolonlar düşerse iki ayrı SKU aynı kimliğe inerdi. Yani ilk gerçek varyant
+açıldığı an geri dönüş, çakışan varyantların elle birleştirilmesini gerektiren
+bir karara dönüşür.
 
 ### İki ayrı `depo_sistemi` var, ikisi de güncel şemada
 
@@ -87,8 +87,8 @@ değildir. Henüz `NUMUNE` tipinde gerçek dolap/raf satırı yoktur.
 | 007 | Uygulandı | Stok partisi için kaplama/montaj kovaları ve 11 kaplama rengi |
 | 008 | Uygulandı (2026-08-05) | Ürün/SKU ayrımı, belge başlığı, stok durumu, parti, iş ortağı ve fason iş emri |
 | 009 | Uygulandı (2026-08-05) | 13 standart renk ve 7 hammadde çeşidi başlangıç verisi |
-| 010 | **Yazıldı, ortak DB'ye uygulanmadı** (2026-08-06) | SKU kimliğine lak/vernik/işçilik ikili nitelikleri, montaj hali `HAM` → `DEMONTE`, `ham` kaplamasının pasife alınması |
-| 011 | **Yazıldı, ortak DB'ye uygulanmadı** (2026-08-06) | `stok_islemi_kaydet()`: iadelerde karşı taraf zorunlu ve rollü, amaç ↔ lokasyon tipi eşlemesi |
+| 010 | Uygulandı (2026-08-06) | SKU kimliğine lak/vernik/işçilik ikili nitelikleri, montaj hali `HAM` → `DEMONTE`, `ham` kaplamasının pasife alınması |
+| 011 | Uygulandı (2026-08-06) | `stok_islemi_kaydet()`: iadelerde karşı taraf zorunlu ve rollü, amaç ↔ lokasyon tipi eşlemesi |
 
 Migration 009 yalnız veri ekler (tablo/kolon/kısıt/view değiştirmez) ve 008'in
 `renkler` tablosuna bağımlıdır, yani 008'den SONRA uygulanır. İleri yönü
@@ -134,7 +134,7 @@ kaplama sayıları yedekle birebir aynı, SKU'suz ve belgesiz hareket sıfır, a
 yazma kapısının altısı da yerinde, ve defter neti ile `v_stok_bakiye` toplamı
 eşit (2.022). Django arayüzü Pi'ye bağlanarak on iki sayfada denendi.
 
-### 010 — SKU nitelik modeli, uygulama BEKLİYOR
+### 010 — SKU nitelik modeli (uygulandı 2026-08-06)
 
 010, SKU kimliğini kaplama + boya + mine + montaj hali dörtlüsünden yedi niteliğe
 çıkarır: `lak_mi`, `vernik_mi`, `iscilik_mi` eklenir, boya ve mine rengi kontrollü
@@ -152,12 +152,12 @@ Rollback bir güvenlik kapısı taşır: yalnız lak/vernik/işçilik farkıyla 
 `TANIMLI` SKU varsa en başta durur, çünkü kolonlar düşerse o SKU'lar aynı kimliğe
 inerdi.
 
-Uygulanmadan önce iki şey netleşmeli: (1) `web/` tarafındaki `HAM` sabitleri ve
-`web/katalog/stok_servisi.py` içindeki altı parametreli `stok_kalemi_kaydet()`
-çağrısı hizalanmalı; (2) hem yerel Docker hem Pi kopyasına uygulanmalı — ikisinin
-şeması aynı, defterleri ayrı.
+Uygulama önkoşulları karşılandıktan sonra yapıldı: (1) `web/` tarafındaki `HAM`
+sabitleri ve altı parametreli `stok_kalemi_kaydet()` çağrısı hizalandı (madde 7);
+(2) hem yerel Docker hem Pi kopyasına uygulandı — ikisinin şeması aynı, defterleri
+ayrı.
 
-### 011 — stok işlemi kuralları, uygulama BEKLİYOR
+### 011 — stok işlemi kuralları (uygulandı 2026-08-06)
 
 011 `stok_islemi_kaydet()` gövdesine iki eksik iş kuralı ekler. İmza değişmediği
 için `CREATE OR REPLACE` yeterlidir; rollback 008 gövdesini birebir geri yazar.
@@ -257,11 +257,6 @@ tam olarak kanıtlanamaz.
 
 ### Yakın dönem
 
-0. Migration 010 + 011'i Django hizalamasıyla birlikte planlayıp ortak veritabanına
-   uygulayın. Sıra bağlayıcıdır: 010 uygulanmadan varyant ekleme ekranı yeni
-   nitelikleri gönderemez, Django hizalanmadan 010 uygulanırsa aynı ekran kırılır;
-   011 de 010'un üstüne gelir. Arayüz turu 011'in amaç ↔ lokasyon tipi tablosunu
-   aynalamalıdır. Uygulama hem yerel Docker hem Pi kopyasına yapılır.
 1. Eski/belirsiz SKU bakiyesini ham varsaymadan fiziksel sayımla gerçek SKU'lara
    sınıflandırın. 008 ortak veritabanına uygulandığı için **2.973 ürünün tamamı
    şu an tek bir miras (BELIRSIZ) SKU taşıyor**; gerçek kaplama/montaj varyantları
