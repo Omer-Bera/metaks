@@ -21,6 +21,17 @@ veritabanına bağlanırsa stok ekranları hata verir, ikisi birlikte dağıtıl
   değeri 010'da `DEMONTE` oldu: bu projede **"ham" kaplanmamış demektir**
   (`kaplamalar` tablosundaki satır), montaj hali değil. Aynı kelimeyi iki anlamda
   kullanmak hem ekranda hem SQL'de karışıyordu.
+- **Ama sahada söylenen "HAM" ikisini birden anlatır.** Depo sayım kâğıdında bir
+  satıra "HAM" yazıldığında kastedilen önce "kaplanmamış"tır; montajlı ürünlerde
+  aynı kelime "henüz monte edilmemiş" anlamını da taşır. Bu yüzden dış kaynaklı bir
+  kayıtta okunan `HAM`, tek bir alana değil **ikisine birden** çevrilir:
+  `kaplama_id IS NULL` **ve** — ürün birden çok parçadan oluşuyorsa — montaj hali
+  `DEMONTE`. Tek parça üretilen, monte edilecek bir şeyi olmayan üründe ikinci kısım
+  uygulanmaz; o kalem kendi başına tamam olduğu için montaj hali `MONTE` yazılır.
+  `BELIRSIZ` bir seçenek değildir: `stok_kalemi_kaydet()` `TANIMLI` bir SKU'da
+  montaj halini `DEMONTE`/`YARI_MONTE`/`MONTE` dışında kabul etmez
+  (`010_sku_nitelikleri.sql:171`). Değişen 010'un kolon anlamı değil, dış
+  kaynaktaki kelimenin nasıl okunacağıdır.
 - Her ürüne migration sırasında aynı kodlu `BELIRSIZ` miras SKU açılır. Bu SKU
   kaplanmamış kabul edilmez; fiziksel sayımda gerçek `-V01`, `-V02` SKU'larına
   sınıflandırılır.

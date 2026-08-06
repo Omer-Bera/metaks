@@ -205,6 +205,32 @@ değişebildiği için bu dosya tarihsel yükleme kaynağıdır; canlı DB'nin s
 güncel aynası değildir. Güncel tablo dökümü gerektiğinde
 `scripts/database/tablolari_disa_aktar.py` kullanılmalıdır.
 
+### Katalogda "ürün adı" diye bir alan yok
+
+`urunler` tablosunda ürün adı kolonu bulunmuyor; ürün kimliği `stok_kodu` +
+`kategori_id` + `olcu_mm`/`boy_ligne` üzerinden taşınıyor. `urunler.aciklama` bir ad
+değil serbest not alanıdır: `temiz_urunler_final_v2.xlsx`'te satırların büyük
+kısmında `yok` ya da boş, dolu olanlar da "2108 toka takımının alt pul parçası" gibi
+cümleler. `KANCA`, `HALKA`, `DÜĞME` gibi sahada kullanılan kelimeler bu kolonda hiç
+geçmiyor.
+
+Sonucu her dış veri işini bağlar: **dışarıdan gelen bir listeyi (sayım kâğıdı,
+tedarikçi listesi, müşteri siparişi) ürün adına göre eşleştirmek mümkün değildir.**
+Eşleştirmenin tutunabileceği alanlar kategori, ölçü, gramaj ve fotoğraftır.
+
+Nitelik doluluğu — 2026-08-06'da `temiz_urunler_final_v2.xlsx` üzerinden sayıldı:
+
+| Alan | Dolu |
+| --- | ---: |
+| `olcu_mm` | 2.973 / 2.973 |
+| `boy_ligne` | 2.973 / 2.973 |
+| ÜRÜN GRAMI (`gramaj_gr`) | 1.433 / 2.973 |
+| ÜRÜN GÖZ SAYISI | 1.414 / 2.973 |
+
+Gramajın yarısı boş olduğu için eşleştirme tek başına gramaja dayandırılamaz; **ölçü
+tek %100 dolu ayırt edici alandır**. Aktif görsel dizinindeki 1.799 dosya da bu
+işlerde ikinci sinyaldir.
+
 Karışık stok kodu aşamasında:
 
 - 857 kaynak satır incelendi;
@@ -263,8 +289,31 @@ tam olarak kanıtlanamaz.
    `/stok/varyant/yeni/` üzerinden açılıp bakiye oraya taşınmalı.
 2. Gerçek numune dolabı ve raflarını `NUMUNE` hiyerarşisi olarak girin.
 3. Arayüzde ürün detayına numune konumu/miktarı görünümünü ekleyin.
+4. **Referans tablolarında sahada kullanılan değerler eksik.** `kaplamalar` 11 aktif
+   renk taşıyor ama depoda konuşulan adların bir kısmı yok: `FREE NİKEL`,
+   `FREE SARI`, `MAT FREE`. Bunlar istisna değil bugünün normali — nikel insan
+   sağlığına zararlı olduğu için **yeni üretimin tamamı nikelsiz**, ve çalışanlar
+   kaplamayı bu adlarla söylüyor. Aynı şekilde `hammaddeler`'de `BAKIR` ve
+   `PASLANMAZ` yok, birden çok metal içeren parçalar için de karşılık yok. Bu eksik,
+   dış veri aktarımından bağımsız olarak bugün yeni SKU açan herkesi etkiliyor;
+   sıradaki migration bu referans satırlarını eklemeli.
 
-Üç maddenin de uygulama durumu `../../web/YAPILACAKLAR.md` tarafından izlenir.
+   Not: "nikelsiz" ayrı bir SKU niteliği (`nikelsiz_mi` gibi) olarak modellenmedi.
+   Üretimin tamamı nikelsiz olduğu için bu alan neredeyse her satırda aynı değeri
+   alır, yani ayırt edici değildir; kimliğe giren şey çalışanın söylediği kaplama
+   adıdır. Lak bundan bağımsızdır ve `lak_mi` olarak kalır — aynı ürünün hem laklısı
+   hem laksızı olabilir.
+
+İlk üç maddenin uygulama durumu `../../web/YAPILACAKLAR.md` tarafından izlenir;
+dördüncüsü şema tarafının işidir.
+
+**Depo sayımı Exceli'nden aktarım bilinçli olarak ertelendi.** 2026-08-06'da
+personelin doldurduğu sayım dosyası incelendi; içindeki stok kodları gerçek ürün
+kodları değil, sayım sırasında verilmiş sıra numaralarıydı. Personel ilerleyen
+haftalarda doğru kodlarla daha standart bir dosya hazırlayacak. O güne kadarki bütün
+inceleme, alınan kararlar ve bekletilen satırlar `depo-stok-veri-aktarimi`
+branch'inde, `docs/sayim-aktarimi.md` içinde duruyor — yeni dosya geldiğinde işe
+oradan devam edilir.
 Türkçe Excel uyumlu CSV/XLSX dışa aktarma (katalog, stok ve hareket geçmişi) ve
 rol/işlem yetkisi ayrımı tamamlandı.
 
