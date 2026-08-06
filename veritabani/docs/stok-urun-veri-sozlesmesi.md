@@ -1,11 +1,12 @@
-# Stok ve ürün veri sözleşmesi (migration 008 + 010)
+# Stok ve ürün veri sözleşmesi (migration 008 + 010 + 011)
 
 Bu sözleşme migration 008 uygulandıktan sonraki ürün/SKU, belge ve fason yüzeylerini
 tanımlar. Migration ortak veritabanına uygulanana kadar canlı şema 007 sözleşmesindedir.
 
-**SKU kimliği migration 010 ile değişti.** 010 yazıldı ama ortak veritabanına
-uygulanmadı; aşağıdaki kimlik tanımı 010 uygulandıktan sonrası içindir. Django tarafı
-henüz 010'a hizalanmadı (ayrı faz).
+**SKU kimliği migration 010 ile, yazma kapısının kuralları 011 ile değişti.** İkisi de
+yazıldı ama ortak veritabanına uygulanmadı; aşağıdaki tanımlar uygulandıktan sonrası
+içindir. Django tarafı 010 ve 011'e hizalandı — yani bu kod 010 uygulanmamış bir
+veritabanına bağlanırsa stok ekranları hata verir, ikisi birlikte dağıtılmalıdır.
 
 ## Kimlikler
 
@@ -83,6 +84,33 @@ partiyi, iş emri sınırını, belge tekilliğini ve istemci UUID idempotency's
 transaction içinde denetler. Kaydedilmiş `stok_hareketleri` satırı UPDATE/DELETE
 edilemez. Düzeltme yeni belge olarak ve düzelttiği belgeye bağlantıyla yazılır.
 
+### 011'in eklediği iki kural ailesi
+
+Karşı taraf zorunluluğu (rol `is_ortagi_rolleri`'nden, iş ortağı aktif olmalı):
+
+| İşlem nedeni | Gereken rol |
+| --- | --- |
+| `SATIN_ALMA_KABUL` | `TEDARIKCI` |
+| `SATIS_SEVKI` | `MUSTERI` |
+| `MUSTERI_IADE` | `MUSTERI` |
+| `TEDARIKCI_IADE` | `TEDARIKCI` |
+
+İşlem nedeni ↔ lokasyon tipi:
+
+| İşlem nedeni | İzinli kaynak | İzinli hedef |
+| --- | --- | --- |
+| `SATIN_ALMA_KABUL`, `URETIM_GIRIS`, `MUSTERI_IADE` | — | `DAHILI` |
+| `SATIS_SEVKI`, `TEDARIKCI_IADE` | `DAHILI` | — |
+| `SAYIM` | — | `DAHILI`, `NUMUNE` |
+| `IC_TRANSFER` | `DAHILI`, `NUMUNE` | `DAHILI`, `NUMUNE` |
+| `DUZELTME`, `STOK_SINIFLANDIRMA`, `MIRAS_HAREKET` | kısıt yok | kısıt yok |
+| `FASON_SEVK`, `FASON_DONUS`, `FIRE` | 008'in iş emri kuralları | 008'in iş emri kuralları |
+
+`DUZELTME`'nin kısıtsız kalması bilinçlidir: fason lokasyonundaki bir hatanın da
+düzeltilebilmesi gerekiyor ve düzeltme oradan çıkışın tek yoludur. Arayüz bu
+tabloları POST'tan önce gösterir ama otorite bu fonksiyondur; kural Python veya
+JavaScript'te ikinci kez tanımlanmaz.
+
 Eski `stok_hareketi_kaydet()` imzası uyumluluk sarmalayıcısıdır; o da yeni kapıya
 yönlenir. Yeni Django kodu bu sarmalayıcıyı kullanmaz. 010, sarmalayıcının içindeki
 montaj eşleştirmesini de `HAM` yerine `DEMONTE` yaptı; imza değişmedi.
@@ -111,7 +139,15 @@ sql/migrations/008_stok_urun_modeli_rollback.sql
 sql/migrations/010_sku_nitelikleri.sql
 sql/tests/010_sku_nitelikleri_test.sql
 sql/migrations/010_sku_nitelikleri_rollback.sql
+
+sql/migrations/011_stok_islemi_kurallari.sql
+sql/tests/011_stok_islemi_kurallari_test.sql
+sql/migrations/011_stok_islemi_kurallari_rollback.sql
 ```
+
+011'in kabul testi hedef SKU'yu 010'un dokuz parametreli imzasıyla açar; yani 011
+tek başına 008 seviyesindeki bir kopyada test edilemez, tur her zaman
+`010 ileri → 011 ileri → test → 011 rollback → 010 rollback` sırasındadır.
 
 Kabul testi yalnız disposable/restored kopyada çalıştırılır ve kendi örnek
 hareketlerini transaction sonunda geri alır. Ortak veritabanına uygulama için güncel

@@ -72,6 +72,28 @@ hareketidir ve aynı defterde izlenir.
 
 ---
 
+## 8. Gün sonu ekranı — sonraya bırakıldı
+
+Depo sorumlusunun akşam kapanışta ihtiyaç duyduğu tek sayfa: o günün bütün stok
+belgeleri ve hareketleri, o an dışarıda (fasonda) duran malın kimde/ne kadar/ne
+zamandır/ne zaman beklendiği bilgisi ve çıktı alınabilir bir rapor.
+
+Fikir 2026-08-06'da konuşuldu ve **bilerek şimdilik açık madde olarak** duruyor.
+Ayrıntı, veri kaynakları, gün sınırı tuzağı, PDF seçeneklerinin maliyet
+karşılaştırması ve henüz karara bağlanmamış noktalar ayrı belgede:
+[`GUN_SONU_TASARIMI.md`](GUN_SONU_TASARIMI.md).
+
+Şimdiden bilinen iki kısıt:
+
+- Gün sınırı `models.yerel_tarih()` üzerinden kurulmalı; ham naive UTC kolonu
+  00:00–03:00 arasındaki hareketleri bir önceki güne düşürür (madde 5'te bir kez
+  ölçülmüş tuzağın aynısı).
+- "Ne zamandır dışarıda" bilgisi `v_fason_is_emri_ozet`te yok; ilk `FASON_SEVK`
+  belgesinin tarihinden türetilir. İlk sürümde Django tarafında tek gruplu
+  sorgu yeterli, şema değişikliği gerektirmiyor.
+
+---
+
 ## ✅ 5. Katalog, stok ve hareket dışa aktarma — tamamlandı (2026-08-04)
 
 `/katalog/`, `/stok/` ve `/stok/hareketler/` ekranlarının her biri, o an açık
@@ -233,6 +255,25 @@ HTMX ve doğrudan URL aynı decorator/sorgu kontrolünü kullanır.
   kurulan tek kullanımlık kopyada 008 ileri, 17 assertion'lık kabul testi, 009
   ileri + rollback ve 008 rollback çalıştırıldı; testin sessizce geçmediği 008
   uygulanmamış bir kopyada hata verdirilerek doğrulandı (bkz. 11eeffe).
+- **Konsinye / emanet mal bilerek modelin dışında (2026-08-06):** müşteride ve
+  tedarikçide METAKS'a ait duran mal GERÇEKTEN var, ama şimdilik "yokmuş gibi"
+  ilerleniyor — kapsamı şişirmemek için alınmış bilinçli karar. Madde 7'deki
+  "müşteri ve tedarikçi lokasyon değildir" kararının gerekçesi budur. Ayrım
+  mülkiyette: fasondaki malın mülkiyeti devrolmuyor (o yüzden lokasyon), satılan
+  malınki devroluyor. Müşteri lokasyon yapılsaydı satılan mal `v_stok_bakiye`'de
+  sonsuza kadar bakiye olarak dururdu ve `v_stok_urun_ozet.sahip_olunan_toplam`
+  artık bize ait olmayanı da sayardı; kimsenin saymayacağı, hiç kapanmayacak bir
+  bakiye birikirdi. "Mal kime gitti / kimden geldi" sorusunun cevabı bugün
+  lokasyon değil **belge başlığı** (`stok_islemleri.is_ortagi_id`); hareket
+  geçmişi bunu zaten gösteriyor. Karar geri alınırsa doğru yol "Müşteri" tipi
+  lokasyon açmak DEĞİL, bir iş ortağına bağlı ayrı bir `KONSINYE` lokasyon tipi
+  eklemektir — mülkiyet ayrımı orada da korunur. Aynı sınırın ikinci yarısı:
+  bugün bir fasoncunun tek atölyesi var, yani fason iş emrindeki lokasyon seçimi
+  pratikte tek seçenekli. Şema çoklu lokasyonu destekliyor
+  (`lokasyonlar.is_ortagi_id`), değiştirmeye gerek yok; madde 7'de alanın
+  gizlenmesi buna dayanıyor ve ikinci bir atölye açıldığı gün alan kendiliğinden
+  geri geliyor.
+
 - **Çoklu görsel galerisi:** veri ve kullanıcı ihtiyacı belirginleşene kadar tek ana
   görsel korunuyor.
 - **Otomatik stok yenileme:** açık sekme kendiliğinden yenilenmiyor. Operasyonel
