@@ -2,3 +2,8 @@
 
 # macOS
 .DS_Store
+
+# Personelin doldurdugu ham sayim dosyalari (gomulu fotograflar yuzunden
+# yuzlerce MB). Ne isledigi veritabani/docs/sayim-aktarimi.md'de yazili; dosyanin
+# kendisi git'e girmez, elle yedeklenir.
+sayım/
